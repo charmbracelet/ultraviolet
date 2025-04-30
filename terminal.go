@@ -1,6 +1,7 @@
 package tv
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -17,8 +18,8 @@ type Terminal struct {
 	inTtyState  *term.State
 	outTty      term.File
 	outTtyState *term.State
-	evch        chan Event
-	errch       chan error
+	err         error
+	size        Size // The last known size of the terminal
 }
 
 // NewTerminal creates a new Terminal instance with the given input and output
@@ -27,8 +28,6 @@ func NewTerminal(in io.Reader, out io.Writer) *Terminal {
 	t := new(Terminal)
 	t.in = in
 	t.out = out
-	t.evch = make(chan Event)
-	t.errch = make(chan error)
 	return t
 }
 
@@ -53,5 +52,61 @@ func (t *Terminal) Close() error {
 		}
 	}
 
+	return nil
+}
+
+// Events returns an event channel that will receive events from the terminal.
+func (t *Terminal) Events(ctx context.Context) <-chan Event {
+	evch := make(chan Event)
+	errch := make(chan error, 1)
+
+	go func() {
+		// Create default receivers.
+		winchrcv, err := NewWinchReceiver(t.out)
+		if err != nil {
+			errch <- fmt.Errorf("failed to create winch receiver: %w", err)
+			return
+		}
+
+		// Receive events from the terminal.
+		man := NewInputManager(winchrcv)
+		man.ReceiveEvents(ctx, evch, errch)
+	}()
+
+	go func() {
+		// Wait for the context to be done or an error to occur.
+		select {
+		case <-ctx.Done():
+			return
+		case err := <-errch:
+			if err != nil {
+				t.err = err
+			}
+			return
+		}
+	}()
+
+	go func() {
+		// Listen for window size changes and store them in the terminal.
+		for ev := range evch {
+			switch ev := ev.(type) {
+			case Size:
+				if ev.Width != t.size.Width || ev.Height != t.size.Height {
+					t.size = ev
+				}
+			}
+			evch <- ev // Send the event back to the channel
+		}
+	}()
+
+	return evch
+}
+
+// Err returns the last error that occurred while receiving events from the
+// terminal.
+func (t *Terminal) Err() error {
+	if t.err != nil {
+		return fmt.Errorf("terminal error: %w", t.err)
+	}
 	return nil
 }

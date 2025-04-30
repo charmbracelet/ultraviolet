@@ -1,3 +1,6 @@
+//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || aix || zos
+// +build darwin dragonfly freebsd linux netbsd openbsd solaris aix zos
+
 package tv
 
 import (

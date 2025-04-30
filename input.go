@@ -3,6 +3,8 @@ package tv
 import (
 	"context"
 	"sync"
+
+	"github.com/charmbracelet/x/term"
 )
 
 // Event represents an input event that can be received from an input source.
@@ -51,4 +53,13 @@ func (im *InputManager) ReceiveEvents(ctx context.Context, events chan<- Event, 
 
 	// Wait for all receivers to finish
 	wg.Wait()
+}
+
+func checkSize(out term.File) (Size, error) {
+	w, h, err := term.GetSize(out.Fd())
+	if err != nil {
+		return Size{}, err
+	}
+
+	return Size{w, h}, err
 }
