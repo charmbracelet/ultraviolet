@@ -1447,13 +1447,13 @@ func (s *tScreen) Resize(width, height int) bool {
 	if width > oldh {
 		s.ClearRect(Rect(max(oldw-1, 0), 0, width-oldw, height))
 	} else if width < oldw {
-		s.ClearRect(Rect(max(width-1, 0), 0, oldw-width, height))
+		s.ClearRect(Rect(max(width, 0), 0, oldw-width, height))
 	}
 
 	if height > oldh {
 		s.ClearRect(Rect(0, max(oldh-1, 0), width, height-oldh))
 	} else if height < oldh {
-		s.ClearRect(Rect(0, max(height-1, 0), width, oldh-height))
+		s.ClearRect(Rect(0, max(height, 0), width, oldh-height))
 	}
 
 	s.mu.Lock()
