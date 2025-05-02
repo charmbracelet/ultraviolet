@@ -9,12 +9,6 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-// Size represents the row-column size of a window.
-type Size struct {
-	Width  int
-	Height int
-}
-
 // WinchReceiver listens for window size changes and sends the new size to the
 // event channel.
 type WinchReceiver struct {

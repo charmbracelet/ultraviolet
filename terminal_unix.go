@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/x/term"
+	"golang.org/x/sys/unix"
 )
 
 func (t *Terminal) makeRaw() error {
@@ -26,4 +27,15 @@ func (t *Terminal) makeRaw() error {
 	}
 
 	return nil
+}
+
+func (t *Terminal) optimizeMovements() {
+	if f, ok := t.in.(term.File); ok {
+		state, err := term.GetState(f.Fd())
+		if err != nil {
+			return
+		}
+		t.scr.UseHardTabs(state.Oflag&unix.TABDLY == unix.TAB0)
+		t.scr.UseBackspaces(state.Lflag&unix.BSDLY == unix.BS0)
+	}
 }

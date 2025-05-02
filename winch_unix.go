@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/charmbracelet/x/termios"
 )
 
 func (l *WinchReceiver) receiveEvents(ctx context.Context, evch chan<- Event, errch chan<- error) {
@@ -21,13 +23,13 @@ func (l *WinchReceiver) receiveEvents(ctx context.Context, evch chan<- Event, er
 		case <-ctx.Done():
 			return
 		case <-sig:
-			s, err := checkSize(l.out)
+			winsize, err := termios.GetWinsize(int(l.out.Fd()))
 			if err != nil {
 				errch <- err
 				return
 			}
 
-			evch <- s
+			go func() { evch <- WindowSize{int(winsize.Col), int(winsize.Row)} }()
 		}
 	}
 }

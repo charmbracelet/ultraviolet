@@ -10,6 +10,18 @@ import (
 // Event represents an input event that can be received from an input source.
 type Event interface{}
 
+// Size represents the size of the terminal window.
+type Size struct {
+	Width  int
+	Height int
+}
+
+// WindowSize represents the window size in cells.
+type WindowSize Size
+
+// WindowPixelSize represents the window size in pixels.
+type WindowPixelSize Size
+
 // InputReceiver is an interface for receiving input events from an input source.
 type InputReceiver interface {
 	// ReceiveEvents read input events and channel them to the given event and
@@ -55,11 +67,7 @@ func (im *InputManager) ReceiveEvents(ctx context.Context, events chan<- Event, 
 	wg.Wait()
 }
 
-func checkSize(out term.File) (Size, error) {
-	w, h, err := term.GetSize(out.Fd())
-	if err != nil {
-		return Size{}, err
-	}
-
-	return Size{w, h}, err
+func checkSize(out term.File) (w int, h int, err error) {
+	w, h, err = term.GetSize(out.Fd())
+	return
 }

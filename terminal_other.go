@@ -8,3 +8,5 @@ import "fmt"
 func (*Terminal) makeRaw() error {
 	return fmt.Errorf("platform not supported")
 }
+
+func (t *Terminal) optimizeMovements() {}
