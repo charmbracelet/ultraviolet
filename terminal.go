@@ -96,14 +96,25 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 
 var _ Displayer = (*Terminal)(nil)
 
+func (t *Terminal) newScreen() *tScreen {
+	s := newTScreen(t.out, t.size.Width, t.size.Height)
+	s.SetTermType(t.termtype)
+	s.SetColorProfile(t.profile)
+	return s
+}
+
 // Display displays the given frame on the terminal screen. It returns an
 // error if the display fails.
 func (t *Terminal) Display(f *Frame) error {
 	if t.scr == nil {
 		// Initialize the screen for the first time.
-		t.scr = newTScreen(t.out, t.size.Width, t.size.Height)
+		t.scr = t.newScreen()
 		t.optimizeMovements()
-	} else {
+	}
+
+	t.scr.SetBuffer(f.Buffer)
+	width, height := f.Area.Dx(), f.Area.Dy()
+	if width != t.scr.Width() || height != t.scr.Height() {
 		t.scr.Resize(f.Area.Dx(), f.Area.Dy())
 	}
 
@@ -119,16 +130,22 @@ func (t *Terminal) Display(f *Frame) error {
 		t.scr.SetRelativeCursor(false)
 	}
 
-	t.scr.SetBuffer(f.Buffer)
-
+	// BUG: Hide/Show cursor doesn't take effect unless we call them before
+	// Render.
 	if f.Position == nil {
 		t.scr.HideCursor()
 	} else {
 		t.scr.ShowCursor()
+	}
+
+	// XXX: We want to render the changes before moving the cursor to ensure
+	// the cursor is at the position specified in the frame.
+	t.scr.Render()
+
+	if f.Position != nil && f.Position.X >= 0 && f.Position.Y >= 0 {
 		t.scr.MoveTo(f.Position.X, f.Position.Y)
 	}
 
-	t.scr.Render()
 	return t.scr.Flush()
 }
 
@@ -202,8 +219,10 @@ func (t *Terminal) Close() error {
 	close(t.errch)
 	t.once = sync.Once{}
 
-	if err := t.scr.Close(); err != nil {
-		return fmt.Errorf("error closing terminal screen: %w", err)
+	if t.scr != nil {
+		if err := t.scr.Close(); err != nil {
+			return fmt.Errorf("error closing terminal screen: %w", err)
+		}
 	}
 
 	return nil

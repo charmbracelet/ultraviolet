@@ -18,6 +18,7 @@ type Program[T Programable] struct {
 	buf      *Buffer  // The new buffer to be drawn to the screen.
 	size     Size     // The last known size of the terminal.
 	viewport Viewport // The viewport area to operate on.
+	started  bool
 }
 
 // NewProgram creates a new [Programable] with the given screen.
@@ -35,7 +36,8 @@ func (p *Program[T]) SetViewport(v Viewport) {
 	}
 }
 
-// Start starts the program and initializes the screen.
+// Start starts the program and initializes the screen. Call [Program.Close] to
+// close the program and release any resources.
 func (p *Program[T]) Start() error {
 	w, h, err := p.scr.GetSize()
 	if err != nil {
@@ -45,6 +47,7 @@ func (p *Program[T]) Start() error {
 	p.size = Size{Width: w, Height: h}
 	p.buf = NewBuffer(p.size.Width, p.size.Height)
 	p.viewport = FullViewport{}
+	p.started = true
 	return nil
 }
 
@@ -57,6 +60,10 @@ func (p *Program[T]) Close() error {
 }
 
 func (p *Program[T]) Display(fn func(f *Frame)) error {
+	if !p.started {
+		return fmt.Errorf("program not started")
+	}
+
 	f := &Frame{
 		Buffer:   p.buf,
 		Viewport: p.viewport,

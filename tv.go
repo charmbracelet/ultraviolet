@@ -1,6 +1,11 @@
 package tv
 
-import "image/color"
+import (
+	"image/color"
+	"io"
+	"log"
+	"os"
+)
 
 // Screen represents a screen that can be drawn to.
 type Screen interface {
@@ -39,4 +44,18 @@ func (f *Frame) RenderWidget(w Widget, area Rectangle) error {
 		return err
 	}
 	return nil
+}
+
+var logger = log.New(io.Discard, "tv", log.LstdFlags|log.Lshortfile)
+
+func init() {
+	debug, ok := os.LookupEnv("TV_DEBUG")
+	if ok && len(debug) > 0 {
+		f, err := os.OpenFile(debug, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
+		if err != nil {
+			panic("failed to open debug file: " + err.Error())
+		}
+
+		logger.SetOutput(f)
+	}
 }

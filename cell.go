@@ -9,9 +9,7 @@ import (
 
 var (
 	// EmptyCell is a cell with a single space, width of 1, and no style or link.
-	EmptyCell = Cell{Rune: ' ', Width: 1}
-
-	BlankCell = EmptyCell
+	BlankCell = Cell{Rune: ' ', Width: 1}
 
 	// ZeroCell is just an empty cell used for comparisons and as a placeholder
 	// for wide cells.
