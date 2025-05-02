@@ -34,10 +34,6 @@ func (l Line) Set(x int, c *Cell) {
 		return
 	}
 
-	if c != nil {
-		logger.Printf("Set cell at %d: %v", x, c)
-	}
-
 	// When a wide cell is partially overwritten, we need
 	// to fill the rest of the cell with space cells to
 	// avoid rendering issues.
@@ -156,7 +152,6 @@ func (b *Buffer) CellAt(x int, y int) *Cell {
 // SetCell sets the cell at the given x, y position.
 func (b *Buffer) SetCell(x, y int, c *Cell) {
 	if y < 0 || y >= len(b.Lines) {
-		logger.Printf("SetCell: y out of bounds: %d", y)
 		return
 	}
 
@@ -183,7 +178,6 @@ func (b *Buffer) Bounds() Rectangle {
 
 // Resize resizes the buffer to the given width and height.
 func (b *Buffer) Resize(width int, height int) {
-	logger.Printf("Resize: %d %d -> %d %d %q", b.Width(), b.Height(), width, height, b)
 	if width == 0 || height == 0 {
 		b.Lines = nil
 		return

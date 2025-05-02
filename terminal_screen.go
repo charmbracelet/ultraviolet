@@ -1221,6 +1221,7 @@ func (s *tScreen) Flush() (err error) {
 func (s *tScreen) flush() (err error) {
 	// Write the buffer
 	if s.buf.Len() > 0 {
+		logger.Printf("Flush %d: %q", s.buf.Len(), s.buf.String())
 		_, err = s.w.Write(s.buf.Bytes()) //nolint:errcheck
 		if err == nil {
 			s.buf.Reset()
