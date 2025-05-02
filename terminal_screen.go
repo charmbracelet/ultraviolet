@@ -654,14 +654,12 @@ func (s *tScreen) putAttrCell(cell *Cell) {
 	}
 
 	s.updatePen(cell)
-	logger.Printf("putCell: %d %q\n", cell.Width, cell.String())
 	s.buf.WriteRune(cell.Rune) //nolint:errcheck
 	for _, c := range cell.Comb {
 		s.buf.WriteRune(c) //nolint:errcheck
 	}
 
 	s.cur.X += cell.Width
-	logger.Printf("putCell: %d %d\n", s.cur.X, s.cur.Y)
 
 	if cell.Width > 0 {
 		s.queuedText = true
@@ -1223,7 +1221,6 @@ func (s *tScreen) Flush() (err error) {
 func (s *tScreen) flush() (err error) {
 	// Write the buffer
 	if s.buf.Len() > 0 {
-		logger.Printf("Flushing %d bytes to screen %q", s.buf.Len(), s.buf.String())
 		_, err = s.w.Write(s.buf.Bytes()) //nolint:errcheck
 		if err == nil {
 			s.buf.Reset()
@@ -1274,7 +1271,6 @@ func (s *tScreen) render() {
 
 	// Do we need text cursor mode?
 	if !s.opts.ShowCursor != s.cursorHidden {
-		logger.Printf("Hiding the cursor %v %v", s.opts.ShowCursor, s.cursorHidden)
 		s.cursorHidden = !s.opts.ShowCursor
 		if s.cursorHidden {
 			s.buf.WriteString(ansi.HideCursor)
@@ -1469,7 +1465,6 @@ func (s *tScreen) Resize(width, height int) bool {
 // MoveTo moves the cursor to the given position.
 func (s *tScreen) MoveTo(x, y int) {
 	s.mu.Lock()
-	logger.Printf("Cursor at %d,%d -> %d,%d", s.cur.X, s.cur.Y, x, y)
 	s.move(x, y)
 	s.mu.Unlock()
 }

@@ -117,12 +117,6 @@ func (t *Terminal) Display(f *Frame) error {
 		t.optimizeMovements()
 	}
 
-	t.scr.SetBuffer(f.Buffer)
-	width, height := f.Area.Dx(), f.Area.Dy()
-	if width != t.scr.Width() || height != t.scr.Height() {
-		t.scr.Resize(f.Area.Dx(), f.Area.Dy())
-	}
-
 	switch f.Viewport.(type) {
 	case FullViewport:
 		t.scr.EnterAltScreen()
@@ -133,6 +127,12 @@ func (t *Terminal) Display(f *Frame) error {
 	case FixedViewport:
 		t.scr.ExitAltScreen()
 		t.scr.SetRelativeCursor(false)
+	}
+
+	t.scr.SetBuffer(f.Buffer)
+	width, height := f.Area.Dx(), f.Area.Dy()
+	if width != t.scr.Width() || height != t.scr.Height() {
+		t.scr.Resize(f.Area.Dx(), f.Area.Dy())
 	}
 
 	// BUG: Hide/Show cursor doesn't take effect unless we call them before

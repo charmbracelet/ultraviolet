@@ -23,17 +23,19 @@ type Program[T Programable] struct {
 
 // NewProgram creates a new [Programable] with the given screen.
 func NewProgram[T Programable](scr T) *Program[T] {
-	return &Program[T]{scr: scr}
+	return &Program[T]{
+		scr:      scr,
+		viewport: FullViewport{},
+	}
 }
 
 // SetViewport sets the viewport area for the program. It defaults to
 // [FullViewport] which covers the entire program screen.
 func (p *Program[T]) SetViewport(v Viewport) {
 	if v == nil {
-		p.viewport = FullViewport{}
-	} else {
-		p.viewport = v
+		v = FullViewport{}
 	}
+	p.viewport = v
 }
 
 // Start starts the program and initializes the screen. Call [Program.Close] to
@@ -46,7 +48,6 @@ func (p *Program[T]) Start() error {
 
 	p.size = Size{Width: w, Height: h}
 	p.buf = NewBuffer(p.size.Width, p.size.Height)
-	p.viewport = FullViewport{}
 	p.started = true
 	return nil
 }
