@@ -44,14 +44,19 @@ func DefaultTerminal() *Terminal {
 	return NewTerminal(os.Stdin, os.Stdout, os.Environ())
 }
 
+func (t *Terminal) init() {
+	t.evch = make(chan Event)
+	t.errch = make(chan error, 1)
+	t.once = sync.Once{}
+}
+
 // NewTerminal creates a new Terminal instance with the given terminal size.
 // Use [term.GetSize] to get the size of the output screen.
 func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t := new(Terminal)
+	t.init()
 	t.in = in
 	t.out = out
-	t.evch = make(chan Event)
-	t.errch = make(chan error, 1)
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.profile = colorprofile.Detect(out, env)
@@ -215,9 +220,7 @@ func (t *Terminal) Close() error {
 	}
 
 	// Reset the terminal state.
-	close(t.evch)
-	close(t.errch)
-	t.once = sync.Once{}
+	t.init()
 
 	if t.scr != nil {
 		if err := t.scr.Close(); err != nil {
@@ -245,6 +248,11 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 		}()
 
 		go func() {
+			defer func() {
+				close(t.evch)
+				close(t.errch)
+			}()
+
 			// Wait for the context to be done or an error to occur.
 			select {
 			case <-ctx.Done():
