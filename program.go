@@ -54,6 +54,9 @@ func (p *Program[T]) Start() error {
 
 // Close closes the program and releases any resources.
 func (p *Program[T]) Close() error {
+	if !p.started {
+		return fmt.Errorf("program not started")
+	}
 	if closer, ok := any(p.scr).(io.Closer); ok {
 		return closer.Close()
 	}

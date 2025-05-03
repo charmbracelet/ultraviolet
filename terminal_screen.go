@@ -404,8 +404,8 @@ func (s *tScreen) EnterAltScreen() {
 	s.saved = s.cur
 }
 
-// ExitAltScreen exits the alternate screen buffer.
-func (s *tScreen) ExitAltScreen() {
+// LeaveAltScreen exits the alternate screen buffer.
+func (s *tScreen) LeaveAltScreen() {
 	s.opts.AltScreen = false
 	s.clear = true
 	s.cur = s.saved

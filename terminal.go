@@ -123,7 +123,7 @@ func (t *Terminal) Display(f *Frame) error {
 		t.scr.EnterAltScreen()
 		t.scr.SetRelativeCursor(false)
 	case InlineViewport:
-		t.scr.ExitAltScreen()
+		t.scr.LeaveAltScreen()
 		t.scr.SetRelativeCursor(true)
 	}
 
@@ -159,10 +159,10 @@ func (t *Terminal) EnterAltScreen() error {
 	return t.scr.Flush()
 }
 
-// ExitAltScreen exits the alternate screen buffer and returns to the normal
+// LeaveAltScreen exits the alternate screen buffer and returns to the normal
 // screen buffer.
-func (t *Terminal) ExitAltScreen() error {
-	t.scr.ExitAltScreen()
+func (t *Terminal) LeaveAltScreen() error {
+	t.scr.LeaveAltScreen()
 	return t.scr.Flush()
 }
 
