@@ -124,9 +124,6 @@ func (t *Terminal) Display(f *Frame) error {
 	case InlineViewport:
 		t.scr.ExitAltScreen()
 		t.scr.SetRelativeCursor(true)
-	case FixedViewport:
-		t.scr.ExitAltScreen()
-		t.scr.SetRelativeCursor(false)
 	}
 
 	t.scr.SetBuffer(f.Buffer)

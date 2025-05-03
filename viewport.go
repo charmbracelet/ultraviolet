@@ -26,17 +26,3 @@ func (v InlineViewport) ComputeArea(size Size) Rectangle {
 	line := max(0, size.Height-int(v))
 	return Rect(0, line, size.Width, size.Height-line)
 }
-
-// FixedViewport represents a fixed viewport with a specific size and position.
-type FixedViewport Rectangle
-
-// ComputeArea calculates the area of the fixed viewport based on the given
-// window size.
-func (v FixedViewport) ComputeArea(size Size) Rectangle {
-	area := Rect(0, 0, size.Width, size.Height)
-	fixed := Rectangle(v)
-	if !fixed.In(area) {
-		return area
-	}
-	return fixed
-}
