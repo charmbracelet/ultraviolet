@@ -3,8 +3,13 @@
 
 package tv
 
-import "context"
+import (
+	"context"
+	"fmt"
 
-func (*WinchReceiver) receiveEvents(context.Context, chan<- Event, chan<- error) {
-	// No-op on non-Unix systems
+	"github.com/charmbracelet/x/term"
+)
+
+func (*WinChReceiver) receiveEvents(context.Context, term.File, chan<- Event) error {
+	return fmt.Errorf("SIGWINCH not supported on this platform")
 }

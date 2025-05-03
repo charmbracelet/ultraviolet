@@ -14,7 +14,7 @@ import (
 )
 
 // Terminal represents a terminal screen that can be manipulated and drawn to.
-// It handles reading events from the terminal using [WinchReceiver],
+// It handles reading events from the terminal using [WinChReceiver],
 // [SequenceReceiver], and [ConReceiver].
 type Terminal struct {
 	// Terminal I/O streams and state.
@@ -32,10 +32,11 @@ type Terminal struct {
 	size     WindowSize // The last known size of the terminal.
 	profile  colorprofile.Profile
 
-	err   error
-	evch  chan Event
-	errch chan error
-	once  sync.Once
+	err    error
+	evch   chan Event
+	errch  chan error
+	chonce sync.Once
+	once   sync.Once
 }
 
 // DefaultTerminal returns a new default terminal instance that uses
@@ -48,6 +49,7 @@ func (t *Terminal) init() {
 	t.evch = make(chan Event)
 	t.errch = make(chan error, 1)
 	t.once = sync.Once{}
+	t.chonce = sync.Once{}
 }
 
 // NewTerminal creates a new Terminal instance with the given terminal size.
@@ -212,6 +214,8 @@ func (t *Terminal) Restore() error {
 
 // Close restores the terminal to its original state.
 func (t *Terminal) Close() error {
+	defer t.closeChannels()
+
 	if err := t.Restore(); err != nil {
 		return fmt.Errorf("error restoring terminal state: %w", err)
 	}
@@ -228,27 +232,40 @@ func (t *Terminal) Close() error {
 	return nil
 }
 
+// closeChannels closes the event and error channels.
+func (t *Terminal) closeChannels() {
+	t.chonce.Do(func() {
+		close(t.evch)
+		close(t.errch)
+	})
+}
+
+// SendEvent is a helper function to send an event to the event channel. It
+// blocks until the event is sent or the context is done. If the context is
+// done, it will not send the event and will return immediately.
+// This is useful to control the terminal from outside the event loop.
+func (t *Terminal) SendEvent(ctx context.Context, ev Event) {
+	select {
+	case <-ctx.Done():
+	case t.evch <- ev:
+	}
+}
+
 // Events returns an event channel that will receive events from the terminal.
 func (t *Terminal) Events(ctx context.Context) <-chan Event {
 	t.once.Do(func() {
 		go func() {
-			// Create default receivers.
-			winchrcv, err := NewWinchReceiver(t.out)
-			if err != nil {
-				t.errch <- fmt.Errorf("failed to create winch receiver: %w", err)
-				return
-			}
-
 			// Receive events from the terminal.
-			man := NewInputManager(winchrcv)
-			man.ReceiveEvents(ctx, t.evch, t.errch)
+			man := NewInputManager(&WinChReceiver{t.out})
+			select {
+			case <-ctx.Done():
+				return
+			case t.errch <- man.ReceiveEvents(ctx, t.evch):
+			}
 		}()
 
 		go func() {
-			defer func() {
-				close(t.evch)
-				close(t.errch)
-			}()
+			defer t.closeChannels()
 
 			// Wait for the context to be done or an error to occur.
 			select {

@@ -9,10 +9,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/charmbracelet/x/termios"
 )
 
-func (l *WinchReceiver) receiveEvents(ctx context.Context, evch chan<- Event, errch chan<- error) {
+func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch chan<- Event) error {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGWINCH)
 
@@ -21,15 +22,26 @@ func (l *WinchReceiver) receiveEvents(ctx context.Context, evch chan<- Event, er
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-sig:
-			winsize, err := termios.GetWinsize(int(l.out.Fd()))
+			winsize, err := termios.GetWinsize(int(f.Fd()))
 			if err != nil {
-				errch <- err
-				return
+				return err
 			}
 
-			go func() { evch <- WindowSize{int(winsize.Col), int(winsize.Row)} }()
+			go func() {
+				select {
+				case <-ctx.Done():
+				case evch <- WindowSize{int(winsize.Col), int(winsize.Row)}:
+				}
+			}()
+
+			go func() {
+				select {
+				case <-ctx.Done():
+				case evch <- WindowPixelSize{int(winsize.Xpixel), int(winsize.Ypixel)}:
+				}
+			}()
 		}
 	}
 }

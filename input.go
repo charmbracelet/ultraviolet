@@ -2,9 +2,8 @@ package tv
 
 import (
 	"context"
-	"sync"
 
-	"github.com/charmbracelet/x/term"
+	"golang.org/x/sync/errgroup"
 )
 
 // Event represents an input event that can be received from an input source.
@@ -24,10 +23,10 @@ type WindowPixelSize Size
 
 // InputReceiver is an interface for receiving input events from an input source.
 type InputReceiver interface {
-	// ReceiveEvents read input events and channel them to the given event and
-	// error channels. The listener stops when either the context is done or an
-	// error occurs. Caller is responsible for closing the channels.
-	ReceiveEvents(ctx context.Context, events chan<- Event, err chan<- error)
+	// ReceiveEvents read input events and channel them to the given event
+	// channel. The listener stops when either the context is done or an error
+	// occurs. Caller is responsible for closing the channels.
+	ReceiveEvents(ctx context.Context, events chan<- Event) error
 }
 
 // InputManager manages input events from multiple input sources. It listens
@@ -53,21 +52,14 @@ func (im *InputManager) RegisterReceiver(r InputReceiver) {
 
 // ReceiveEvents starts receiving events from the registered input
 // receivers. It sends the events to the given event and error channels.
-func (im *InputManager) ReceiveEvents(ctx context.Context, events chan<- Event, err chan<- error) {
-	var wg sync.WaitGroup
+func (im *InputManager) ReceiveEvents(ctx context.Context, events chan<- Event) error {
+	errg, ctx := errgroup.WithContext(ctx)
 	for _, r := range im.receivers {
-		wg.Add(1)
-		go func(r InputReceiver) {
-			defer wg.Done()
-			r.ReceiveEvents(ctx, events, err)
-		}(r)
+		errg.Go(func() error {
+			return r.ReceiveEvents(ctx, events)
+		})
 	}
 
 	// Wait for all receivers to finish
-	wg.Wait()
-}
-
-func checkSize(out term.File) (w int, h int, err error) {
-	w, h, err = term.GetSize(out.Fd())
-	return
+	return errg.Wait()
 }
