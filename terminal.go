@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"io"
 	"os"
+	"runtime"
 	"sync"
 
 	"github.com/charmbracelet/colorprofile"
@@ -34,7 +35,6 @@ type Terminal struct {
 
 	err    error
 	evch   chan Event
-	errch  chan error
 	chonce sync.Once
 	once   sync.Once
 }
@@ -47,7 +47,6 @@ func DefaultTerminal() *Terminal {
 
 func (t *Terminal) init() {
 	t.evch = make(chan Event)
-	t.errch = make(chan error, 1)
 	t.once = sync.Once{}
 	t.chonce = sync.Once{}
 }
@@ -236,7 +235,6 @@ func (t *Terminal) Close() error {
 func (t *Terminal) closeChannels() {
 	t.chonce.Do(func() {
 		close(t.evch)
-		close(t.errch)
 	})
 }
 
@@ -252,31 +250,22 @@ func (t *Terminal) SendEvent(ctx context.Context, ev Event) {
 }
 
 // Events returns an event channel that will receive events from the terminal.
+// Use [Terminal.Err] to check for errors that occurred while receiving events.
+// The event channel is closed when the terminal is closed or when the context
+// is done.
 func (t *Terminal) Events(ctx context.Context) <-chan Event {
 	t.once.Do(func() {
 		go func() {
-			// Receive events from the terminal.
-			man := NewInputManager(&WinChReceiver{t.out})
-			select {
-			case <-ctx.Done():
-				return
-			case t.errch <- man.ReceiveEvents(ctx, t.evch):
-			}
-		}()
-
-		go func() {
 			defer t.closeChannels()
 
-			// Wait for the context to be done or an error to occur.
-			select {
-			case <-ctx.Done():
-				return
-			case err := <-t.errch:
-				if err != nil {
-					t.err = err
-				}
-				return
+			// Receive events from the terminal.
+			receivers := []InputReceiver{}
+			if runtime.GOOS != "windows" {
+				// SIGWINCH receiver for window size changes.
+				receivers = append(receivers, &WinChReceiver{t.out})
 			}
+
+			t.err = NewInputManager(receivers...).ReceiveEvents(ctx, t.evch)
 		}()
 	})
 
