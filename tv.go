@@ -30,7 +30,7 @@ type Displayer interface {
 type Frame struct {
 	// The screen buffer to be displayed.
 	Buffer *Buffer
-	// The Position of the frame on the screen. When nil, the cursor is hidden.
+	// The cursor position on the frame. When nil, the cursor is hidden.
 	Position *Position
 	// The viewport of the program.
 	Viewport Viewport
@@ -44,6 +44,11 @@ func (f *Frame) RenderWidget(w Widget, area Rectangle) error {
 		return err
 	}
 	return nil
+}
+
+// SetPosition sets the cursor position on the frame.
+func (f *Frame) SetPosition(x, y int) {
+	f.Position = &Position{X: x, Y: y}
 }
 
 var logger = log.New(io.Discard, "tv", log.LstdFlags|log.Lshortfile)
