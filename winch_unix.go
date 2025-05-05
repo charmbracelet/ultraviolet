@@ -32,14 +32,14 @@ func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch cha
 			go func() {
 				select {
 				case <-ctx.Done():
-				case evch <- WindowSize{int(winsize.Col), int(winsize.Row)}:
+				case evch <- WindowSizeEvent{int(winsize.Col), int(winsize.Row)}:
 				}
 			}()
 
 			go func() {
 				select {
 				case <-ctx.Done():
-				case evch <- WindowPixelSize{int(winsize.Xpixel), int(winsize.Ypixel)}:
+				case evch <- WindowPixelSizeEvent{int(winsize.Xpixel), int(winsize.Ypixel)}:
 				}
 			}()
 		}

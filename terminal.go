@@ -27,10 +27,10 @@ type Terminal struct {
 	outTtyState *term.State
 
 	// Terminal type, screen and buffer.
-	termtype string     // The $TERM type.
-	environ  Environ    // The environment variables.
-	scr      *tScreen   // The actual screen to be drawn to.
-	size     WindowSize // The last known size of the terminal.
+	termtype string   // The $TERM type.
+	environ  Environ  // The environment variables.
+	scr      *tScreen // The actual screen to be drawn to.
+	size     Size     // The last known size of the terminal.
 	profile  colorprofile.Profile
 
 	err    error

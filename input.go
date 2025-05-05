@@ -15,11 +15,11 @@ type Size struct {
 	Height int
 }
 
-// WindowSize represents the window size in cells.
-type WindowSize Size
+// WindowSizeEvent represents the window size in cells.
+type WindowSizeEvent Size
 
-// WindowPixelSize represents the window size in pixels.
-type WindowPixelSize Size
+// WindowPixelSizeEvent represents the window size in pixels.
+type WindowPixelSizeEvent Size
 
 // InputReceiver is an interface for receiving input events from an input source.
 type InputReceiver interface {
