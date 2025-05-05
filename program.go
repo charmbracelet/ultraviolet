@@ -38,6 +38,39 @@ func (p *Program[T]) SetViewport(v Viewport) {
 	p.viewport = v
 }
 
+// Resize resizes the program to the given width and height. It returns an
+// error if the resize fails.
+func (p *Program[T]) Resize(width, height int) error {
+	if width <= 0 || height <= 0 {
+		return fmt.Errorf("invalid size: %dx%d", width, height)
+	}
+	if width == p.size.Width && height == p.size.Height {
+		return nil
+	}
+
+	p.size = Size{Width: width, Height: height}
+	switch vp := p.viewport.(type) {
+	case FullViewport:
+		p.buf.Resize(width, height)
+	case InlineViewport:
+		p.buf.Resize(width, int(vp))
+	}
+
+	p.buf.Clear()
+
+	return nil
+}
+
+// AutoResize queries the screen for its size and resizes the program to fit the
+// screen. It returns an error if the resize fails.
+func (p *Program[T]) AutoResize() error {
+	w, h, err := p.scr.GetSize()
+	if err != nil {
+		return fmt.Errorf("error getting screen size: %w", err)
+	}
+	return p.Resize(w, h)
+}
+
 // Start starts the program and initializes the screen. Call [Program.Close] to
 // close the program and release any resources.
 func (p *Program[T]) Start() error {
