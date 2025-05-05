@@ -6,20 +6,11 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Event represents an input event that can be received from an input source.
-type Event interface{}
-
 // Size represents the size of the terminal window.
 type Size struct {
 	Width  int
 	Height int
 }
-
-// WindowSizeEvent represents the window size in cells.
-type WindowSizeEvent Size
-
-// WindowPixelSizeEvent represents the window size in pixels.
-type WindowPixelSizeEvent Size
 
 // InputReceiver is an interface for receiving input events from an input source.
 type InputReceiver interface {
