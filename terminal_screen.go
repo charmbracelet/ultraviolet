@@ -55,6 +55,9 @@ func relativeCursorMove(s *tScreen, fx, fy, tx, ty int, overwrite, useTabs, useB
 				// TODO: Ensure we're not unintentionally scrolling the screen down.
 				yseq = lf
 				s.scrollHeight = max(s.scrollHeight, fy+n)
+				if s.opts.MapNL {
+					fx = 0
+				}
 			}
 		} else if ty < fy {
 			n := fy - ty
@@ -337,6 +340,10 @@ type tScreenOptions struct {
 	HardTabs bool
 	// Backspace is whether to use backspace characters to move the cursor.
 	Backspace bool
+	// MapNL whether we have ONLCR mapping enabled. When we set the terminal to
+	// raw mode, the ONLCR mode gets disabled. ONLCR maps any newline/linefeed
+	// (`\n`) character to carriage return + line feed (`\r\n`).
+	MapNL bool
 }
 
 // lineData represents the metadata for a line.
@@ -375,6 +382,7 @@ type tScreen struct {
 // is the type advertised by the terminal in the `TERM` environment variable.
 func (s *tScreen) SetTermType(term string) {
 	s.opts.Term = term
+	s.caps = xtermCaps(term)
 }
 
 // UseBackspaces sets whether to use backspace characters to move the cursor.
