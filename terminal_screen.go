@@ -240,7 +240,7 @@ func moveCursor(s *tScreen, x, y int, overwrite bool) (seq string) {
 
 // moveCursor moves the cursor to the specified position.
 func (s *tScreen) moveCursor(x, y int, overwrite bool) {
-	if !s.opts.AltScreen && s.cur.X == -1 && s.cur.Y == -1 {
+	if !s.opts.AltScreen && s.opts.RelativeCursor && s.cur.X == -1 && s.cur.Y == -1 {
 		// First cursor movement in inline mode, move the cursor to the first
 		// column before moving to the target position.
 		s.buf.WriteByte('\r') //nolint:errcheck
@@ -459,10 +459,30 @@ func (s *tScreen) ClearRect(r Rectangle) {
 	s.FillRect(nil, r)
 }
 
+// populateDiff populates the diff between the two buffers. This is used to
+// determine which cells have changed and need to be redrawn.
+func (s *tScreen) populateDiff() {
+	for y := 0; y < s.newbuf.Height(); y++ {
+		for x := 0; x < s.newbuf.Width(); x++ {
+			oldc := s.curbuf.CellAt(x, y)
+			newc := s.newbuf.CellAt(x, y)
+			if !cellEqual(oldc, newc) {
+				chg, ok := s.touch[y]
+				if !ok {
+					chg = lineData{firstCell: x, lastCell: x + newc.Width}
+				} else {
+					chg.firstCell = min(chg.firstCell, x)
+					chg.lastCell = max(chg.lastCell, x+newc.Width)
+				}
+				s.touch[y] = chg
+			}
+		}
+	}
+}
+
 // SetCell implements Window.
 func (s *tScreen) SetCell(x int, y int, cell *Cell) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	cellWidth := 1
 	if cell != nil {
 		cellWidth = cell.Width
@@ -479,6 +499,7 @@ func (s *tScreen) SetCell(x int, y int, cell *Cell) {
 	}
 
 	s.newbuf.SetCell(x, y, cell)
+	s.mu.Unlock()
 }
 
 // Fill implements Window.
@@ -1243,6 +1264,7 @@ func (s *tScreen) flush() (err error) {
 // tscreen.Flush] to flush pending changes to the screen.
 func (s *tScreen) Render() {
 	s.mu.Lock()
+	s.populateDiff()
 	s.render()
 	s.mu.Unlock()
 }
@@ -1354,6 +1376,12 @@ func (s *tScreen) render() {
 				changedLines++
 			}
 		}
+	}
+
+	// Ensure we have scrolled the screen to the bottom when we're not using
+	// alt screen mode.
+	if !s.opts.AltScreen && s.scrollHeight < s.newbuf.Height() {
+		s.move(0, s.newbuf.Height()-1)
 	}
 
 	// Sync windows and screen

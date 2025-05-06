@@ -61,6 +61,7 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.profile = colorprofile.Detect(out, env)
+	t.scr = t.newScreen()
 	t.init()
 	return t
 }
@@ -113,25 +114,17 @@ func (t *Terminal) newScreen() *tScreen {
 // Display displays the given frame on the terminal screen. It returns an
 // error if the display fails.
 func (t *Terminal) Display(f *Frame) error {
-	if t.scr == nil {
-		// Initialize the screen for the first time.
-		t.scr = t.newScreen()
-		t.optimizeMovements()
-	}
-
 	switch f.Viewport.(type) {
 	case FullViewport:
-		t.scr.EnterAltScreen()
 		t.scr.SetRelativeCursor(false)
 	case InlineViewport:
-		t.scr.LeaveAltScreen()
 		t.scr.SetRelativeCursor(true)
 	}
 
 	t.scr.SetBuffer(f.Buffer)
 	width, height := f.Area.Dx(), f.Area.Dy()
 	if width != t.scr.Width() || height != t.scr.Height() {
-		t.scr.Resize(f.Area.Dx(), f.Area.Dy())
+		t.scr.Resize(width, height)
 	}
 
 	// BUG: Hide/Show cursor doesn't take effect unless we call them before
@@ -188,7 +181,8 @@ func (t *Terminal) SetTitle(title string) error {
 
 // MakeRaw puts the terminal in raw mode, which disables line buffering and
 // echoing. The terminal will automatically be restored to its original state
-// on [Terminal.Close] or by calling [Terminal.Restore].
+// on [Terminal.Close] or [Terminal.Shutdown], or by manually calling
+// [Terminal.Restore].
 func (t *Terminal) MakeRaw() error {
 	return t.makeRaw()
 }
@@ -197,6 +191,8 @@ func (t *Terminal) MakeRaw() error {
 // initializes the terminal state. This should be called before using the
 // terminal.
 func (t *Terminal) Start() error {
+	// Set terminal screen optimizations.
+	t.optimizeMovements()
 	return t.rd.Start()
 }
 
