@@ -15,6 +15,9 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+// ErrNotTerminal is returned when one of the I/O streams is not a terminal.
+var ErrNotTerminal = fmt.Errorf("not a terminal")
+
 // Terminal represents a terminal screen that can be manipulated and drawn to.
 // It handles reading events from the terminal using [WinChReceiver],
 // [SequenceReceiver], and [ConReceiver].
@@ -59,6 +62,29 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t := new(Terminal)
 	t.in = in
 	t.out = out
+	if f, ok := in.(term.File); ok {
+		t.inTty = f
+	}
+	if f, ok := out.(term.File); ok {
+		t.outTty = f
+	}
+	if runtime.GOOS == "windows" {
+		// On Windows, when the input/output is redirected or piped, we need to
+		// open the console explicitly.
+		// See https://learn.microsoft.com/en-us/windows/console/getstdhandle#remarks
+		if in, ok := in.(term.File); ok && !term.IsTerminal(in.Fd()) {
+			f, err := os.OpenFile("CONIN$", os.O_RDWR, 0o644) //nolint:gosec
+			if err == nil {
+				t.inTty = f
+			}
+		}
+		if out, ok := out.(term.File); ok && !term.IsTerminal(out.Fd()) {
+			f, err := os.OpenFile("CONOUT$", os.O_RDWR, 0o644) //nolint:gosec
+			if err == nil {
+				t.outTty = f
+			}
+		}
+	}
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.profile = colorprofile.Detect(out, env)
@@ -89,11 +115,7 @@ func (t *Terminal) ColorModel() color.Model {
 // GetSize returns the size of the terminal screen. It errors if the size
 // cannot be determined.
 func (t *Terminal) GetSize() (width, height int, err error) {
-	f, ok := t.out.(term.File)
-	if !ok {
-		return 0, 0, fmt.Errorf("output is not a terminal")
-	}
-	w, h, err := term.GetSize(f.Fd())
+	w, h, err := t.getSize()
 	if err != nil {
 		return 0, 0, fmt.Errorf("error getting terminal size: %w", err)
 	}
@@ -185,7 +207,10 @@ func (t *Terminal) SetTitle(title string) error {
 // on [Terminal.Close] or [Terminal.Shutdown], or by manually calling
 // [Terminal.Restore].
 func (t *Terminal) MakeRaw() error {
-	return t.makeRaw()
+	if err := t.makeRaw(); err != nil {
+		return fmt.Errorf("error entering raw mode: %w", err)
+	}
+	return nil
 }
 
 // Start prepares the terminal for use. It starts the input reader and

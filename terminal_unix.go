@@ -4,8 +4,6 @@
 package tv
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/x/term"
 	"golang.org/x/sys/unix"
 )
@@ -13,29 +11,52 @@ import (
 func (t *Terminal) makeRaw() error {
 	var err error
 
-	// Check if input is a terminal
-	if f, ok := t.in.(term.File); ok && term.IsTerminal(f.Fd()) {
-		t.inTty = f
-		t.inTtyState, err = term.MakeRaw(t.inTty.Fd())
-		if err != nil {
-			return fmt.Errorf("error entering raw mode: %w", err)
+	if t.inTty == nil && t.outTty == nil {
+		return ErrNotTerminal
+	}
+
+	// Check if we have a terminal.
+	for _, f := range []term.File{t.inTty, t.outTty} {
+		t.inTtyState, err = term.MakeRaw(f.Fd())
+		if err == nil {
+			break
 		}
 	}
 
-	if f, ok := t.out.(term.File); ok && term.IsTerminal(f.Fd()) {
-		t.outTty = f
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (t *Terminal) optimizeMovements() {
-	if f, ok := t.in.(term.File); ok {
-		state, err := term.GetState(f.Fd())
-		if err != nil {
-			return
-		}
-		t.scr.UseHardTabs(state.Oflag&unix.TABDLY == unix.TAB0)
-		t.scr.UseBackspaces(state.Lflag&unix.BSDLY == unix.BS0)
+func (t *Terminal) getSize() (w, h int, err error) {
+	var f term.File
+	if t.inTty != nil {
+		f = t.inTty
 	}
+	if f == nil && t.outTty != nil {
+		f = t.outTty
+	}
+	w, h, err = term.GetSize(f.Fd())
+	if err != nil {
+		return 0, 0, err
+	}
+	return w, h, nil
+}
+
+func (t *Terminal) optimizeMovements() {
+	var f term.File
+	if t.inTty != nil {
+		f = t.inTty
+	}
+	if f == nil && t.outTty != nil {
+		f = t.outTty
+	}
+	state, err := term.GetState(f.Fd())
+	if err != nil {
+		return
+	}
+	t.scr.UseHardTabs(state.Oflag&unix.TABDLY == unix.TAB0)
+	t.scr.UseBackspaces(state.Lflag&unix.BSDLY == unix.BS0)
 }
