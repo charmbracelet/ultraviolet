@@ -26,6 +26,11 @@ type StyledString struct {
 // NewStyledString creates a new [StyledString] for the given method and styled
 // string. The method is used to calculate the width of each line.
 func NewStyledString(method ansi.Method, str string) *StyledString {
+	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
+	// output.
+	str = strings.ReplaceAll(str, "\r\n", "\n")
+	str = strings.ReplaceAll(str, "\n", "\r\n")
+
 	ss := new(StyledString)
 	ss.Method = method
 
@@ -40,8 +45,51 @@ func NewStyledString(method ansi.Method, str string) *StyledString {
 	}
 
 	ss.Buffer = NewBuffer(w, h)
-	printString(ss.Buffer, method, 0, 0, ss.Buffer.Bounds(), str, true, "")
+	printString(ss.Buffer, method, 0, 0, ss.Buffer.Bounds(), str, false, "")
 	return ss
+}
+
+func newWcCell(s string, style *Style, link *Link) *Cell {
+	var c Cell
+	for i, r := range s {
+		if i == 0 {
+			c.Rune = r
+			// We only care about the first rune's width
+			c.Width = runewidth.RuneWidth(r)
+		} else {
+			if runewidth.RuneWidth(r) > 0 {
+				break
+			}
+			c.Comb = append(c.Comb, r)
+		}
+	}
+	if style != nil {
+		c.Style = *style
+	}
+	if link != nil {
+		c.Link = *link
+	}
+	return &c
+}
+
+func newGCell(s string, style *Style, link *Link) *Cell {
+	var c Cell
+	g, _, w, _ := uniseg.FirstGraphemeClusterInString(s, -1)
+	c.Width = w
+	for i, r := range g {
+		if i == 0 {
+			c.Rune = r
+		} else {
+			c.Comb = append(c.Comb, r)
+		}
+	}
+	if style != nil {
+		c.Style = *style
+	}
+	if link != nil {
+		c.Link = *link
+	}
+	return &c
 }
 
 // printString draws a string starting at the given position.
@@ -58,28 +106,9 @@ func printString[T []byte | string](
 	var tailc Cell
 	if truncate && len(tail) > 0 {
 		if m == ansi.WcWidth {
-			for i, r := range tail {
-				if i == 0 {
-					tailc.Rune = r
-					// We only care about the first rune's width
-					tailc.Width = runewidth.RuneWidth(r)
-				} else {
-					if runewidth.RuneWidth(r) > 0 {
-						break
-					}
-					tailc.Comb = append(tailc.Comb, r)
-				}
-			}
+			tailc = *newWcCell(tail, nil, nil)
 		} else {
-			g, _, w, _ := uniseg.FirstGraphemeClusterInString(tail, -1)
-			tailc.Width = w
-			for i, r := range g {
-				if i == 0 {
-					tailc.Rune = r
-				} else {
-					tailc.Comb = append(tailc.Comb, r)
-				}
-			}
+			tailc = *newGCell(tail, nil, nil)
 		}
 	}
 
@@ -104,7 +133,9 @@ func printString[T []byte | string](
 				x = bounds.Min.X
 				y++
 			}
-			if Pos(x, y).In(bounds) {
+
+			pos := Pos(x, y)
+			if pos.In(bounds) {
 				if truncate && tailc.Width > 0 && x+cell.Width > bounds.Max.X-tailc.Width {
 					// Truncate the string and append the tail if any.
 					cell := tailc
