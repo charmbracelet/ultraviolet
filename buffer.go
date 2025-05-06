@@ -237,10 +237,10 @@ func (b *Buffer) Line(y int) Line {
 // CellAt returns the cell at the given position. It returns nil if the
 // position is out of bounds.
 func (b *Buffer) CellAt(x int, y int) *Cell {
-	if y < 0 || y >= len(b.Lines) || x < 0 || x >= len(b.Lines[y]) {
+	if y < 0 || y >= len(b.Lines) {
 		return nil
 	}
-	return b.Lines[y][x]
+	return b.Lines[y].At(x)
 }
 
 // SetCell sets the cell at the given x, y position.
@@ -262,7 +262,13 @@ func (b *Buffer) Width() int {
 	if len(b.Lines) == 0 {
 		return 0
 	}
-	return len(b.Lines[0])
+	w := len(b.Lines[0])
+	for _, l := range b.Lines {
+		if len(l) > w {
+			w = len(l)
+		}
+	}
+	return w
 }
 
 // Bounds returns the bounds of the buffer.
