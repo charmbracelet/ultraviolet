@@ -2,7 +2,10 @@ package tv
 
 import (
 	"image"
+	"io"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Position represents a position in a coordinate system.
@@ -107,6 +110,83 @@ func (l Line) String() (s string) {
 	return
 }
 
+// Render renders the line to a string with all the required attributes and
+// styles.
+func (l Line) Render() string {
+	var buf strings.Builder
+	return renderLine(&buf, l)
+}
+
+func renderLine(buf interface {
+	io.Writer
+	io.StringWriter
+	String() string
+}, l Line,
+) string {
+	var pen Style
+	var link Link
+	var pendingLine string
+	var pendingWidth int // this ignores space cells until we hit a non-space cell
+
+	writePending := func() {
+		// If there's no pending line, we don't need to do anything.
+		if len(pendingLine) == 0 {
+			return
+		}
+		buf.WriteString(pendingLine)
+		pendingWidth = 0
+		pendingLine = ""
+	}
+
+	for x := 0; x < len(l); x++ {
+		if cell := l.At(x); cell != nil && cell.Width > 0 {
+			// Convert the cell's style and link to the given color profile.
+			cellStyle := cell.Style
+			cellLink := cell.Link
+			if cellStyle.Empty() && !pen.Empty() {
+				writePending()
+				buf.WriteString(ansi.ResetStyle) //nolint:errcheck
+				pen.Reset()
+			}
+			if !cellStyle.Equal(&pen) {
+				writePending()
+				seq := cellStyle.DiffSequence(pen)
+				buf.WriteString(seq) // nolint:errcheck
+				pen = cellStyle
+			}
+
+			// Write the URL escape sequence
+			if cellLink != link && link.URL != "" {
+				writePending()
+				buf.WriteString(ansi.ResetHyperlink()) //nolint:errcheck
+				link.Reset()
+			}
+			if cellLink != link {
+				writePending()
+				buf.WriteString(ansi.SetHyperlink(cellLink.URL, cellLink.Params)) //nolint:errcheck
+				link = cellLink
+			}
+
+			// We only write the cell content if it's not empty. If it is, we
+			// append it to the pending line and width to be evaluated later.
+			if cell.Equal(&BlankCell) {
+				pendingLine += cell.String()
+				pendingWidth += cell.Width
+			} else {
+				writePending()
+				buf.WriteString(cell.String())
+			}
+		}
+	}
+	if link.URL != "" {
+		buf.WriteString(ansi.ResetHyperlink()) //nolint:errcheck
+	}
+	if !pen.Empty() {
+		buf.WriteString(ansi.ResetStyle) //nolint:errcheck
+	}
+	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces
+}
+
 // Buffer represents a cell buffer that contains the contents of a screen.
 type Buffer struct {
 	Lines []Line
@@ -121,14 +201,28 @@ func NewBuffer(width int, height int) *Buffer {
 }
 
 // String returns the string representation of the buffer.
-func (b *Buffer) String() (s string) {
+func (b *Buffer) String() string {
+	var buf strings.Builder
 	for i, l := range b.Lines {
-		s += l.String()
+		buf.WriteString(l.String())
 		if i < len(b.Lines)-1 {
-			s += "\r\n"
+			buf.WriteString("\r\n") //nolint:errcheck
 		}
 	}
-	return
+	return buf.String()
+}
+
+// Render renders the buffer to a string with all the required attributes and
+// styles.
+func (b *Buffer) Render() string {
+	var buf strings.Builder
+	for i, l := range b.Lines {
+		buf.WriteString(renderLine(&buf, l))
+		if i < len(b.Lines)-1 {
+			buf.WriteString("\r\n") //nolint:errcheck
+		}
+	}
+	return buf.String()
 }
 
 // Line returns a pointer to the line at the given y position.
