@@ -450,13 +450,13 @@ func (s *tScreen) Redraw() {
 // Clear clears the screen with blank cells. This is a convenience method for
 // tscreen.Fill] with a nil cell.
 func (s *tScreen) Clear() {
-	s.ClearRect(s.newbuf.Bounds())
+	s.ClearArea(s.newbuf.Bounds())
 }
 
-// ClearRect clears the given rectangle with blank cells. This is a convenience
-// method for tscreen.FillRect] with a nil cell.
-func (s *tScreen) ClearRect(r Rectangle) {
-	s.FillRect(nil, r)
+// ClearArea clears the given rectangle with blank cells. This is a convenience
+// method for [tScreen.FillArea] with a nil cell.
+func (s *tScreen) ClearArea(r Rectangle) {
+	s.FillArea(nil, r)
 }
 
 // populateDiff populates the diff between the two buffers. This is used to
@@ -483,38 +483,20 @@ func (s *tScreen) populateDiff() {
 // SetCell implements Window.
 func (s *tScreen) SetCell(x int, y int, cell *Cell) {
 	s.mu.Lock()
-	cellWidth := 1
-	if cell != nil {
-		cellWidth = cell.Width
-	}
-	if prev := s.curbuf.CellAt(x, y); !cellEqual(prev, cell) {
-		chg, ok := s.touch[y]
-		if !ok {
-			chg = lineData{firstCell: x, lastCell: x + cellWidth}
-		} else {
-			chg.firstCell = min(chg.firstCell, x)
-			chg.lastCell = max(chg.lastCell, x+cellWidth)
-		}
-		s.touch[y] = chg
-	}
-
 	s.newbuf.SetCell(x, y, cell)
 	s.mu.Unlock()
 }
 
 // Fill implements Window.
 func (s *tScreen) Fill(cell *Cell) {
-	s.FillRect(cell, s.newbuf.Bounds())
+	s.FillArea(cell, s.newbuf.Bounds())
 }
 
-// FillRect implements Window.
-func (s *tScreen) FillRect(cell *Cell, r Rectangle) {
+// FillArea implements Window.
+func (s *tScreen) FillArea(cell *Cell, r Rectangle) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.newbuf.FillArea(cell, r)
-	for i := r.Min.Y; i < r.Max.Y; i++ {
-		s.touch[i] = lineData{firstCell: r.Min.X, lastCell: r.Max.X}
-	}
+	s.mu.Unlock()
 }
 
 // capabilities represents a mask of supported ANSI escape sequences.
@@ -1478,15 +1460,15 @@ func (s *tScreen) Resize(width, height int) bool {
 
 	// Clear new columns and lines
 	if width > oldh {
-		s.ClearRect(Rect(max(oldw-1, 0), 0, width-oldw, height))
+		s.ClearArea(Rect(max(oldw-1, 0), 0, width-oldw, height))
 	} else if width < oldw {
-		s.ClearRect(Rect(max(width, 0), 0, oldw-width, height))
+		s.ClearArea(Rect(max(width, 0), 0, oldw-width, height))
 	}
 
 	if height > oldh {
-		s.ClearRect(Rect(0, max(oldh-1, 0), width, height-oldh))
+		s.ClearArea(Rect(0, max(oldh-1, 0), width, height-oldh))
 	} else if height < oldh {
-		s.ClearRect(Rect(0, max(height, 0), width, oldh-height))
+		s.ClearArea(Rect(0, max(height, 0), width, oldh-height))
 	}
 
 	s.mu.Lock()
