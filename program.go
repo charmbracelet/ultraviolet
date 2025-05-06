@@ -1,6 +1,7 @@
 package tv
 
 import (
+	"context"
 	"fmt"
 	"io"
 )
@@ -71,8 +72,9 @@ func (p *Program[T]) AutoResize() error {
 	return p.Resize(w, h)
 }
 
-// Start starts the program and initializes the screen. Call [Program.Close] to
-// close the program and release any resources.
+// Start starts the program and initializes the screen. If the screen
+// implements the [Starter] interface, it will call the [Start] method on the
+// screen.
 func (p *Program[T]) Start() error {
 	w, h, err := p.scr.GetSize()
 	if err != nil {
@@ -82,10 +84,30 @@ func (p *Program[T]) Start() error {
 	p.size = Size{Width: w, Height: h}
 	p.buf = NewBuffer(p.size.Width, p.size.Height)
 	p.started = true
+
+	if s, ok := any(p.scr).(Starter); ok {
+		return s.Start()
+	}
+
 	return nil
 }
 
-// Close closes the program and releases any resources.
+// Shutdown shuts down the program gracefully. It returns an error if the
+// shutdown fails. It calls the [Shutdowner] interface if the screen implements
+// it.
+func (p *Program[T]) Shutdown(ctx context.Context) error {
+	if !p.started {
+		return fmt.Errorf("program not started")
+	}
+	if s, ok := any(p.scr).(Shutdowner); ok {
+		return s.Shutdown(ctx)
+	}
+	return nil
+}
+
+// Close closes the program and releases any resources. If the screen
+// implements the [io.Closer] interface, it will call the [Close] method on the
+// screen.
 func (p *Program[T]) Close() error {
 	if !p.started {
 		return fmt.Errorf("program not started")
@@ -109,4 +131,14 @@ func (p *Program[T]) Display(fn func(f *Frame)) error {
 	fn(f)
 
 	return p.scr.Display(f)
+}
+
+// Starter represents types that can be started.
+type Starter interface {
+	Start() error
+}
+
+// Shutdowner represents types that can be shut down gracefully.
+type Shutdowner interface {
+	Shutdown(ctx context.Context) error
 }

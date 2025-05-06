@@ -33,10 +33,11 @@ type Terminal struct {
 	size     Size     // The last known size of the terminal.
 	profile  colorprofile.Profile
 
-	err    error
-	evch   chan Event
-	chonce sync.Once
-	once   sync.Once
+	// Terminal input stream.
+	rd   *TerminalReader
+	err  error
+	evch chan Event
+	once sync.Once
 }
 
 // DefaultTerminal returns a new default terminal instance that uses
@@ -46,21 +47,21 @@ func DefaultTerminal() *Terminal {
 }
 
 func (t *Terminal) init() {
+	t.rd = NewTerminalReader(t.in, t.termtype)
 	t.evch = make(chan Event)
 	t.once = sync.Once{}
-	t.chonce = sync.Once{}
 }
 
 // NewTerminal creates a new Terminal instance with the given terminal size.
 // Use [term.GetSize] to get the size of the output screen.
 func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t := new(Terminal)
-	t.init()
 	t.in = in
 	t.out = out
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.profile = colorprofile.Detect(out, env)
+	t.init()
 	return t
 }
 
@@ -192,6 +193,13 @@ func (t *Terminal) MakeRaw() error {
 	return t.makeRaw()
 }
 
+// Start prepares the terminal for use. It starts the input reader and
+// initializes the terminal state. This should be called before using the
+// terminal.
+func (t *Terminal) Start() error {
+	return t.rd.Start()
+}
+
 // Restore restores the terminal to its original state. This should be called
 // after [MakeRaw] to restore the terminal to its original state. Otherwise, it
 // is a no-op.
@@ -211,29 +219,63 @@ func (t *Terminal) Restore() error {
 	return nil
 }
 
-// Close restores the terminal to its original state.
-func (t *Terminal) Close() error {
-	defer t.closeChannels()
+// Shutdown restores the terminal to its original state and stops the event
+// channel in a graceful manner.
+// This waits for any pending events to be processed or the context to be
+// done before closing the event channel.
+func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
+	defer func() {
+		err := t.Close()
+		if rErr == nil {
+			rErr = err
+		}
+	}()
 
-	if err := t.Restore(); err != nil {
-		return fmt.Errorf("error restoring terminal state: %w", err)
+	if err := t.scr.Close(); err != nil {
+		return fmt.Errorf("error closing terminal screen: %w", err)
 	}
 
-	// Reset the terminal state.
-	t.init()
+	// Cancel the input reader.
+	t.rd.Cancel()
 
-	if t.scr != nil {
-		if err := t.scr.Close(); err != nil {
-			return fmt.Errorf("error closing terminal screen: %w", err)
+	// Consume any pending events or listen for the context to be done.
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-t.evch:
+			if len(t.evch) == 0 {
+				return nil
+			}
 		}
 	}
+}
 
-	return nil
+// Close close any resources used by the terminal and restore the terminal to
+// its original state.
+func (t *Terminal) Close() (rErr error) {
+	defer t.closeChannels()
+
+	defer func() {
+		err := t.Restore()
+		if rErr == nil && err != nil {
+			rErr = fmt.Errorf("error restoring terminal state: %w", err)
+		}
+	}()
+
+	defer func() {
+		err := t.rd.Close()
+		if rErr == nil && err != nil {
+			rErr = fmt.Errorf("error closing terminal reader: %w", err)
+		}
+	}()
+
+	return
 }
 
 // closeChannels closes the event and error channels.
 func (t *Terminal) closeChannels() {
-	t.chonce.Do(func() {
+	t.once.Do(func() {
 		close(t.evch)
 	})
 }
@@ -254,29 +296,20 @@ func (t *Terminal) SendEvent(ctx context.Context, ev Event) {
 // The event channel is closed when the terminal is closed or when the context
 // is done.
 func (t *Terminal) Events(ctx context.Context) <-chan Event {
-	t.once.Do(func() {
-		go func() {
-			defer t.closeChannels()
+	go func() {
+		defer t.closeChannels()
 
-			// Receive events from the terminal.
-			receivers := []InputReceiver{}
-			if runtime.GOOS != "windows" {
-				// SIGWINCH receiver for window size changes.
-				receivers = append(receivers, &WinChReceiver{t.out})
-			}
+		// Receive events from the terminal.
+		receivers := []InputReceiver{
+			&TerminalInputReceiver{t.rd},
+		}
+		if runtime.GOOS != "windows" {
+			// SIGWINCH receiver for window size changes.
+			receivers = append(receivers, &WinChReceiver{t.out})
+		}
 
-			t.err = NewInputManager(receivers...).ReceiveEvents(ctx, t.evch)
-		}()
-	})
+		t.err = NewInputManager(receivers...).ReceiveEvents(ctx, t.evch)
+	}()
 
 	return t.evch
-}
-
-// Err returns the last error that occurred while receiving events from the
-// terminal.
-func (t *Terminal) Err() error {
-	if t.err != nil {
-		return fmt.Errorf("terminal error: %w", t.err)
-	}
-	return nil
 }

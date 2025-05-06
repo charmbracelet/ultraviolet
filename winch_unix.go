@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/charmbracelet/x/term"
@@ -19,6 +20,7 @@ func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch cha
 
 	defer signal.Stop(sig)
 
+	var wg sync.WaitGroup
 	for {
 		select {
 		case <-ctx.Done():
@@ -29,19 +31,28 @@ func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch cha
 				return err
 			}
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
+
 				select {
 				case <-ctx.Done():
 				case evch <- WindowSizeEvent{int(winsize.Col), int(winsize.Row)}:
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
+
 				select {
 				case <-ctx.Done():
 				case evch <- WindowPixelSizeEvent{int(winsize.Xpixel), int(winsize.Ypixel)}:
 				}
 			}()
+
+			// Wait for all goroutines to finish before continuing.
+			wg.Wait()
 		}
 	}
 }

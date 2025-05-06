@@ -58,6 +58,10 @@ type TerminalReader struct {
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
 	keyState win32InputState //nolint:all
+
+	// This indicates whether the reader is closed or not. It is used to
+	// prevent	multiple calls to the Close() method.
+	closed bool
 }
 
 // NewTerminalReader returns a new input event reader. The reader reads input
@@ -83,7 +87,11 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	}
 }
 
-func (r *TerminalReader) init() (err error) {
+// Start initializes the reader and prepares it for reading input events. It
+// sets up the cancel reader and the key sequence parser. It also sets up the
+// lookup table for key sequences if it is not already set. This function
+// should be called before reading input events.
+func (r *TerminalReader) Start() (err error) {
 	if r.rd == nil {
 		r.rd, err = newCancelreader(r.r, r.MouseMode)
 		if err != nil {
@@ -93,12 +101,13 @@ func (r *TerminalReader) init() (err error) {
 	if r.table == nil {
 		r.table = buildKeysTable(r.Legacy, r.term, r.UseTerminfo)
 	}
+	r.closed = false
 	return nil
 }
 
 // Read implements [io.Reader].
 func (d *TerminalReader) Read(p []byte) (int, error) {
-	if err := d.init(); err != nil {
+	if err := d.Start(); err != nil {
 		return 0, err
 	}
 	return d.rd.Read(p) //nolint:wrapcheck
@@ -113,15 +122,23 @@ func (d *TerminalReader) Cancel() bool {
 }
 
 // Close closes the underlying reader.
-func (d *TerminalReader) Close() error {
+func (d *TerminalReader) Close() (rErr error) {
 	if d.rd == nil {
 		return fmt.Errorf("reader was not initialized")
 	}
+	if d.closed {
+		return nil
+	}
+	defer func() {
+		if rErr != nil {
+			d.closed = true
+		}
+	}()
 	return d.rd.Close() //nolint:wrapcheck
 }
 
 func (d *TerminalReader) readEvents() ([]Event, error) {
-	if err := d.init(); err != nil {
+	if err := d.Start(); err != nil {
 		return nil, err
 	}
 
