@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/colorprofile"
@@ -308,4 +309,40 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 	}()
 
 	return t.evch
+}
+
+// PrependLines adds lines of cells to the top of the terminal screen. The
+// added line is unmanaged and will not be cleared or updated by the
+// [Terminal].
+//
+// Using this when the terminal is using the alternate screen or when occupying
+// the whole screen may not produce any visible effects. This is because once
+// the terminal writes the prepended lines, they will get overwritten by the
+// next frame.
+func (t *Terminal) PrependLines(lines ...Line) error {
+	if len(lines) == 0 {
+		return nil
+	}
+
+	// We need to scroll the screen up by the number of lines in the queue.
+	// We can't use [ansi.SU] because we want the cursor to move down until
+	// it reaches the bottom of the screen.
+	_, y := t.scr.Position()
+	t.scr.MoveTo(0, t.scr.Height()-1)
+	t.scr.WriteString(strings.Repeat("\n", len(lines))) //nolint:errcheck
+	t.scr.SetPosition(0, y+len(lines))
+
+	// XXX: Now go to the top of the screen, insert new lines, and write
+	// the queued strings. It is important to use [tScreen.moveCursor]
+	// instead of [tScreen.move] because we don't want to perform any checks
+	// on the cursor position.
+	t.scr.mu.Lock()
+	t.scr.moveCursor(0, 0, false)
+	t.scr.mu.Unlock()
+	t.scr.WriteString(ansi.InsertLine(len(lines))) //nolint:errcheck
+	for _, line := range lines {
+		t.scr.WriteString(line.Render() + "\r\n") //nolint:errcheck
+	}
+
+	return t.scr.Flush()
 }

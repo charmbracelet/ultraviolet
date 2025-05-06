@@ -362,7 +362,6 @@ type tScreen struct {
 	newbuf           *Buffer       // the new buffer
 	tabs             *TabStops
 	touch            map[int]lineData
-	queueAbove       []string  // the queue of strings to write above the screen
 	oldhash, newhash []uint64  // the old and new hash values for each line
 	hashtab          []hashmap // the hashmap table
 	oldnum           []int     // old indices from previous hash
@@ -462,6 +461,8 @@ func (s *tScreen) ClearArea(r Rectangle) {
 // populateDiff populates the diff between the two buffers. This is used to
 // determine which cells have changed and need to be redrawn.
 func (s *tScreen) populateDiff() {
+	// TODO: Make this more efficient by splitting the comparison into multiple
+	// goroutines.
 	for y := 0; y < s.newbuf.Height(); y++ {
 		for x := 0; x < s.newbuf.Width(); x++ {
 			oldc := s.curbuf.CellAt(x, y)
@@ -1256,8 +1257,7 @@ func (s *tScreen) render() {
 	if s.opts.AltScreen == s.altScreenMode &&
 		!s.opts.ShowCursor == s.cursorHidden &&
 		!s.clear &&
-		len(s.touch) == 0 &&
-		len(s.queueAbove) == 0 {
+		len(s.touch) == 0 {
 		return
 	}
 
@@ -1288,31 +1288,6 @@ func (s *tScreen) render() {
 		if s.cursorHidden {
 			s.buf.WriteString(ansi.HideCursor)
 		}
-	}
-
-	// Do we have queued strings to write above the screen?
-	if len(s.queueAbove) > 0 {
-		// TODO: Use scrolling region if available.
-		// TODO: Use tscreen.Write] [io.Writer] interface.
-
-		// We need to scroll the screen up by the number of lines in the queue.
-		// We can't use [ansi.SU] because we want the cursor to move down until
-		// it reaches the bottom of the screen.
-		s.move(0, s.newbuf.Height()-1)
-		s.buf.WriteString(strings.Repeat("\n", len(s.queueAbove)))
-		s.cur.Y += len(s.queueAbove)
-		// XXX: Now go to the top of the screen, insert new lines, and write
-		// the queued strings. It is important to use tscreen.moveCursor]
-		// instead of tscreen.move] because we don't want to perform any checks
-		// on the cursor position.
-		s.moveCursor(0, 0, false)
-		s.buf.WriteString(ansi.InsertLine(len(s.queueAbove)))
-		for _, line := range s.queueAbove {
-			s.buf.WriteString(line + "\r\n")
-		}
-
-		// Clear the queue
-		s.queueAbove = s.queueAbove[:0]
 	}
 
 	var nonEmpty int
@@ -1491,4 +1466,20 @@ func (s *tScreen) MoveTo(x, y int) {
 // Position returns the current cursor position.
 func (s *tScreen) Position() (x, y int) {
 	return s.cur.X, s.cur.Y
+}
+
+// SetPosition changes the logical cursor position. This can be used when we
+// change the cursor position outside of the screen and need to update the
+// screen cursor position.
+func (s *tScreen) SetPosition(x, y int) {
+	s.mu.Lock()
+	s.cur.X, s.cur.Y = x, y
+	s.mu.Unlock()
+}
+
+// WriteString writes the given string to the underlying buffer.
+func (s *tScreen) WriteString(str string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.WriteString(str)
 }
