@@ -319,6 +319,15 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 	return t.evch
 }
 
+// PrependStyledString is a helper function to prepend a styled string to the
+// terminal screen. It is a convenience function that creates a new
+// [StyledString] and calls [PrependLines] with the buffer lines of the
+// [StyledString].
+func (t *Terminal) PrependStyledString(method ansi.Method, str string) error {
+	ss := NewStyledString(method, str)
+	return t.PrependLines(ss.Buffer.Lines...)
+}
+
 // PrependLines adds lines of cells to the top of the terminal screen. The
 // added line is unmanaged and will not be cleared or updated by the
 // [Terminal].
