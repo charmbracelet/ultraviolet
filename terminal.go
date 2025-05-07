@@ -68,23 +68,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	if f, ok := out.(term.File); ok {
 		t.outTty = f
 	}
-	if runtime.GOOS == "windows" {
-		// On Windows, when the input/output is redirected or piped, we need to
-		// open the console explicitly.
-		// See https://learn.microsoft.com/en-us/windows/console/getstdhandle#remarks
-		if in, ok := in.(term.File); ok && !term.IsTerminal(in.Fd()) {
-			f, err := os.OpenFile("CONIN$", os.O_RDWR, 0o644) //nolint:gosec
-			if err == nil {
-				t.inTty = f
-			}
-		}
-		if out, ok := out.(term.File); ok && !term.IsTerminal(out.Fd()) {
-			f, err := os.OpenFile("CONOUT$", os.O_RDWR, 0o644) //nolint:gosec
-			if err == nil {
-				t.outTty = f
-			}
-		}
-	}
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.profile = colorprofile.Detect(out, env)

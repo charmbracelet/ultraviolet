@@ -17,6 +17,9 @@ func (t *Terminal) makeRaw() error {
 
 	// Check if we have a terminal.
 	for _, f := range []term.File{t.inTty, t.outTty} {
+		if f == nil {
+			continue
+		}
 		t.inTtyState, err = term.MakeRaw(f.Fd())
 		if err == nil {
 			break
