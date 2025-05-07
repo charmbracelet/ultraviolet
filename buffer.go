@@ -196,6 +196,7 @@ type Buffer struct {
 // This is a convenience function that initializes a new buffer and resizes it.
 func NewBuffer(width int, height int) *Buffer {
 	b := new(Buffer)
+	b.Lines = make([]Line, height)
 	b.Resize(width, height)
 	return b
 }
