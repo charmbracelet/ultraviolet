@@ -372,6 +372,20 @@ func (k Key) MatchString(s string) bool {
 		(k.Text != "" && k.Text == text)
 }
 
+// MatchStrings returns true if the [Key] matches any of the given strings. The
+// strings can be key names like "enter", "tab", "a", or a printable character
+// like "1" or " ". It can also have combinations of modifiers like "ctrl+a",
+// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+// See [Key.MatchString] for more details.
+func (k Key) MatchStrings(ss ...string) bool {
+	for _, s := range ss {
+		if k.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
 // String implements [fmt.Stringer] and is quite useful for matching key
 // events. It will return the textual representation of the [Key] if there is
 // one, otherwise, it will fallback to [Key.Keystroke].

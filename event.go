@@ -42,6 +42,23 @@ type WindowPixelSizeEvent Size
 // KeyPressEvent represents a key press event.
 type KeyPressEvent Key
 
+// MatchString returns true if the [Key] matches the given string. The string
+// can be a key name like "enter", "tab", "a", or a printable character like
+// "1" or " ". It can also have combinations of modifiers like "ctrl+a",
+// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+func (k KeyPressEvent) MatchString(s string) bool {
+	return Key(k).MatchString(s)
+}
+
+// MatchStrings returns true if the [Key] matches any of the given strings. The
+// strings can be key names like "enter", "tab", "a", or a printable character
+// like "1" or " ". It can also have combinations of modifiers like "ctrl+a",
+// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+// See [Key.MatchString] for more details.
+func (k KeyPressEvent) MatchStrings(ss ...string) bool {
+	return Key(k).MatchStrings(ss...)
+}
+
 // String implements [fmt.Stringer] and is quite useful for matching key
 // events. For details, on what this returns see [Key.String].
 func (k KeyPressEvent) String() string {
@@ -56,6 +73,23 @@ func (k KeyPressEvent) Key() Key {
 
 // KeyReleaseEvent represents a key release event.
 type KeyReleaseEvent Key
+
+// MatchString returns true if the [Key] matches the given string. The string
+// can be a key name like "enter", "tab", "a", or a printable character like
+// "1" or " ". It can also have combinations of modifiers like "ctrl+a",
+// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+func (k KeyReleaseEvent) MatchString(s string) bool {
+	return Key(k).MatchString(s)
+}
+
+// MatchStrings returns true if the [Key] matches any of the given strings. The
+// strings can be key names like "enter", "tab", "a", or a printable character
+// like "1" or " ". It can also have combinations of modifiers like "ctrl+a",
+// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+// See [Key.MatchString] for more details.
+func (k KeyReleaseEvent) MatchStrings(ss ...string) bool {
+	return Key(k).MatchStrings(ss...)
+}
 
 // String implements [fmt.Stringer] and is quite useful for matching key
 // events. For details, on what this returns see [Key.String].
