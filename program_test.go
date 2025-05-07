@@ -9,12 +9,12 @@ import (
 
 // MockScreen implements the Programable interface for testing
 type MockScreen struct {
-	width, height int
-	getSizeErr    error
-	displayErr    error
-	startCalled   bool
+	width, height  int
+	getSizeErr     error
+	displayErr     error
+	startCalled    bool
 	shutdownCalled bool
-	closeCalled   bool
+	closeCalled    bool
 }
 
 // GetSize implements Screen.GetSize
@@ -163,7 +163,7 @@ func TestProgramStart(t *testing.T) {
 		}
 
 		if program.size.Width != 80 || program.size.Height != 24 {
-			t.Errorf("Program size not set correctly, got %dx%d, want 80x24", 
+			t.Errorf("Program size not set correctly, got %dx%d, want 80x24",
 				program.size.Width, program.size.Height)
 		}
 
@@ -272,7 +272,7 @@ func TestProgramShutdown(t *testing.T) {
 	t.Run("Screen with Shutdown error", func(t *testing.T) {
 		expectedErr := errors.New("shutdown error")
 		screen := &MockScreenWithErrors{
-			MockScreen: MockScreen{width: 80, height: 24},
+			MockScreen:  MockScreen{width: 80, height: 24},
 			shutdownErr: expectedErr,
 		}
 		program := NewProgram(screen)
@@ -338,7 +338,7 @@ func TestProgramClose(t *testing.T) {
 		expectedErr := errors.New("close error")
 		screen := &MockScreenWithErrors{
 			MockScreen: MockScreen{width: 80, height: 24},
-			closeErr: expectedErr,
+			closeErr:   expectedErr,
 		}
 		program := NewProgram(screen)
 		program.started = true
@@ -372,7 +372,7 @@ func TestProgramResize(t *testing.T) {
 		}
 
 		if program.size.Width != 100 || program.size.Height != 30 {
-			t.Errorf("Program size not updated correctly, got %dx%d, want 100x30", 
+			t.Errorf("Program size not updated correctly, got %dx%d, want 100x30",
 				program.size.Width, program.size.Height)
 		}
 	})
@@ -413,7 +413,7 @@ func TestProgramResize(t *testing.T) {
 		}
 
 		if program.size.Width != 80 || program.size.Height != 24 {
-			t.Errorf("Program size changed unexpectedly, got %dx%d, want 80x24", 
+			t.Errorf("Program size changed unexpectedly, got %dx%d, want 80x24",
 				program.size.Width, program.size.Height)
 		}
 	})
@@ -433,7 +433,7 @@ func TestProgramAutoResize(t *testing.T) {
 		}
 
 		if program.size.Width != 100 || program.size.Height != 30 {
-			t.Errorf("Program size not updated correctly, got %dx%d, want 100x30", 
+			t.Errorf("Program size not updated correctly, got %dx%d, want 100x30",
 				program.size.Width, program.size.Height)
 		}
 	})
@@ -466,7 +466,7 @@ func TestProgramDisplay(t *testing.T) {
 		program.size = Size{Width: 80, Height: 24}
 
 		displayCalled := false
-		err := program.Display(func(f *Frame) {
+		err := program.Display(func(f *Frame) error {
 			displayCalled = true
 			if f.Buffer != program.buf {
 				t.Error("Frame buffer not set correctly")
@@ -474,8 +474,8 @@ func TestProgramDisplay(t *testing.T) {
 			if f.Viewport != program.viewport {
 				t.Error("Frame viewport not set correctly")
 			}
+			return nil
 		})
-
 		if err != nil {
 			t.Errorf("Display returned error: %v", err)
 		}
@@ -489,7 +489,7 @@ func TestProgramDisplay(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 
-		err := program.Display(func(f *Frame) {})
+		err := program.Display(func(f *Frame) error { return nil })
 		if err == nil {
 			t.Error("Display should have returned an error")
 		}
@@ -503,7 +503,7 @@ func TestProgramDisplay(t *testing.T) {
 		program.buf = NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
-		err := program.Display(func(f *Frame) {})
+		err := program.Display(func(f *Frame) error { return nil })
 		if err == nil {
 			t.Error("Display should have returned an error")
 		}
@@ -521,14 +521,14 @@ func TestProgramDisplay(t *testing.T) {
 		program.size = Size{Width: 80, Height: 24}
 		program.SetViewport(FullViewport{})
 
-		err := program.Display(func(f *Frame) {
+		err := program.Display(func(f *Frame) error {
 			area := f.Area
 			if area.Min.X != 0 || area.Min.Y != 0 || area.Dx() != 80 || area.Dy() != 24 {
-				t.Errorf("Frame area not computed correctly, got Min(%d,%d) Dx=%d Dy=%d, want Min(0,0) Dx=80 Dy=24", 
+				t.Errorf("Frame area not computed correctly, got Min(%d,%d) Dx=%d Dy=%d, want Min(0,0) Dx=80 Dy=24",
 					area.Min.X, area.Min.Y, area.Dx(), area.Dy())
 			}
+			return nil
 		})
-
 		if err != nil {
 			t.Errorf("Display returned error: %v", err)
 		}
@@ -542,14 +542,14 @@ func TestProgramDisplay(t *testing.T) {
 		program.size = Size{Width: 80, Height: 24}
 		program.SetViewport(InlineViewport(10))
 
-		err := program.Display(func(f *Frame) {
+		err := program.Display(func(f *Frame) error {
 			area := f.Area
 			if area.Min.X != 0 || area.Min.Y != 14 || area.Dx() != 80 || area.Dy() != 10 {
-				t.Errorf("Frame area not computed correctly, got Min(%d,%d) Dx=%d Dy=%d, want Min(0,14) Dx=80 Dy=10", 
+				t.Errorf("Frame area not computed correctly, got Min(%d,%d) Dx=%d Dy=%d, want Min(0,14) Dx=80 Dy=10",
 					area.Min.X, area.Min.Y, area.Dx(), area.Dy())
 			}
+			return nil
 		})
-
 		if err != nil {
 			t.Errorf("Display returned error: %v", err)
 		}

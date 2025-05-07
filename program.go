@@ -118,7 +118,9 @@ func (p *Program[T]) Close() error {
 	return nil
 }
 
-func (p *Program[T]) Display(fn func(f *Frame)) error {
+// Display displays the program on the screen via the given function. It errors
+// if the program is not started or if the function fails.
+func (p *Program[T]) Display(fn func(f *Frame) error) error {
 	if !p.started {
 		return fmt.Errorf("program not started")
 	}
@@ -128,7 +130,9 @@ func (p *Program[T]) Display(fn func(f *Frame)) error {
 		Viewport: p.viewport,
 		Area:     p.viewport.ComputeArea(p.size),
 	}
-	fn(f)
+	if err := fn(f); err != nil {
+		return err
+	}
 
 	return p.scr.Display(f)
 }

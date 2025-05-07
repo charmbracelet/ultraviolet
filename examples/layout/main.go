@@ -400,12 +400,13 @@ func main() {
 	dialogX, dialogY := physicalWidth/2-dialogWidth/2-docStyle.GetVerticalFrameSize()-1, 12
 	mainDoc := docStyle.Render(doc.String())
 	display := func() {
-		p.Display(func(f *tv.Frame) {
+		p.Display(func(f *tv.Frame) error {
 			mainSs := styledstring.New(ansi.WcWidth, mainDoc)
-			f.RenderWidget(mainSs, f.Area)
+			f.RenderWidget(mainSs, f.Area) //nolint:errcheck
 			boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
 			box := styledstring.New(ansi.WcWidth, dialogBoxStyle.Render(dialogUI))
-			f.RenderWidget(box, boxArea)
+			f.RenderWidget(box, boxArea) //nolint:errcheck
+			return nil
 		})
 	}
 

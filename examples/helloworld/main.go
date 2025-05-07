@@ -70,7 +70,7 @@ func main() {
 		// Under the hood, the program will call [tv.Screen.Display] to display the
 		// frame on the screen and the implementation will depend on the screen
 		// type and how it handles displaying frames.
-		p.Display(func(f *tv.Frame) {
+		p.Display(func(f *tv.Frame) error {
 			const hw = "Hello, World!"
 			bg := tv.BlankCell
 			bg.Style = st
@@ -82,6 +82,7 @@ func main() {
 					Style: st,
 				})
 			}
+			return nil
 		})
 	}
 
