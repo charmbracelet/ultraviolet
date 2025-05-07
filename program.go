@@ -49,14 +49,20 @@ func (p *Program[T]) Resize(width, height int) error {
 		return nil
 	}
 
+	bufw, bufh := width, height
 	p.size = Size{Width: width, Height: height}
 	switch vp := p.viewport.(type) {
 	case FullViewport:
-		p.buf.Resize(width, height)
 	case InlineViewport:
-		p.buf.Resize(width, int(vp))
+		bufh = int(vp)
 	}
 
+	if re, ok := any(p.scr).(Resizer); ok {
+		if err := re.Resize(bufw, bufh); err != nil {
+			return fmt.Errorf("error resizing screen: %w", err)
+		}
+	}
+	p.buf.Resize(bufw, bufh)
 	p.buf.Clear()
 
 	return nil
@@ -145,4 +151,9 @@ type Starter interface {
 // Shutdowner represents types that can be shut down gracefully.
 type Shutdowner interface {
 	Shutdown(ctx context.Context) error
+}
+
+// Resizer represents types that can be resized.
+type Resizer interface {
+	Resize(width, height int) error
 }

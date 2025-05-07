@@ -185,6 +185,13 @@ func (t *Terminal) SetTitle(title string) error {
 	return err
 }
 
+// Resize resizes the terminal to the given width and height. It returns an
+// error if the resize fails.
+func (t *Terminal) Resize(width, height int) error {
+	t.scr.Resize(width, height)
+	return nil
+}
+
 // MakeRaw puts the terminal in raw mode, which disables line buffering and
 // echoing. The terminal will automatically be restored to its original state
 // on [Terminal.Close] or [Terminal.Shutdown], or by manually calling
