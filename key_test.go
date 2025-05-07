@@ -1325,3 +1325,106 @@ func TestParseSGRMouseEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyMatchString(t *testing.T) {
+	cases := []struct {
+		name  string
+		key   Key
+		input string
+		want  bool
+	}{
+		{
+			name:  "ctrl+a",
+			key:   Key{Code: 'a', Mod: ModCtrl},
+			input: "ctrl+a",
+			want:  true,
+		},
+		{
+			name:  "ctrl+alt+a",
+			key:   Key{Code: 'a', Mod: ModCtrl | ModAlt},
+			input: "ctrl+alt+a",
+			want:  true,
+		},
+		{
+			name:  "ctrl+alt+shift+a",
+			key:   Key{Code: 'a', Mod: ModCtrl | ModAlt | ModShift},
+			input: "ctrl+alt+shift+a",
+			want:  true,
+		},
+		{
+			name:  "H",
+			key:   Key{Code: 'H', Text: "H"},
+			input: "H",
+			want:  true,
+		},
+		{
+			name:  "shift+h",
+			key:   Key{Code: 'h', Mod: ModShift, Text: "H"},
+			input: "H",
+			want:  true,
+		},
+		{
+			name:  "?",
+			key:   Key{Code: '/', Mod: ModShift, Text: "?"},
+			input: "?",
+			want:  true,
+		},
+		{
+			name:  "shift+/",
+			key:   Key{Code: '/', Mod: ModShift, Text: "?"},
+			input: "shift+/",
+			want:  true,
+		},
+		{
+			name:  "capslock+a",
+			key:   Key{Code: 'a', Mod: ModCapsLock, Text: "A"},
+			input: "A",
+			want:  true,
+		},
+		{
+			name:  "ctrl+capslock+a",
+			key:   Key{Code: 'a', Mod: ModCtrl | ModCapsLock},
+			input: "ctrl+a",
+			want:  false,
+		},
+		{
+			name:  "space",
+			key:   Key{Code: KeySpace, Text: " "},
+			input: "space",
+			want:  true,
+		},
+		{
+			name:  "whitespace",
+			key:   Key{Code: KeySpace, Text: " "},
+			input: " ",
+			want:  true,
+		},
+		{
+			name:  "ctrl+space",
+			key:   Key{Code: KeySpace, Mod: ModCtrl},
+			input: "ctrl+space",
+			want:  true,
+		},
+		{
+			name:  "shift+whitespace",
+			key:   Key{Code: KeySpace, Mod: ModShift, Text: " "},
+			input: " ",
+			want:  true,
+		},
+		{
+			name:  "shift+space",
+			key:   Key{Code: KeySpace, Mod: ModShift, Text: " "},
+			input: "shift+space",
+			want:  true,
+		},
+	}
+
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%d: %s", i, tc.name), func(t *testing.T) {
+			got := tc.key.MatchString(tc.input)
+			if got != tc.want {
+				t.Errorf("expected %v but got %v", tc.want, got)
+			}
+		})
+	}
+}

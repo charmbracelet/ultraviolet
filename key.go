@@ -3,6 +3,7 @@ package tv
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -306,6 +307,71 @@ type Key struct {
 	IsRepeat bool
 }
 
+// MatchString returns true if the [Key] matches the given string. The string
+// can be a key name like "enter", "tab", "a", or a printable character like
+// "1" or " ". It can also have combinations of modifiers like "ctrl+a",
+// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+func (k Key) MatchString(s string) bool {
+	var (
+		mod  KeyMod
+		code rune
+		text string
+	)
+	parts := strings.Split(s, "+")
+	for _, part := range parts {
+		switch part {
+		case "ctrl":
+			mod |= ModCtrl
+		case "alt":
+			mod |= ModAlt
+		case "shift":
+			mod |= ModShift
+		case "meta":
+			mod |= ModMeta
+		case "hyper":
+			mod |= ModHyper
+		case "super":
+			mod |= ModSuper
+		case "capslock":
+			mod |= ModCapsLock
+		case "scrolllock":
+			mod |= ModScrollLock
+		case "numlock":
+			mod |= ModNumLock
+		default:
+			// Check if the part is a key name.
+			if k, ok := stringKeyType[part]; ok {
+				code = k
+			} else {
+				// Check if the part is a printable character.
+				if utf8.RuneCountInString(part) == 1 {
+					code, _ = utf8.DecodeRuneInString(part)
+				} else {
+					// Multi-rune key.
+					code = KeyExtended
+					text = part
+				}
+			}
+		}
+	}
+
+	// Check if we have a printable character.
+	smod := mod &^ (ModShift | ModCapsLock)
+	if smod == 0 && text == "" && unicode.IsPrint(code) {
+		if mod&ModShift != 0 || mod&ModCapsLock != 0 {
+			// Shifted code we need to use uppercase.
+			text = string(unicode.ToUpper(code))
+		} else {
+			// Otherwise, use the code as is.
+			text = string(code)
+		}
+	}
+
+	// Check if we have a match.
+	return (k.Mod == mod && k.Code == code) ||
+		(k.Text != "" && k.Text == text)
+}
+
 // String implements [fmt.Stringer] and is quite useful for matching key
 // events. It will return the textual representation of the [Key] if there is
 // one, otherwise, it will fallback to [Key.Keystroke].
@@ -530,4 +596,156 @@ var keyTypeString = map[rune]string{
 	KeyRightMeta:        "rightmeta",
 	KeyIsoLevel3Shift:   "isolevel3shift",
 	KeyIsoLevel5Shift:   "isolevel5shift",
+}
+
+var stringKeyType = map[string]rune{
+	"enter":     KeyEnter,
+	"tab":       KeyTab,
+	"backspace": KeyBackspace,
+	"esc":       KeyEscape,
+	"space":     KeySpace,
+	"up":        KeyUp,
+	"down":      KeyDown,
+	"left":      KeyLeft,
+	"right":     KeyRight,
+	"begin":     KeyBegin,
+	"find":      KeyFind,
+	"insert":    KeyInsert,
+	"delete":    KeyDelete,
+	"select":    KeySelect,
+	"pgup":      KeyPgUp,
+	"pgdown":    KeyPgDown,
+	"home":      KeyHome,
+	"end":       KeyEnd,
+	"kpenter":   KeyKpEnter,
+	"kpequal":   KeyKpEqual,
+	"kpmul":     KeyKpMultiply,
+	"kpplus":    KeyKpPlus,
+	"kpcomma":   KeyKpComma,
+	"kpminus":   KeyKpMinus,
+	"kpperiod":  KeyKpDecimal,
+	"kpdiv":     KeyKpDivide,
+	"kp0":       KeyKp0,
+	"kp1":       KeyKp1,
+	"kp2":       KeyKp2,
+	"kp3":       KeyKp3,
+	"kp4":       KeyKp4,
+	"kp5":       KeyKp5,
+	"kp6":       KeyKp6,
+	"kp7":       KeyKp7,
+	"kp8":       KeyKp8,
+	"kp9":       KeyKp9,
+
+	// Kitty keyboard extension
+	"kpsep":    KeyKpSep,
+	"kpup":     KeyKpUp,
+	"kpdown":   KeyKpDown,
+	"kpleft":   KeyKpLeft,
+	"kpright":  KeyKpRight,
+	"kppgup":   KeyKpPgUp,
+	"kppgdown": KeyKpPgDown,
+	"kphome":   KeyKpHome,
+	"kpend":    KeyKpEnd,
+	"kpinsert": KeyKpInsert,
+	"kpdelete": KeyKpDelete,
+	"kpbegin":  KeyKpBegin,
+
+	"f1":  KeyF1,
+	"f2":  KeyF2,
+	"f3":  KeyF3,
+	"f4":  KeyF4,
+	"f5":  KeyF5,
+	"f6":  KeyF6,
+	"f7":  KeyF7,
+	"f8":  KeyF8,
+	"f9":  KeyF9,
+	"f10": KeyF10,
+	"f11": KeyF11,
+	"f12": KeyF12,
+	"f13": KeyF13,
+	"f14": KeyF14,
+	"f15": KeyF15,
+	"f16": KeyF16,
+	"f17": KeyF17,
+	"f18": KeyF18,
+	"f19": KeyF19,
+	"f20": KeyF20,
+	"f21": KeyF21,
+	"f22": KeyF22,
+	"f23": KeyF23,
+	"f24": KeyF24,
+	"f25": KeyF25,
+	"f26": KeyF26,
+	"f27": KeyF27,
+	"f28": KeyF28,
+	"f29": KeyF29,
+	"f30": KeyF30,
+	"f31": KeyF31,
+	"f32": KeyF32,
+	"f33": KeyF33,
+	"f34": KeyF34,
+	"f35": KeyF35,
+	"f36": KeyF36,
+	"f37": KeyF37,
+	"f38": KeyF38,
+	"f39": KeyF39,
+	"f40": KeyF40,
+	"f41": KeyF41,
+	"f42": KeyF42,
+	"f43": KeyF43,
+	"f44": KeyF44,
+	"f45": KeyF45,
+	"f46": KeyF46,
+	"f47": KeyF47,
+	"f48": KeyF48,
+	"f49": KeyF49,
+	"f50": KeyF50,
+	"f51": KeyF51,
+	"f52": KeyF52,
+	"f53": KeyF53,
+	"f54": KeyF54,
+	"f55": KeyF55,
+	"f56": KeyF56,
+	"f57": KeyF57,
+	"f58": KeyF58,
+	"f59": KeyF59,
+	"f60": KeyF60,
+	"f61": KeyF61,
+	"f62": KeyF62,
+	"f63": KeyF63,
+
+	// Kitty keyboard extension
+	"capslock":         KeyCapsLock,
+	"scrolllock":       KeyScrollLock,
+	"numlock":          KeyNumLock,
+	"printscreen":      KeyPrintScreen,
+	"pause":            KeyPause,
+	"menu":             KeyMenu,
+	"mediaplay":        KeyMediaPlay,
+	"mediapause":       KeyMediaPause,
+	"mediaplaypause":   KeyMediaPlayPause,
+	"mediareverse":     KeyMediaReverse,
+	"mediastop":        KeyMediaStop,
+	"mediafastforward": KeyMediaFastForward,
+	"mediarewind":      KeyMediaRewind,
+	"medianext":        KeyMediaNext,
+	"mediaprev":        KeyMediaPrev,
+	"mediarecord":      KeyMediaRecord,
+	"lowervol":         KeyLowerVol,
+	"raisevol":         KeyRaiseVol,
+	"mute":             KeyMute,
+	"leftshift":        KeyLeftShift,
+	"leftalt":          KeyLeftAlt,
+	"leftctrl":         KeyLeftCtrl,
+	"leftsuper":        KeyLeftSuper,
+	"lefthyper":        KeyLeftHyper,
+	"leftmeta":         KeyLeftMeta,
+	"rightshift":       KeyRightShift,
+	"rightalt":         KeyRightAlt,
+	"rightctrl":        KeyRightCtrl,
+	"rightsuper":       KeyRightSuper,
+	"righthyper":       KeyRightHyper,
+	"rightmeta":        KeyRightMeta,
+	"isolevel3shift":   KeyIsoLevel3Shift,
+	"isolevel5shift":   KeyIsoLevel5Shift,
 }
