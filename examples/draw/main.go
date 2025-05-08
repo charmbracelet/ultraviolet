@@ -50,7 +50,8 @@ Press ctrl+h for this help message.
 
 Press any key to continue...`
 
-	helpWidget := styledstring.New(ansi.WcWidth, help)
+	method := ansi.WcWidth
+	helpWidget := styledstring.New(method, help)
 	helpW, helpH := helpWidget.Buffer.Width(), helpWidget.Buffer.Height()
 
 	var prevHelpBuf *tv.Buffer
@@ -95,7 +96,7 @@ Press any key to continue...`
 		p.Display(func(f *tv.Frame) error {
 			f.Buffer.SetCell(m.X, m.Y, &tv.Cell{
 				Rune:  char,
-				Width: 1,
+				Width: method.StringWidth(string(char)),
 				Style: st,
 			})
 			return nil
