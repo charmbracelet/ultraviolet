@@ -616,6 +616,7 @@ var stringKeyType = map[string]rune{
 	"enter":     KeyEnter,
 	"tab":       KeyTab,
 	"backspace": KeyBackspace,
+	"escape":    KeyEscape,
 	"esc":       KeyEscape,
 	"space":     KeySpace,
 	"up":        KeyUp,
