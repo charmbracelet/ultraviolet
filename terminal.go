@@ -152,6 +152,52 @@ func (t *Terminal) Display(f *Frame) error {
 	return t.scr.Flush()
 }
 
+// EnableMode enables the given modes on the terminal. This is typically used
+// to enable mouse support, bracketed paste mode, and other terminal features.
+func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
+	if len(modes) == 0 {
+		return nil
+	}
+	_, err := io.WriteString(t.out, ansi.SetMode(modes...))
+	return err
+}
+
+// DisableMode disables the given modes on the terminal. This is typically
+// used to disable mouse support, bracketed paste mode, and other terminal
+// features.
+func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
+	if len(modes) == 0 {
+		return nil
+	}
+	_, err := io.WriteString(t.out, ansi.ResetMode(modes...))
+	return err
+}
+
+// EnableBracketedPaste enables bracketed paste mode on the terminal. This is
+// typically used to enable support for pasting text into the terminal without
+// interfering with the terminal's input handling.
+func (t *Terminal) EnableBracketedPaste() error {
+	return t.EnableMode(ansi.BracketedPasteMode)
+}
+
+// DisableBracketedPaste disables bracketed paste mode on the terminal. This is
+// typically used to disable support for pasting text into the terminal.
+func (t *Terminal) DisableBracketedPaste() error {
+	return t.DisableMode(ansi.BracketedPasteMode)
+}
+
+// EnableFocusEvents enables focus/blur receiving notification events on the
+// terminal.
+func (t *Terminal) EnableFocusEvents() error {
+	return t.EnableMode(ansi.FocusEventMode)
+}
+
+// DisableFocusEvents disables focus/blur receiving notification events on the
+// terminal.
+func (t *Terminal) DisableFocusEvents() error {
+	return t.DisableMode(ansi.FocusEventMode)
+}
+
 // EnterAltScreen enters the alternate screen buffer. This is typically used
 // for applications that want to take over the entire terminal screen.
 func (t *Terminal) EnterAltScreen() error {
