@@ -41,7 +41,7 @@ type TerminalReader struct {
 	// platform-specific feature and is only available on Windows. When this is
 	// true, the reader will be initialized to read mouse events using the
 	// Windows Console API.
-	MouseMode bool
+	MouseMode *MouseMode
 
 	r     io.Reader
 	rd    cancelreader.CancelReader
@@ -69,7 +69,6 @@ type TerminalReader struct {
 // events. It supports reading Terminfo databases.
 //
 // Use [TerminalReader.UseTerminfo] to use Terminfo defined key sequences.
-// Use [TerminalReader.MouseMode] to enable mouse events on Windows.
 // Use [TerminalReader.Legacy] to control legacy key encoding behavior.
 //
 // Example:
@@ -93,7 +92,7 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 // should be called before reading input events.
 func (r *TerminalReader) Start() (err error) {
 	if r.rd == nil {
-		r.rd, err = newCancelreader(r.r, r.MouseMode)
+		r.rd, err = newCancelreader(r.r)
 		if err != nil {
 			return err
 		}

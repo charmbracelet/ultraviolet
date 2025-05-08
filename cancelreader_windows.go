@@ -22,7 +22,7 @@ type conInputReader struct {
 
 var _ cancelreader.CancelReader = &conInputReader{}
 
-func newCancelreader(r io.Reader, mouseMode bool) (cancelreader.CancelReader, error) {
+func newCancelreader(r io.Reader) (cancelreader.CancelReader, error) {
 	fallback := func(io.Reader) (cancelreader.CancelReader, error) {
 		return cancelreader.NewReader(r)
 	}
@@ -49,14 +49,6 @@ func newCancelreader(r io.Reader, mouseMode bool) (cancelreader.CancelReader, er
 	modes := []uint32{
 		windows.ENABLE_WINDOW_INPUT,
 		windows.ENABLE_EXTENDED_FLAGS,
-	}
-
-	// Enabling mouse mode implicitly blocks console text selection. Thus, we
-	// need to enable it only if the mouse mode is requested.
-	// In order to toggle mouse mode, the caller must recreate the reader with
-	// the appropriate flag toggled.
-	if mouseMode {
-		modes = append(modes, windows.ENABLE_MOUSE_INPUT)
 	}
 
 	originalMode, err := prepareConsole(conin, modes...)

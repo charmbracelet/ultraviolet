@@ -3,10 +3,11 @@
 
 package tv
 
-import "fmt"
-
 func (*Terminal) makeRaw() error {
-	return fmt.Errorf("platform not supported")
+	return ErrPlatformNotSupported
 }
 
 func (t *Terminal) optimizeMovements() {}
+
+func (*Terminal) enableWindowsMouse() error  { return ErrPlatformNotSupported }
+func (*Terminal) disableWindowsMouse() error { return ErrPlatformNotSupported }

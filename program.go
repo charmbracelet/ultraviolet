@@ -63,7 +63,6 @@ func (p *Program[T]) Resize(width, height int) error {
 		}
 	}
 	p.buf.Resize(bufw, bufh)
-	p.buf.Clear()
 
 	return nil
 }

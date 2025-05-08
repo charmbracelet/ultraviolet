@@ -62,3 +62,31 @@ func (t *Terminal) getSize() (w, h int, err error) {
 func (t *Terminal) optimizeMovements() {
 	// TODO: check if we can optimize cursor movements on Windows.
 }
+
+func (t *Terminal) setMouse(enable bool) (err error) {
+	inTty := t.inTty
+	if inTty == nil {
+		_, inTty, err = openTTY()
+		if err != nil {
+			return err
+		}
+	}
+	state, err := term.GetState(inTty.Fd())
+	if err != nil {
+		return err
+	}
+	if enable {
+		state.Mode |= windows.ENABLE_MOUSE_INPUT
+	} else {
+		state.Mode &^= windows.ENABLE_MOUSE_INPUT
+	}
+	return term.SetState(inTty.Fd(), state)
+}
+
+func (t *Terminal) enableWindowsMouse() (err error) {
+	return t.setMouse(true)
+}
+
+func (t *Terminal) disableWindowsMouse() (err error) {
+	return t.setMouse(false)
+}

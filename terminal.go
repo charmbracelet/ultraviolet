@@ -15,8 +15,13 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
-// ErrNotTerminal is returned when one of the I/O streams is not a terminal.
-var ErrNotTerminal = fmt.Errorf("not a terminal")
+var (
+	// ErrNotTerminal is returned when one of the I/O streams is not a terminal.
+	ErrNotTerminal = fmt.Errorf("not a terminal")
+
+	// ErrPlatformNotSupported is returned when the platform is not supported.
+	ErrPlatformNotSupported = fmt.Errorf("platform not supported")
+)
 
 // Terminal represents a terminal screen that can be manipulated and drawn to.
 // It handles reading events from the terminal using [WinChReceiver],
@@ -38,10 +43,11 @@ type Terminal struct {
 	profile  colorprofile.Profile
 
 	// Terminal input stream.
-	rd   *TerminalReader
-	err  error
-	evch chan Event
-	once sync.Once
+	rd        *TerminalReader
+	err       error
+	evch      chan Event
+	once      sync.Once
+	mouseMode MouseMode // The mouse mode for the terminal.
 }
 
 // DefaultTerminal returns a new default terminal instance that uses
@@ -52,6 +58,7 @@ func DefaultTerminal() *Terminal {
 
 func (t *Terminal) init() {
 	t.rd = NewTerminalReader(t.in, t.termtype)
+	t.rd.MouseMode = &t.mouseMode
 	t.evch = make(chan Event)
 	t.once = sync.Once{}
 }
@@ -171,6 +178,60 @@ func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
 	}
 	_, err := io.WriteString(t.out, ansi.ResetMode(modes...))
 	return err
+}
+
+// MouseMode represents the mouse mode for the terminal. It is used to enable or
+// disable mouse support on the terminal.
+//
+// It is a bitmask of the following values:
+//   - [ReleasesMouseMode]: Enables mouse release events.
+//   - [AllMotionMouseMode]: Enables all mouse motion events.
+type MouseMode byte
+
+const (
+	// ReleasesMouseMode enables mouse release events.
+	ReleasesMouseMode MouseMode = 1 << iota
+	// AllMotionMouseMode enables all mouse motion events.
+	AllMotionMouseMode
+)
+
+// EnableMouse enables mouse support on the terminal. This will enable basic
+// mouse button and button motion events. To enable release events and all
+// motion events, use [EnableMouse] with the appropriate flags. See [MouseMode]
+// for more information.
+func (t *Terminal) EnableMouse(modes ...MouseMode) (err error) {
+	var mode MouseMode
+	for _, m := range modes {
+		mode |= m
+	}
+	t.mouseMode = mode
+	if runtime.GOOS != "windows" {
+		modes := []ansi.Mode{}
+		if t.mouseMode&AllMotionMouseMode != 0 {
+			modes = append(modes, ansi.AnyEventMouseMode)
+		} else {
+			modes = append(modes, ansi.ButtonEventMouseMode)
+		}
+		modes = append(modes, ansi.SgrExtMouseMode)
+		if err := t.EnableMode(modes...); err != nil {
+			return err
+		}
+	}
+	return t.enableWindowsMouse()
+}
+
+// DisableMouse disables mouse support on the terminal. This will disable mouse
+// button and button motion events.
+func (t *Terminal) DisableMouse() (err error) {
+	t.mouseMode = 0
+	if runtime.GOOS != "windows" {
+		return t.DisableMode(
+			ansi.ButtonEventMouseMode,
+			ansi.AnyEventMouseMode,
+			ansi.SgrExtMouseMode,
+		)
+	}
+	return t.disableWindowsMouse()
 }
 
 // EnableBracketedPaste enables bracketed paste mode on the terminal. This is

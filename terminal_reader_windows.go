@@ -51,7 +51,10 @@ func (d *TerminalReader) handleConInput(
 
 	var evs []Event
 	for _, event := range events {
-		if e := d.SequenceParser.parseConInputEvent(event, &d.keyState); e != nil {
+		if e := d.SequenceParser.parseConInputEvent(event, &d.keyState, d.MouseMode); e != nil {
+			if e == nil {
+				continue
+			}
 			if multi, ok := e.(MultiEvent); ok {
 				evs = append(evs, multi...)
 			} else {
@@ -63,7 +66,7 @@ func (d *TerminalReader) handleConInput(
 	return evs, nil
 }
 
-func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState) Event {
+func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode) Event {
 	switch event.EventType {
 	case xwindows.KEY_EVENT:
 		kevent := event.KeyEvent()
@@ -81,9 +84,21 @@ func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState
 		}
 	case xwindows.MOUSE_EVENT:
 		mevent := event.MouseEvent()
-		Event := mouseEvent(keyState.lastMouseBtns, mevent)
+		event := mouseEvent(keyState.lastMouseBtns, mevent)
+		// We emulate mouse mode levels on Windows. This is because Windows
+		// doesn't have a concept of different mouse modes. We use the mouse mode to determine
+		switch m := event.(type) {
+		case MouseReleaseEvent:
+			if mouseMode == nil || (*mouseMode)&ReleasesMouseMode == 0 {
+				return nil
+			}
+		case MouseMotionEvent:
+			if (mouseMode == nil || (*mouseMode)&AllMotionMouseMode == 0) && m.Button == MouseNone {
+				return nil
+			}
+		}
 		keyState.lastMouseBtns = mevent.ButtonState
-		return Event
+		return event
 	case xwindows.FOCUS_EVENT:
 		fevent := event.FocusEvent()
 		if fevent.SetFocus {
