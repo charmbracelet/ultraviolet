@@ -332,3 +332,25 @@ func (b *Buffer) Clear() {
 func (b *Buffer) ClearArea(rect Rectangle) {
 	b.FillArea(nil, rect)
 }
+
+// CloneArea clones the area of the buffer within the specified rectangle. If
+// the area is out of bounds, it returns nil.
+func (b *Buffer) CloneArea(rect Rectangle) *Buffer {
+	bounds := b.Bounds()
+	if !rect.In(bounds) {
+		return nil
+	}
+	n := NewBuffer(rect.Dx(), rect.Dy())
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		for x := rect.Min.X; x < rect.Max.X; x++ {
+			c := b.CellAt(x, y)
+			n.SetCell(x-rect.Min.X, y-rect.Min.Y, c)
+		}
+	}
+	return n
+}
+
+// Clone clones the entire buffer into a new buffer.
+func (b *Buffer) Clone() *Buffer {
+	return b.CloneArea(b.Bounds())
+}
