@@ -58,15 +58,14 @@ func main() {
 
 		// Display the frame with the styled string
 		if err := p.Display(func(f *tv.Frame) error {
-			// We will use the StyledString widget to simplify
-			// displaying text on the screen.
+			// We will use the StyledString component to simplify displaying
+			// text on the screen.
 			// Using [ansi.WcWidth] will ensure that the text is
 			// displayed correctly on the screen using traditional
 			// terminal width calculations.
 			ss := styledstring.New(ansi.WcWidth, "Hello, World!")
-			// We want the widget to occupy the given area which
-			// is the entire screen because we're using the alternate
-			// screen buffer.
+			// We want the component to occupy the given area which is the
+			// entire screen because we're using the alternate screen buffer.
 			area := f.Area
 			area.Min.X = (area.Max.X / 2) - 6
 			area.Min.Y = (area.Max.Y / 2) - 1

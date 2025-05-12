@@ -51,8 +51,8 @@ Press ctrl+h for this help message.
 Press any key to continue...`
 
 	method := ansi.WcWidth
-	helpWidget := styledstring.New(method, help)
-	helpW, helpH := helpWidget.Buffer.Width(), helpWidget.Buffer.Height()
+	helpComp := styledstring.New(method, help)
+	helpW, helpH := helpComp.Buffer.Width(), helpComp.Buffer.Height()
 
 	var prevHelpBuf *tv.Buffer
 	showingHelp := true
@@ -64,7 +64,7 @@ Press any key to continue...`
 			if show {
 				// Save the area under the help to restore it later.
 				prevHelpBuf = f.Buffer.CloneArea(midArea)
-				return f.RenderComponent(helpWidget, midArea)
+				return f.RenderComponent(helpComp, midArea)
 			} else if prevHelpBuf != nil {
 				// Restore saved area under the help.
 				for y := 0; y < prevHelpBuf.Height(); y++ {

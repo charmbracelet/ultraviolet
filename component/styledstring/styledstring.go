@@ -5,7 +5,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// StyledString is a styled string widget that can be rendered to a screen.
+// StyledString is a styled string component that can be rendered to a screen.
 type StyledString struct{ *tv.StyledString }
 
 // New creates a new [StyledString].
