@@ -36,8 +36,18 @@ func (e MultiEvent) String() string {
 // WindowSizeEvent represents the window size in cells.
 type WindowSizeEvent Size
 
+// Bounds returns the bounds corresponding to the size.
+func (s WindowSizeEvent) Bounds() Rectangle {
+	return Size(s).Bounds()
+}
+
 // WindowPixelSizeEvent represents the window size in pixels.
 type WindowPixelSizeEvent Size
+
+// Bounds returns the bounds corresponding to the size.
+func (s WindowPixelSizeEvent) Bounds() Rectangle {
+	return Size(s).Bounds()
+}
 
 // KeyPressEvent represents a key press event.
 type KeyPressEvent Key

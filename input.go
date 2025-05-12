@@ -12,6 +12,11 @@ type Size struct {
 	Height int
 }
 
+// Bounds returns the bounds corresponding to the size.
+func (s Size) Bounds() Rectangle {
+	return Rect(0, 0, s.Width, s.Height)
+}
+
 // InputReceiver is an interface for receiving input events from an input source.
 type InputReceiver interface {
 	// ReceiveEvents read input events and channel them to the given event
