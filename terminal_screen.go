@@ -1333,7 +1333,7 @@ func (s *tScreen) render() {
 
 	// Ensure we have scrolled the screen to the bottom when we're not using
 	// alt screen mode.
-	if !s.opts.AltScreen && s.scrollHeight < s.newbuf.Height() {
+	if !s.opts.AltScreen && s.scrollHeight < s.newbuf.Height()-1 {
 		s.move(0, s.newbuf.Height()-1)
 	}
 
