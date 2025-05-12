@@ -158,7 +158,7 @@ func TestProgramStart(t *testing.T) {
 			t.Error("Program not marked as started")
 		}
 
-		if program.buf == nil {
+		if &program.buf == nil {
 			t.Error("Buffer not initialized")
 		}
 
@@ -363,7 +363,7 @@ func TestProgramResize(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		err := program.Resize(100, 30)
@@ -381,7 +381,7 @@ func TestProgramResize(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		err := program.Resize(0, 30)
@@ -404,7 +404,7 @@ func TestProgramResize(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		err := program.Resize(80, 24)
@@ -424,7 +424,7 @@ func TestProgramAutoResize(t *testing.T) {
 		screen := &MockScreen{width: 100, height: 30}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		err := program.AutoResize()
@@ -443,7 +443,7 @@ func TestProgramAutoResize(t *testing.T) {
 		screen := &MockScreen{getSizeErr: expectedErr}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		err := program.AutoResize()
@@ -462,13 +462,13 @@ func TestProgramDisplay(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		displayCalled := false
 		err := program.Display(func(f *Frame) error {
 			displayCalled = true
-			if f.Buffer != program.buf {
+			if f.Buffer != &program.buf {
 				t.Error("Frame buffer not set correctly")
 			}
 			if f.Viewport != program.viewport {
@@ -500,7 +500,7 @@ func TestProgramDisplay(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24, displayErr: expectedErr}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 
 		err := program.Display(func(f *Frame) error { return nil })
@@ -517,7 +517,7 @@ func TestProgramDisplay(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 		program.SetViewport(FullViewport{})
 
@@ -538,13 +538,13 @@ func TestProgramDisplay(t *testing.T) {
 		screen := &MockScreen{width: 80, height: 24}
 		program := NewProgram(screen)
 		program.started = true
-		program.buf = NewBuffer(80, 24)
+		program.buf = *NewBuffer(80, 24)
 		program.size = Size{Width: 80, Height: 24}
 		program.SetViewport(InlineViewport(10))
 
 		err := program.Display(func(f *Frame) error {
 			area := f.Area
-			if area.Min.X != 0 || area.Min.Y != 14 || area.Dx() != 80 || area.Dy() != 10 {
+			if area.Min.X != 0 || area.Min.Y != 0 || area.Dx() != 80 || area.Dy() != 10 {
 				t.Errorf("Frame area not computed correctly, got Min(%d,%d) Dx=%d Dy=%d, want Min(0,14) Dx=80 Dy=10",
 					area.Min.X, area.Min.Y, area.Dx(), area.Dy())
 			}

@@ -16,7 +16,7 @@ type Programable interface {
 // Program is a generic type that represents a program with a [Screen].
 type Program[T Programable] struct {
 	scr      T
-	buf      *Buffer  // The new buffer to be drawn to the screen.
+	buf      Buffer   // The new buffer to be drawn to the screen.
 	size     Size     // The last known size of the terminal.
 	viewport Viewport // The viewport area to operate on.
 	started  bool
@@ -45,9 +45,6 @@ func (p *Program[T]) Resize(width, height int) error {
 	if width <= 0 || height <= 0 {
 		return fmt.Errorf("invalid size: %dx%d", width, height)
 	}
-	if width == p.size.Width && height == p.size.Height {
-		return nil
-	}
 
 	bufw, bufh := width, height
 	p.size = Size{Width: width, Height: height}
@@ -57,12 +54,12 @@ func (p *Program[T]) Resize(width, height int) error {
 		bufh = int(vp)
 	}
 
+	p.buf.Resize(bufw, bufh)
 	if re, ok := any(p.scr).(Resizer); ok {
 		if err := re.Resize(bufw, bufh); err != nil {
 			return fmt.Errorf("error resizing screen: %w", err)
 		}
 	}
-	p.buf.Resize(bufw, bufh)
 
 	return nil
 }
@@ -81,15 +78,13 @@ func (p *Program[T]) AutoResize() error {
 // implements the [Starter] interface, it will call the [Start] method on the
 // screen.
 func (p *Program[T]) Start() error {
-	w, h, err := p.scr.GetSize()
-	if err != nil {
-		return fmt.Errorf("error getting screen size: %w", err)
+	if p.started {
+		return fmt.Errorf("program already started")
 	}
-
-	p.size = Size{Width: w, Height: h}
-	p.buf = NewBuffer(p.size.Width, p.size.Height)
+	if err := p.AutoResize(); err != nil {
+		return err
+	}
 	p.started = true
-
 	if s, ok := any(p.scr).(Starter); ok {
 		return s.Start()
 	}
@@ -131,7 +126,7 @@ func (p *Program[T]) Display(fn func(f *Frame) error) error {
 	}
 
 	f := &Frame{
-		Buffer:   p.buf,
+		Buffer:   &p.buf,
 		Viewport: p.viewport,
 		Area:     p.viewport.ComputeArea(p.size),
 	}
