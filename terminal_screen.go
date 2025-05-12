@@ -574,26 +574,18 @@ func xtermCaps(termtype string) (v capabilities) {
 }
 
 // newTScreen creates a new [tScreen].
-func newTScreen(w io.Writer, width, height int) (s *tScreen) {
+func newTScreen(w io.Writer, buf *Buffer) (s *tScreen) {
 	s = new(tScreen)
 	s.w = w
 	s.buf = new(bytes.Buffer)
 	s.caps = xtermCaps(s.opts.Term)
-	s.curbuf = NewBuffer(width, height)
-	s.newbuf = NewBuffer(width, height)
+	s.newbuf = buf
+	s.curbuf = NewBuffer(buf.Width(), buf.Height())
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
 	s.reset()
 
 	return
-}
-
-// SetBuffer sets the [Buffer] to use for the screen. This is useful when the
-// buffer is shared outside the screen.
-func (s *tScreen) SetBuffer(buf *Buffer) {
-	s.mu.Lock()
-	s.newbuf = buf
-	s.mu.Unlock()
 }
 
 // Width returns the width of the screen.

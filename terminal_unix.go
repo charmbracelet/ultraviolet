@@ -60,8 +60,8 @@ func (t *Terminal) optimizeMovements() {
 	if err != nil {
 		return
 	}
-	t.scr.UseHardTabs(state.Oflag&unix.TABDLY == unix.TAB0)
-	t.scr.UseBackspaces(state.Lflag&unix.BSDLY == unix.BS0)
+	t.useTabs = state.Oflag&unix.TABDLY == unix.TAB0
+	t.useBspace = state.Lflag&unix.BSDLY == unix.BS0
 }
 
 func (*Terminal) enableWindowsMouse() error  { return nil }

@@ -36,11 +36,15 @@ type Terminal struct {
 	outTtyState *term.State
 
 	// Terminal type, screen and buffer.
-	termtype string   // The $TERM type.
-	environ  Environ  // The environment variables.
-	scr      *tScreen // The actual screen to be drawn to.
-	size     Size     // The last known size of the terminal.
-	profile  colorprofile.Profile
+	termtype     string   // The $TERM type.
+	environ      Environ  // The environment variables.
+	scr          *tScreen // The actual screen to be drawn to.
+	size         Size     // The last known size of the terminal.
+	profile      colorprofile.Profile
+	useTabs      bool // Whether to use hard tabs or not.
+	useBspace    bool // Whether to use backspace or not.
+	altScreen    bool // Whether to use the alternate screen or not.
+	cursorHidden bool // Whether the cursor is hidden or not.
 
 	// Terminal input stream.
 	rd        *TerminalReader
@@ -78,7 +82,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.profile = colorprofile.Detect(out, env)
-	t.scr = t.newScreen()
 	t.init()
 	return t
 }
@@ -94,6 +97,9 @@ var _ Screen = (*Terminal)(nil)
 
 // CellAt returns the cell at the given x, y position in the terminal buffer.
 func (t *Terminal) CellAt(x int, y int) *Cell {
+	if t.scr == nil {
+		return nil
+	}
 	return t.scr.CellAt(x, y)
 }
 
@@ -117,16 +123,33 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 
 var _ Displayer = (*Terminal)(nil)
 
-func (t *Terminal) newScreen() *tScreen {
-	s := newTScreen(t.out, t.size.Width, t.size.Height)
+func (t *Terminal) newScreen(buf *Buffer) *tScreen {
+	s := newTScreen(t.out, buf)
 	s.SetTermType(t.termtype)
 	s.SetColorProfile(t.profile)
+	s.UseHardTabs(t.useTabs)
+	s.UseBackspaces(t.useBspace)
+	if t.altScreen {
+		s.EnterAltScreen()
+	} else {
+		s.ExitAltScreen()
+	}
+	if t.cursorHidden {
+		s.HideCursor()
+	} else {
+		s.ShowCursor()
+	}
 	return s
 }
 
 // Display displays the given frame on the terminal screen. It returns an
 // error if the display fails.
 func (t *Terminal) Display(f *Frame) error {
+	if t.scr == nil {
+		// Initialize the buffer on first render.
+		t.scr = t.newScreen(f.Buffer)
+	}
+
 	switch f.Viewport.(type) {
 	case FullViewport:
 		t.scr.SetRelativeCursor(false)
@@ -134,14 +157,9 @@ func (t *Terminal) Display(f *Frame) error {
 		t.scr.SetRelativeCursor(true)
 	}
 
-	t.scr.SetBuffer(f.Buffer)
-	width, height := f.Area.Dx(), f.Area.Dy()
-	if width != t.scr.Width() || height != t.scr.Height() {
-		t.scr.Resize(width, height)
-	}
-
 	// BUG: Hide/Show cursor doesn't take effect unless we call them before
 	// Render.
+	t.cursorHidden = f.Position == nil // Update cached cursor state.
 	if f.Position == nil {
 		t.scr.HideCursor()
 	} else {
@@ -261,6 +279,10 @@ func (t *Terminal) DisableFocusEvents() error {
 // EnterAltScreen enters the alternate screen buffer. This is typically used
 // for applications that want to take over the entire terminal screen.
 func (t *Terminal) EnterAltScreen() error {
+	t.altScreen = true
+	if t.scr == nil {
+		return nil
+	}
 	t.scr.EnterAltScreen()
 	return t.scr.Flush()
 }
@@ -268,18 +290,30 @@ func (t *Terminal) EnterAltScreen() error {
 // ExitAltScreen exits the alternate screen buffer and returns to the normal
 // screen buffer.
 func (t *Terminal) ExitAltScreen() error {
+	t.altScreen = false
+	if t.scr == nil {
+		return nil
+	}
 	t.scr.ExitAltScreen()
 	return t.scr.Flush()
 }
 
 // SHowCursor shows the terminal cursor.
 func (t *Terminal) ShowCursor() error {
+	t.cursorHidden = false
+	if t.scr == nil {
+		return nil
+	}
 	t.scr.ShowCursor()
 	return t.scr.Flush()
 }
 
 // HideCursor hides the terminal cursor.
 func (t *Terminal) HideCursor() error {
+	t.cursorHidden = true
+	if t.scr == nil {
+		return nil
+	}
 	t.scr.HideCursor()
 	return t.scr.Flush()
 }
@@ -294,6 +328,9 @@ func (t *Terminal) SetTitle(title string) error {
 // Resize resizes the terminal to the given width and height. It returns an
 // error if the resize fails.
 func (t *Terminal) Resize(width, height int) error {
+	if t.scr == nil {
+		return nil
+	}
 	t.scr.Resize(width, height)
 	return nil
 }
@@ -349,8 +386,10 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 		}
 	}()
 
-	if err := t.scr.Close(); err != nil {
-		return fmt.Errorf("error closing terminal screen: %w", err)
+	if t.scr != nil {
+		if err := t.scr.Close(); err != nil {
+			return fmt.Errorf("error closing terminal screen: %w", err)
+		}
 	}
 
 	// Cancel the input reader.
@@ -450,7 +489,7 @@ func (t *Terminal) PrependStyledString(method ansi.Method, str string) error {
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
 func (t *Terminal) PrependLines(lines ...Line) error {
-	if len(lines) == 0 {
+	if t.scr == nil || len(lines) == 0 {
 		return nil
 	}
 
