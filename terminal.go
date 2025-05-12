@@ -288,7 +288,7 @@ func (t *Terminal) HideCursor() error {
 // SetTitle sets the title of the terminal window. This is typically used to
 // set the title of the terminal window to the name of the application.
 func (t *Terminal) SetTitle(title string) error {
-	_, err := io.WriteString(t.out, ansi.SetWindowTitle(title))
+	_, err := t.WriteString(ansi.SetWindowTitle(title))
 	return err
 }
 
@@ -476,4 +476,16 @@ func (t *Terminal) PrependLines(lines ...Line) error {
 	}
 
 	return t.scr.Flush()
+}
+
+// Write writes the given data to the output stream. It implements the
+// [io.Writer] interface.
+func (t *Terminal) Write(p []byte) (n int, err error) {
+	return t.out.Write(p)
+}
+
+// WriteString writes the given string to the output stream. It implements the
+// [io.StringWriter] interface.
+func (t *Terminal) WriteString(s string) (n int, err error) {
+	return io.WriteString(t.out, s)
 }
