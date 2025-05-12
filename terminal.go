@@ -197,8 +197,8 @@ const (
 
 // EnableMouse enables mouse support on the terminal. This will enable basic
 // mouse button and button motion events. To enable release events and all
-// motion events, use [EnableMouse] with the appropriate flags. See [MouseMode]
-// for more information.
+// motion events, use [Terminal.EnableMouse] with the appropriate flags. See
+// [MouseMode] for more information.
 func (t *Terminal) EnableMouse(modes ...MouseMode) (err error) {
 	var mode MouseMode
 	for _, m := range modes {
