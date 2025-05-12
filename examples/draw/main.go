@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/tv"
-	"github.com/charmbracelet/tv/widget/styledstring"
+	"github.com/charmbracelet/tv/component/styledstring"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -64,7 +64,7 @@ Press any key to continue...`
 			if show {
 				// Save the area under the help to restore it later.
 				prevHelpBuf = f.Buffer.CloneArea(midArea)
-				return f.RenderWidget(helpWidget, midArea)
+				return f.RenderComponent(helpWidget, midArea)
 			} else if prevHelpBuf != nil {
 				// Restore saved area under the help.
 				for y := 0; y < prevHelpBuf.Height(); y++ {

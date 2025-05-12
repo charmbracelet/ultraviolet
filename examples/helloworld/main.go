@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/tv"
-	"github.com/charmbracelet/tv/widget/styledstring"
+	"github.com/charmbracelet/tv/component/styledstring"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -70,7 +70,7 @@ func main() {
 			area := f.Area
 			area.Min.X = (area.Max.X / 2) - 6
 			area.Min.Y = (area.Max.Y / 2) - 1
-			return f.RenderWidget(ss, area)
+			return f.RenderComponent(ss, area)
 		}); err != nil {
 			log.Fatal(err)
 		}

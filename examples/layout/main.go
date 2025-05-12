@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss/v2"
 	"github.com/charmbracelet/tv"
-	"github.com/charmbracelet/tv/widget/styledstring"
+	"github.com/charmbracelet/tv/component/styledstring"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/rivo/uniseg"
@@ -402,10 +402,10 @@ func main() {
 	display := func() {
 		p.Display(func(f *tv.Frame) error {
 			mainSs := styledstring.New(ansi.WcWidth, mainDoc)
-			f.RenderWidget(mainSs, f.Area) //nolint:errcheck
+			f.RenderComponent(mainSs, f.Area) //nolint:errcheck
 			boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
 			box := styledstring.New(ansi.WcWidth, dialogBoxStyle.Render(dialogUI))
-			f.RenderWidget(box, boxArea) //nolint:errcheck
+			f.RenderComponent(box, boxArea) //nolint:errcheck
 			return nil
 		})
 	}

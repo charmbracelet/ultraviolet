@@ -13,9 +13,9 @@ func New(method ansi.Method, str string) StyledString {
 	return StyledString{tv.NewStyledString(method, str)}
 }
 
-var _ tv.Widget = StyledString{}
+var _ tv.Component = StyledString{}
 
-// Display implements tv.Widget.
+// Display implements [tv.Component].
 func (s StyledString) Display(buf *tv.Buffer, area tv.Rectangle) error {
 	// Clear the area before drawing.
 	buf.FillArea(nil, area)

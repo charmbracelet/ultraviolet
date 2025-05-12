@@ -38,8 +38,8 @@ type Frame struct {
 	Area Rectangle
 }
 
-// RenderWidget renders the given widget on the frame.
-func (f *Frame) RenderWidget(w Widget, area Rectangle) error {
+// RenderComponent renders the given component on the frame.
+func (f *Frame) RenderComponent(w Component, area Rectangle) error {
 	if err := w.Display(f.Buffer, area); err != nil {
 		return err
 	}
