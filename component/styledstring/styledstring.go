@@ -24,12 +24,12 @@ func (s StyledString) Display(buf *tv.Buffer, area tv.Rectangle) error {
 	for y = area.Min.Y; y < area.Max.Y; y++ {
 		for x = area.Min.X; x < area.Max.X; {
 			cell := s.Buffer.CellAt(x-area.Min.X, y-area.Min.Y)
-			if cell == nil {
-				x++
-				continue
+			width := 1
+			if cell != nil {
+				width = cell.Width
 			}
 			buf.SetCell(x, y, cell)
-			x += cell.Width
+			x += width
 		}
 	}
 	return nil
