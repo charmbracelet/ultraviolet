@@ -1176,7 +1176,7 @@ func (s *tScreen) clearBottom(total int) (top int) {
 		}
 
 		if top < total {
-			s.move(0, top-1) // top is 1-based
+			s.move(0, max(0, top-1)) // top is 1-based
 			s.clearToBottom(blank)
 			if s.oldhash != nil && s.newhash != nil &&
 				row < len(s.oldhash) && row < len(s.newhash) {
@@ -1216,6 +1216,9 @@ func (s *tScreen) clearUpdate() {
 		s.clearScreen(blank)
 	} else {
 		nonEmpty = s.newbuf.Height()
+		// FIXME: Investigate the double [ansi.ClearScreenBelow] call.
+		// Commenting the line below out seems to work but it might cause other
+		// bugs.
 		s.clearBelow(blank, 0)
 	}
 	nonEmpty = s.clearBottom(nonEmpty)
@@ -1429,7 +1432,7 @@ func (s *tScreen) Resize(width, height int) bool {
 
 	if s.opts.AltScreen || width != oldw {
 		// We only clear the whole screen if the width changes. Adding/removing
-		// rows is handled by the tscreen.render] and tscreen.transformLine]
+		// rows is handled by the [tScreen.render] and [tScreen.transformLine]
 		// methods.
 		s.clear = true
 	}
