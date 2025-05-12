@@ -23,6 +23,5 @@ type InlineViewport int
 // ComputeArea calculates the area of the inline viewport based on the given
 // window size.
 func (v InlineViewport) ComputeArea(size Size) Rectangle {
-	line := max(0, size.Height-int(v))
-	return Rect(0, line, size.Width, size.Height-line)
+	return Rect(0, 0, size.Width, max(0, int(v)))
 }
