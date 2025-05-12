@@ -207,10 +207,9 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) (err error) {
 	t.mouseMode = mode
 	if runtime.GOOS != "windows" {
 		modes := []ansi.Mode{}
+		modes = append(modes, ansi.ButtonEventMouseMode)
 		if t.mouseMode&AllMotionMouseMode != 0 {
 			modes = append(modes, ansi.AnyEventMouseMode)
-		} else {
-			modes = append(modes, ansi.ButtonEventMouseMode)
 		}
 		modes = append(modes, ansi.SgrExtMouseMode)
 		if err := t.EnableMode(modes...); err != nil {
