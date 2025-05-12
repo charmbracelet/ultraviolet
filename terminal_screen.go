@@ -761,7 +761,7 @@ func (s *tScreen) emitRange(line Line, n int) (eoi bool) {
 				return true // cursor in the middle
 			}
 		} else if s.caps.Contains(capREP) && count > len(rep) &&
-			(cell0 == nil || (len(cell0.Comb) == 0 && cell0.Rune < 256)) {
+			(cell0 == nil || (len(cell0.Comb) == 0 && cell0.Rune >= ansi.US && cell0.Rune < ansi.DEL)) {
 			// We only support ASCII characters. Most terminals will handle
 			// non-ASCII characters correctly, but some might not, ahem xterm.
 			//
@@ -824,8 +824,9 @@ func (s *tScreen) putRange(oldLine, newLine Line, y, start, end int) (eoi bool) 
 
 		i := s.emitRange(newLine[start:], j-same-start)
 
-		// Always return 1 for the next tscreen.move] after a tscreen.putRange] if
-		// we found identical characters at end of interval.
+		// Always return 1 for the next [tScreen.move] after a
+		// [tScreen.putRange] if we found identical characters at end of
+		// interval.
 		if same == 0 {
 			return i
 		}
