@@ -30,7 +30,7 @@ func main() {
 	t.EnterAltScreen()
 	// Make sure we leave the alternate screen buffer
 	// when we are done with our program.
-	defer t.LeaveAltScreen()
+	defer t.ExitAltScreen()
 
 	// Create a new program
 	p := tv.NewProgram(t)

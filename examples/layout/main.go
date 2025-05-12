@@ -383,7 +383,7 @@ func main() {
 
 	// Use altscreen mode.
 	t.EnterAltScreen()
-	defer t.LeaveAltScreen()
+	defer t.ExitAltScreen()
 
 	// Enable mouse events.
 	modes := []ansi.Mode{
@@ -428,7 +428,7 @@ func main() {
 		case tv.WindowSizeEvent:
 			p.Resize(ev.Width, ev.Height)
 		case tv.MouseClickEvent:
-			dialogX, dialogY = ev.X, ev.Y
+			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
 		case tv.KeyPressEvent:
 			switch {
 			case ev.MatchStrings("ctrl+c", "q"):

@@ -27,8 +27,8 @@ func main() {
 	defer t.Restore() //nolint:errcheck
 
 	// Use altscreen buffer.
-	t.EnterAltScreen()       //nolint:errcheck
-	defer t.LeaveAltScreen() //nolint:errcheck
+	t.EnterAltScreen()      //nolint:errcheck
+	defer t.ExitAltScreen() //nolint:errcheck
 
 	// Enable mouse events.
 	t.EnableMouse()        //nolint:errcheck

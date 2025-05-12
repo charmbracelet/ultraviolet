@@ -266,10 +266,10 @@ func (t *Terminal) EnterAltScreen() error {
 	return t.scr.Flush()
 }
 
-// LeaveAltScreen exits the alternate screen buffer and returns to the normal
+// ExitAltScreen exits the alternate screen buffer and returns to the normal
 // screen buffer.
-func (t *Terminal) LeaveAltScreen() error {
-	t.scr.LeaveAltScreen()
+func (t *Terminal) ExitAltScreen() error {
+	t.scr.ExitAltScreen()
 	return t.scr.Flush()
 }
 
