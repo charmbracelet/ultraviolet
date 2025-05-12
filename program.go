@@ -118,9 +118,13 @@ func (p *Program[T]) Close() error {
 	return nil
 }
 
+// Renderer is a function that renders a frame on the screen. It takes a
+// [Frame] and returns an error if the rendering fails.
+type Renderer = func(f *Frame) error
+
 // Display displays the program on the screen via the given function. It errors
 // if the program is not started or if the function fails.
-func (p *Program[T]) Display(fn func(f *Frame) error) error {
+func (p *Program[T]) Display(fn Renderer) error {
 	if !p.started {
 		return fmt.Errorf("program not started")
 	}
