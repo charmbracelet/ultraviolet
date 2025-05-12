@@ -37,6 +37,17 @@ type Cell struct {
 	Rune rune
 }
 
+// SetString sets the string content of the cell.
+func (c *Cell) SetString(s string) {
+	for i, r := range s {
+		if i == 0 {
+			c.Rune = r
+			continue
+		}
+		c.Comb = append(c.Comb, r)
+	}
+}
+
 // AppendString appends a string to the cell.
 func (c *Cell) AppendString(s string) {
 	for i, r := range s {
