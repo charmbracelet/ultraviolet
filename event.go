@@ -256,6 +256,27 @@ func (e KittyEnhancementsEvent) Contains(enhancements int) bool {
 
 // PrimaryDeviceAttributesEvent is an event that represents the terminal
 // primary device attributes.
+//
+// Common attributes include:
+//   - 1	132 columns
+//   - 2	Printer port
+//   - 4	Sixel
+//   - 6	Selective erase
+//   - 7	Soft character set (DRCS)
+//   - 8	User-defined keys (UDKs)
+//   - 9	National replacement character sets (NRCS) (International terminal only)
+//   - 12	Yugoslavian (SCS)
+//   - 15	Technical character set
+//   - 18	Windowing capability
+//   - 21	Horizontal scrolling
+//   - 23	Greek
+//   - 24	Turkish
+//   - 42	ISO Latin-2 character set
+//   - 44	PCTerm
+//   - 45	Soft key map
+//   - 46	ASCII emulation
+//
+// See [ansi.PrimaryDeviceAttributes] for more details.
 type PrimaryDeviceAttributesEvent []int
 
 // ModeReportEvent is a message that represents a mode report event (DECRPM).
