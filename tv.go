@@ -61,6 +61,7 @@ func init() {
 			panic("failed to open debug file: " + err.Error())
 		}
 
+		logger.SetFlags(log.LstdFlags | log.Lshortfile)
 		logger.SetOutput(f)
 	}
 }
