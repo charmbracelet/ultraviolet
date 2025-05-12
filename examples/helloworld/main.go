@@ -58,6 +58,7 @@ func main() {
 
 		// Display the frame with the styled string
 		if err := p.Display(func(f *tv.Frame) error {
+			f.Buffer.Clear()
 			// We will use the StyledString component to simplify displaying
 			// text on the screen.
 			// Using [ansi.WcWidth] will ensure that the text is
