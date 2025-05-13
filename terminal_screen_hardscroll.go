@@ -8,14 +8,14 @@ import (
 
 // scrollOptimize optimizes the screen to transform the old buffer into the new
 // buffer.
-func (s *terminalWriter) scrollOptimize() {
-	height := s.newbuf.Height()
+func (s *terminalWriter) scrollOptimize(newbuf *Buffer) {
+	height := newbuf.Height()
 	if s.oldnum == nil || len(s.oldnum) < height {
 		s.oldnum = make([]int, height)
 	}
 
 	// Calculate the indices
-	s.updateHashmap()
+	s.updateHashmap(newbuf)
 	if len(s.hashtab) < height {
 		return
 	}
@@ -38,7 +38,7 @@ func (s *terminalWriter) scrollOptimize() {
 		}
 		end := i - 1 + shift
 
-		if !s.scrolln(shift, start, end, height-1) {
+		if !s.scrolln(newbuf, shift, start, end, height-1) {
 			continue
 		}
 	}
@@ -61,14 +61,14 @@ func (s *terminalWriter) scrollOptimize() {
 		}
 
 		start := i + 1 - (-shift)
-		if !s.scrolln(shift, start, end, height-1) {
+		if !s.scrolln(newbuf, shift, start, end, height-1) {
 			continue
 		}
 	}
 }
 
 // scrolln scrolls the screen up by n lines.
-func (s *terminalWriter) scrolln(n, top, bot, maxY int) (v bool) { //nolint:unparam
+func (s *terminalWriter) scrolln(newbuf *Buffer, n, top, bot, maxY int) (v bool) { //nolint:unparam
 	const (
 		nonDestScrollRegion = false
 		memoryBelow         = false
@@ -77,56 +77,56 @@ func (s *terminalWriter) scrolln(n, top, bot, maxY int) (v bool) { //nolint:unpa
 	blank := s.clearBlank()
 	if n > 0 {
 		// Scroll up (forward)
-		v = s.scrollUp(n, top, bot, 0, maxY, blank)
+		v = s.scrollUp(newbuf, n, top, bot, 0, maxY, blank)
 		if !v {
 			s.buf.WriteString(ansi.SetTopBottomMargins(top+1, bot+1))
 
 			// XXX: How should we handle this in inline mode when not using alternate screen?
 			s.cur.X, s.cur.Y = -1, -1
-			v = s.scrollUp(n, top, bot, top, bot, blank)
+			v = s.scrollUp(newbuf, n, top, bot, top, bot, blank)
 			s.buf.WriteString(ansi.SetTopBottomMargins(1, maxY+1))
 			s.cur.X, s.cur.Y = -1, -1
 		}
 
 		if !v {
-			v = s.scrollIdl(n, top, bot-n+1, blank)
+			v = s.scrollIdl(newbuf, n, top, bot-n+1, blank)
 		}
 
 		// Clear newly shifted-in lines.
 		if v &&
 			(nonDestScrollRegion || (memoryBelow && bot == maxY)) {
 			if bot == maxY {
-				s.move(0, bot-n+1)
+				s.move(newbuf, 0, bot-n+1)
 				s.clearToBottom(nil)
 			} else {
 				for i := 0; i < n; i++ {
-					s.move(0, bot-i)
-					s.clearToEnd(nil, false)
+					s.move(newbuf, 0, bot-i)
+					s.clearToEnd(newbuf, nil, false)
 				}
 			}
 		}
 	} else if n < 0 {
 		// Scroll down (backward)
-		v = s.scrollDown(-n, top, bot, 0, maxY, blank)
+		v = s.scrollDown(newbuf, -n, top, bot, 0, maxY, blank)
 		if !v {
 			s.buf.WriteString(ansi.SetTopBottomMargins(top+1, bot+1))
 
 			// XXX: How should we handle this in inline mode when not using alternate screen?
 			s.cur.X, s.cur.Y = -1, -1
-			v = s.scrollDown(-n, top, bot, top, bot, blank)
+			v = s.scrollDown(newbuf, -n, top, bot, top, bot, blank)
 			s.buf.WriteString(ansi.SetTopBottomMargins(1, maxY+1))
 			s.cur.X, s.cur.Y = -1, -1
 
 			if !v {
-				v = s.scrollIdl(-n, bot+n+1, top, blank)
+				v = s.scrollIdl(newbuf, -n, bot+n+1, top, blank)
 			}
 
 			// Clear newly shifted-in lines.
 			if v &&
 				(nonDestScrollRegion || (memoryBelow && top == 0)) {
 				for i := 0; i < -n; i++ {
-					s.move(0, top+i)
-					s.clearToEnd(nil, false)
+					s.move(newbuf, 0, top+i)
+					s.clearToEnd(newbuf, nil, false)
 				}
 			}
 		}
@@ -192,21 +192,21 @@ func (s *terminalWriter) touchLine(width, height, y, n int, changed bool) {
 }
 
 // scrollUp scrolls the screen up by n lines.
-func (s *terminalWriter) scrollUp(n, top, bot, minY, maxY int, blank *Cell) bool {
+func (s *terminalWriter) scrollUp(newbuf *Buffer, n, top, bot, minY, maxY int, blank *Cell) bool {
 	if n == 1 && top == minY && bot == maxY {
-		s.move(0, bot)
+		s.move(newbuf, 0, bot)
 		s.updatePen(blank)
 		s.buf.WriteByte('\n')
 	} else if n == 1 && bot == maxY {
-		s.move(0, top)
+		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.DeleteLine(1))
 	} else if top == minY && bot == maxY {
 		supportsSU := s.caps.Contains(capSU)
 		if supportsSU {
-			s.move(0, bot)
+			s.move(newbuf, 0, bot)
 		} else {
-			s.move(0, top)
+			s.move(newbuf, 0, top)
 		}
 		s.updatePen(blank)
 		if supportsSU {
@@ -215,7 +215,7 @@ func (s *terminalWriter) scrollUp(n, top, bot, minY, maxY int, blank *Cell) bool
 			s.buf.WriteString(strings.Repeat("\n", n))
 		}
 	} else if bot == maxY {
-		s.move(0, top)
+		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.DeleteLine(n))
 	} else {
@@ -225,17 +225,17 @@ func (s *terminalWriter) scrollUp(n, top, bot, minY, maxY int, blank *Cell) bool
 }
 
 // scrollDown scrolls the screen down by n lines.
-func (s *terminalWriter) scrollDown(n, top, bot, minY, maxY int, blank *Cell) bool {
+func (s *terminalWriter) scrollDown(newbuf *Buffer, n, top, bot, minY, maxY int, blank *Cell) bool {
 	if n == 1 && top == minY && bot == maxY {
-		s.move(0, top)
+		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.ReverseIndex)
 	} else if n == 1 && bot == maxY {
-		s.move(0, top)
+		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.InsertLine(1))
 	} else if top == minY && bot == maxY {
-		s.move(0, top)
+		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		if s.caps.Contains(capSD) {
 			s.buf.WriteString(ansi.ScrollDown(n))
@@ -243,7 +243,7 @@ func (s *terminalWriter) scrollDown(n, top, bot, minY, maxY int, blank *Cell) bo
 			s.buf.WriteString(strings.Repeat(ansi.ReverseIndex, n))
 		}
 	} else if bot == maxY {
-		s.move(0, top)
+		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.InsertLine(n))
 	} else {
@@ -254,18 +254,18 @@ func (s *terminalWriter) scrollDown(n, top, bot, minY, maxY int, blank *Cell) bo
 
 // scrollIdl scrolls the screen n lines by using [ansi.DL] at del and using
 // [ansi.IL] at ins.
-func (s *terminalWriter) scrollIdl(n, del, ins int, blank *Cell) bool {
+func (s *terminalWriter) scrollIdl(newbuf *Buffer, n, del, ins int, blank *Cell) bool {
 	if n < 0 {
 		return false
 	}
 
 	// Delete lines
-	s.move(0, del)
+	s.move(newbuf, 0, del)
 	s.updatePen(blank)
 	s.buf.WriteString(ansi.DeleteLine(n))
 
 	// Insert lines
-	s.move(0, ins)
+	s.move(newbuf, 0, ins)
 	s.updatePen(blank)
 	s.buf.WriteString(ansi.InsertLine(n))
 

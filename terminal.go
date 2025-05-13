@@ -39,6 +39,7 @@ type Terminal struct {
 	// Terminal type, screen and buffer.
 	termtype     string          // The $TERM type.
 	environ      Environ         // The environment variables.
+	buf          *Buffer         // Reference to the last buffer used.
 	scr          *terminalWriter // The actual screen to be drawn to.
 	size         Size            // The last known size of the terminal.
 	profile      colorprofile.Profile
@@ -98,10 +99,10 @@ var _ Screen = (*Terminal)(nil)
 
 // CellAt returns the cell at the given x, y position in the terminal buffer.
 func (t *Terminal) CellAt(x int, y int) *Cell {
-	if t.scr == nil {
+	if t.buf == nil {
 		return nil
 	}
-	return t.scr.CellAt(x, y)
+	return t.buf.CellAt(x, y)
 }
 
 // ColorModel returns the color model of the terminal screen.
@@ -124,8 +125,8 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 
 var _ Displayer = (*Terminal)(nil)
 
-func (t *Terminal) newScreen(buf *Buffer) *terminalWriter {
-	s := newTScreen(t.out, buf)
+func (t *Terminal) newScreen() *terminalWriter {
+	s := newTScreen(t.out)
 	s.SetTermType(t.termtype)
 	s.SetColorProfile(t.profile)
 	s.UseHardTabs(t.useTabs)
@@ -148,9 +149,10 @@ func (t *Terminal) newScreen(buf *Buffer) *terminalWriter {
 func (t *Terminal) Display(f *Frame) error {
 	if t.scr == nil {
 		// Initialize the buffer on first render.
-		t.scr = t.newScreen(f.Buffer)
+		t.scr = t.newScreen()
 	}
 
+	t.buf = f.Buffer
 	switch f.Viewport.(type) {
 	case FullViewport:
 		t.scr.SetRelativeCursor(false)
@@ -169,10 +171,10 @@ func (t *Terminal) Display(f *Frame) error {
 
 	// XXX: We want to render the changes before moving the cursor to ensure
 	// the cursor is at the position specified in the frame.
-	t.scr.Render()
+	t.scr.Render(f.Buffer)
 
 	if f.Position != nil && f.Position.X >= 0 && f.Position.Y >= 0 {
-		t.scr.MoveTo(f.Position.X, f.Position.Y)
+		t.scr.MoveTo(f.Buffer, f.Position.X, f.Position.Y)
 	}
 
 	return nil
@@ -407,9 +409,9 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 	}()
 
 	if t.scr != nil {
-		if err := t.scr.Close(); err != nil {
-			return fmt.Errorf("error closing terminal screen: %w", err)
-		}
+		// if err := t.scr.Close(); err != nil {
+		// 	return fmt.Errorf("error closing terminal screen: %w", err)
+		// }
 	}
 
 	// Cancel the input reader.
@@ -517,7 +519,7 @@ func (t *Terminal) PrependStyledString(method ansi.Method, str string) error {
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
 func (t *Terminal) PrependLines(lines ...Line) error {
-	if t.scr == nil || len(lines) == 0 {
+	if t.buf == nil || t.scr == nil || len(lines) == 0 {
 		return nil
 	}
 
@@ -525,7 +527,7 @@ func (t *Terminal) PrependLines(lines ...Line) error {
 	// We can't use [ansi.SU] because we want the cursor to move down until
 	// it reaches the bottom of the screen.
 	_, y := t.scr.Position()
-	t.scr.MoveTo(0, t.scr.Height()-1)
+	t.scr.MoveTo(t.buf, 0, t.buf.Height()-1)
 	t.scr.WriteString(strings.Repeat("\n", len(lines))) //nolint:errcheck
 	t.scr.SetPosition(0, y+len(lines))
 
@@ -534,7 +536,7 @@ func (t *Terminal) PrependLines(lines ...Line) error {
 	// instead of [tScreen.move] because we don't want to perform any checks
 	// on the cursor position.
 	t.scr.mu.Lock()
-	t.scr.moveCursor(0, 0, false)
+	t.scr.moveCursor(t.buf, 0, 0, false)
 	t.scr.mu.Unlock()
 	t.scr.WriteString(ansi.InsertLine(len(lines))) //nolint:errcheck
 	for _, line := range lines {

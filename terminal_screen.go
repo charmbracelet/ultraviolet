@@ -1185,7 +1185,7 @@ func (s *terminalWriter) flush() (err error) {
 }
 
 // Render renders changes of the screen to the internal buffer. Call
-// tscreen.Flush] to flush pending changes to the screen.
+// [terminalWriter.Flush] to flush pending changes to the screen.
 func (s *terminalWriter) Render(newbuf *Buffer) {
 	s.mu.Lock()
 	s.populateDiff(newbuf)
@@ -1254,7 +1254,7 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].
-			s.scrollOptimize()
+			s.scrollOptimize(newbuf)
 		}
 
 		var changedLines int
@@ -1311,49 +1311,49 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 }
 
 // Close writes the final screen update and resets the screen.
-func (s *terminalWriter) Close() (err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.render()
-	s.updatePen(nil)
-	// Go to the bottom of the screen
-	s.move(0, newbuf.Height()-1)
-
-	if s.altScreenMode {
-		s.buf.WriteString(ansi.ResetAltScreenSaveCursorMode)
-		s.altScreenMode = false
-	}
-
-	if s.cursorHidden {
-		s.buf.WriteString(ansi.ShowCursor)
-		s.cursorHidden = false
-	}
-
-	// Write the buffer
-	err = s.flush()
-	if err != nil {
-		return
-	}
-
-	s.reset()
-	return
-}
+// func (s *terminalWriter) Close() (err error) {
+// 	s.mu.Lock()
+// 	defer s.mu.Unlock()
+//
+// 	s.render()
+// 	s.updatePen(nil)
+// 	// Go to the bottom of the screen
+// 	s.move(0, newbuf.Height()-1)
+//
+// 	if s.altScreenMode {
+// 		s.buf.WriteString(ansi.ResetAltScreenSaveCursorMode)
+// 		s.altScreenMode = false
+// 	}
+//
+// 	if s.cursorHidden {
+// 		s.buf.WriteString(ansi.ShowCursor)
+// 		s.cursorHidden = false
+// 	}
+//
+// 	// Write the buffer
+// 	err = s.flush()
+// 	if err != nil {
+// 		return
+// 	}
+//
+// 	s.reset()
+// 	return
+// }
 
 // reset resets the screen to its initial state.
 func (s *terminalWriter) reset() {
 	s.scrollHeight = 0
 	s.cursorHidden = false
 	s.altScreenMode = false
-	s.touch = make(map[int]lineData, newbuf.Height())
+	s.touch = make(map[int]lineData, s.curbuf.Height())
 	if s.curbuf != nil {
 		s.curbuf.Clear()
 	}
-	if newbuf != nil {
-		newbuf.Clear()
-	}
+	// if newbuf != nil {
+	// 	newbuf.Clear()
+	// }
 	s.buf.Reset()
-	s.tabs = DefaultTabStops(newbuf.Width())
+	s.tabs = DefaultTabStops(s.curbuf.Width())
 	s.oldhash, s.newhash = nil, nil
 
 	// We always disable HardTabs when termtype is "linux".
@@ -1398,9 +1398,9 @@ func (s *terminalWriter) Resize(newbuf *Buffer, width, height int) bool {
 }
 
 // MoveTo moves the cursor to the given position.
-func (s *terminalWriter) MoveTo(x, y int) {
+func (s *terminalWriter) MoveTo(newbuf *Buffer, x, y int) {
 	s.mu.Lock()
-	s.move(x, y)
+	s.move(newbuf, x, y)
 	s.mu.Unlock()
 }
 
