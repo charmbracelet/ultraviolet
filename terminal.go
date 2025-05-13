@@ -491,6 +491,14 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 	return t.evch
 }
 
+// Err returns the error that occurred while receiving events from the
+// terminal.
+// This is typically used to check for errors that occurred while
+// receiving events.
+func (t *Terminal) Err() error {
+	return t.err
+}
+
 // PrependStyledString is a helper function to prepend a styled string to the
 // terminal screen. It is a convenience function that creates a new
 // [StyledString] and calls [PrependLines] with the buffer lines of the
