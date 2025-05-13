@@ -34,30 +34,34 @@ func (t *Terminal) makeRaw() error {
 }
 
 func (t *Terminal) getSize() (w, h int, err error) {
-	var f term.File
-	if t.inTty != nil {
-		f = t.inTty
+	// Try both inTty and outTty to get the size.
+	err = ErrNotTerminal
+	for _, f := range []term.File{t.inTty, t.outTty} {
+		if f == nil {
+			continue
+		}
+		w, h, err = term.GetSize(f.Fd())
+		if err == nil {
+			return
+		}
 	}
-	if f == nil && t.outTty != nil {
-		f = t.outTty
-	}
-	w, h, err = term.GetSize(f.Fd())
-	if err != nil {
-		return 0, 0, err
-	}
-	return w, h, nil
+	return
 }
 
 func (t *Terminal) optimizeMovements() {
-	var f term.File
-	if t.inTty != nil {
-		f = t.inTty
+	// Try both inTty and outTty to get the size.
+	var state *term.State
+	var err error
+	for _, f := range []term.File{t.inTty, t.outTty} {
+		if f == nil {
+			continue
+		}
+		state, err = term.GetState(f.Fd())
+		if err == nil {
+			break
+		}
 	}
-	if f == nil && t.outTty != nil {
-		f = t.outTty
-	}
-	state, err := term.GetState(f.Fd())
-	if err != nil {
+	if state == nil {
 		return
 	}
 	t.useTabs = state.Oflag&unix.TABDLY == unix.TAB0
