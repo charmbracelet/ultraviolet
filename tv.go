@@ -32,10 +32,17 @@ type Frame struct {
 	Buffer *Buffer
 	// The cursor position on the frame. When nil, the cursor is hidden.
 	Position *Position
-	// The viewport of the program.
+	// The viewport of the program. Use [Frame.ComputeArea] to compute the area
+	// of the frame based on the size of the screen.
 	Viewport Viewport
-	// The viewport area of the frame.
+	// The whole area of the screen.
 	Area Rectangle
+}
+
+// ComputeArea is a helper function that computes the area of the frame based
+// on the viewport.
+func (f *Frame) ComputeArea() Rectangle {
+	return f.Viewport.ComputeArea(Size{Width: f.Area.Dx(), Height: f.Area.Dy()})
 }
 
 // RenderComponent renders the given component on the frame.
@@ -49,6 +56,16 @@ func (f *Frame) RenderComponent(w Component, area Rectangle) error {
 // SetPosition sets the cursor position on the frame.
 func (f *Frame) SetPosition(x, y int) {
 	f.Position = &Position{X: x, Y: y}
+}
+
+// SetCell sets the cell at the given position on the frame.
+func (f *Frame) SetCell(x, y int, c *Cell) {
+	f.Buffer.SetCell(x, y, c)
+}
+
+// CellAt returns an existing cell at the given position on the frame.
+func (f *Frame) CellAt(x, y int) *Cell {
+	return f.Buffer.CellAt(x, y)
 }
 
 var logger = log.New(io.Discard, "tv", log.LstdFlags|log.Lshortfile)

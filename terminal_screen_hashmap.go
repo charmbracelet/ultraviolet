@@ -29,15 +29,15 @@ type hashmap struct {
 const newIndex = -1
 
 // updateHashmap updates the hashmap with the new hash value.
-func (s *tScreen) updateHashmap() {
-	height := s.newbuf.Height()
+func (s *terminalWriter) updateHashmap(newbuf *Buffer) {
+	height := newbuf.Height()
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
-			_, ok := s.touch[i]
+			_, ok := s.touch.Load(i)
 			if ok {
 				s.oldhash[i] = hash(s.curbuf.Line(i))
-				s.newhash[i] = hash(s.newbuf.Line(i))
+				s.newhash[i] = hash(newbuf.Line(i))
 			}
 		}
 	} else {
@@ -50,7 +50,7 @@ func (s *tScreen) updateHashmap() {
 		}
 		for i := 0; i < height; i++ {
 			s.oldhash[i] = hash(s.curbuf.Line(i))
-			s.newhash[i] = hash(s.newbuf.Line(i))
+			s.newhash[i] = hash(newbuf.Line(i))
 		}
 	}
 
@@ -98,7 +98,7 @@ func (s *tScreen) updateHashmap() {
 		}
 	}
 
-	s.growHunks()
+	s.growHunks(newbuf)
 
 	// Eliminate bad or impossible shifts. This includes removing those hunks
 	// which could not grow because of conflicts, as well those which are to be
@@ -127,11 +127,11 @@ func (s *tScreen) updateHashmap() {
 	}
 
 	// After clearing invalid hunks, try grow the rest.
-	s.growHunks()
+	s.growHunks(newbuf)
 }
 
 // scrollOldhash
-func (s *tScreen) scrollOldhash(n, top, bot int) {
+func (s *terminalWriter) scrollOldhash(n, top, bot int) {
 	if len(s.oldhash) == 0 {
 		return
 	}
@@ -154,7 +154,7 @@ func (s *tScreen) scrollOldhash(n, top, bot int) {
 	}
 }
 
-func (s *tScreen) growHunks() {
+func (s *terminalWriter) growHunks(newbuf *Buffer) {
 	var (
 		backLimit    int // limits for cells to fill
 		backRefLimit int // limit for references
@@ -162,7 +162,7 @@ func (s *tScreen) growHunks() {
 		nextHunk     int
 	)
 
-	height := s.newbuf.Height()
+	height := newbuf.Height()
 	for i < height && s.oldnum[i] == newIndex {
 		i++
 	}
@@ -204,7 +204,7 @@ func (s *tScreen) growHunks() {
 		}
 		for i >= backLimit {
 			if s.newhash[i] == s.oldhash[i+shift] ||
-				s.costEffective(i+shift, i, shift < 0) {
+				s.costEffective(newbuf, i+shift, i, shift < 0) {
 				s.oldnum[i] = i + shift
 			} else {
 				break
@@ -219,7 +219,7 @@ func (s *tScreen) growHunks() {
 		}
 		for i < forwardLimit {
 			if s.newhash[i] == s.oldhash[i+shift] ||
-				s.costEffective(i+shift, i, shift > 0) {
+				s.costEffective(newbuf, i+shift, i, shift > 0) {
 				s.oldnum[i] = i + shift
 			} else {
 				break
@@ -237,7 +237,7 @@ func (s *tScreen) growHunks() {
 
 // costEffective returns true if the cost of moving line 'from' to line 'to' seems to be
 // cost effective. 'blank' indicates whether the line 'to' would become blank.
-func (s *tScreen) costEffective(from, to int, blank bool) bool {
+func (s *terminalWriter) costEffective(newbuf *Buffer, from, to int, blank bool) bool {
 	if from == to {
 		return false
 	}
@@ -254,35 +254,35 @@ func (s *tScreen) costEffective(from, to int, blank bool) bool {
 	var costBeforeMove int
 	if blank {
 		// Cost of updating blank line at destination.
-		costBeforeMove = s.updateCostBlank(s.newbuf.Line(to))
+		costBeforeMove = s.updateCostBlank(newbuf, newbuf.Line(to))
 	} else {
 		// Cost of updating exiting line at destination.
-		costBeforeMove = s.updateCost(s.curbuf.Line(to), s.newbuf.Line(to))
+		costBeforeMove = s.updateCost(newbuf, s.curbuf.Line(to), newbuf.Line(to))
 	}
 
 	// Add cost of updating source line
-	costBeforeMove += s.updateCost(s.curbuf.Line(newFrom), s.newbuf.Line(from))
+	costBeforeMove += s.updateCost(newbuf, s.curbuf.Line(newFrom), newbuf.Line(from))
 
 	// Calculate costs after moving.
 	var costAfterMove int
 	if newFrom == from {
 		// Source becomes blank after move
-		costAfterMove = s.updateCostBlank(s.newbuf.Line(from))
+		costAfterMove = s.updateCostBlank(newbuf, newbuf.Line(from))
 	} else {
 		// Source gets updated from another line
-		costAfterMove = s.updateCost(s.curbuf.Line(newFrom), s.newbuf.Line(from))
+		costAfterMove = s.updateCost(newbuf, s.curbuf.Line(newFrom), newbuf.Line(from))
 	}
 
 	// Add cost of moving source line to destination
-	costAfterMove += s.updateCost(s.curbuf.Line(from), s.newbuf.Line(to))
+	costAfterMove += s.updateCost(newbuf, s.curbuf.Line(from), newbuf.Line(to))
 
 	// Return true if moving is cost effective (costs less or equal)
 	return costBeforeMove >= costAfterMove
 }
 
-func (s *tScreen) updateCost(from, to Line) (cost int) {
+func (s *terminalWriter) updateCost(newbuf *Buffer, from, to Line) (cost int) {
 	var fidx, tidx int
-	for i := s.newbuf.Width() - 1; i > 0; i, fidx, tidx = i-1, fidx+1, tidx+1 {
+	for i := newbuf.Width() - 1; i > 0; i, fidx, tidx = i-1, fidx+1, tidx+1 {
 		if !cellEqual(from.At(fidx), to.At(tidx)) {
 			cost++
 		}
@@ -290,9 +290,9 @@ func (s *tScreen) updateCost(from, to Line) (cost int) {
 	return
 }
 
-func (s *tScreen) updateCostBlank(to Line) (cost int) {
+func (s *terminalWriter) updateCostBlank(newbuf *Buffer, to Line) (cost int) {
 	var tidx int
-	for i := s.newbuf.Width() - 1; i > 0; i, tidx = i-1, tidx+1 {
+	for i := newbuf.Width() - 1; i > 0; i, tidx = i-1, tidx+1 {
 		if !cellEqual(nil, to.At(tidx)) {
 			cost++
 		}
