@@ -1479,3 +1479,10 @@ func (s *tScreen) WriteString(str string) (int, error) {
 	defer s.mu.Unlock()
 	return s.buf.WriteString(str)
 }
+
+// Write writes the given bytes to the underlying buffer.
+func (s *tScreen) Write(b []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(b)
+}
