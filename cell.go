@@ -37,6 +37,38 @@ type Cell struct {
 	Rune rune
 }
 
+// NewCell creates a new cell with the given width, rune, and combining runes.
+func NewCell(width int, r rune, comb ...rune) *Cell {
+	return &Cell{
+		Width: width,
+		Rune:  r,
+		Comb:  comb,
+	}
+}
+
+// NewCellString creates a new cell from the given grapheme. The width of the
+// cell is determined using the given width method.
+func NewCellString(method ansi.Method, grapheme string) *Cell {
+	if len(grapheme) == 0 {
+		return &Cell{}
+	}
+	width := method.StringWidth(grapheme)
+	if width == 0 {
+		return &Cell{}
+	}
+	c := &Cell{
+		Width: width,
+	}
+	for i, r := range grapheme {
+		if i == 0 {
+			c.Rune = r
+		} else {
+			c.Comb = append(c.Comb, r)
+		}
+	}
+	return c
+}
+
 // SetString sets the string content of the cell.
 func (c *Cell) SetString(s string) {
 	for i, r := range s {
