@@ -34,7 +34,7 @@ func (s *terminalWriter) updateHashmap(newbuf *Buffer) {
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
-			_, ok := s.touch[i]
+			_, ok := s.touch.Load(i)
 			if ok {
 				s.oldhash[i] = hash(s.curbuf.Line(i))
 				s.newhash[i] = hash(newbuf.Line(i))

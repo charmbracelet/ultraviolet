@@ -184,9 +184,9 @@ func (s *terminalWriter) touchLine(width, height, y, n int, changed bool) {
 
 	for i := y; i < y+n && i < height; i++ {
 		if changed {
-			s.touch[i] = lineData{firstCell: 0, lastCell: width - 1}
+			s.touch.Store(i, lineData{firstCell: 0, lastCell: width - 1})
 		} else {
-			delete(s.touch, i)
+			s.touch.Delete(i)
 		}
 	}
 }

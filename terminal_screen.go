@@ -362,11 +362,12 @@ type lineData struct {
 // cursor during rendering before flushing the buffer when the cursor is
 // set to be shown.
 type terminalWriter struct {
-	w                io.Writer
-	buf              *bytes.Buffer // buffer for writing to the screen
-	curbuf           *Buffer       // the current buffer
-	tabs             *TabStops
-	touch            map[int]lineData
+	w      io.Writer
+	buf    *bytes.Buffer // buffer for writing to the screen
+	curbuf *Buffer       // the current buffer
+	tabs   *TabStops
+	// touch            map[int]lineData
+	touch            sync.Map
 	oldhash, newhash []uint64  // the old and new hash values for each line
 	hashtab          []hashmap // the hashmap table
 	oldnum           []int     // old indices from previous hash
@@ -443,14 +444,15 @@ func (s *terminalWriter) populateDiff(newbuf *Buffer) {
 			oldc := s.curbuf.CellAt(x, y)
 			newc := newbuf.CellAt(x, y)
 			if !cellEqual(oldc, newc) {
-				chg, ok := s.touch[y]
+				v, ok := s.touch.Load(y)
+				chg := v.(lineData)
 				if !ok {
 					chg = lineData{firstCell: x, lastCell: x + newc.Width}
 				} else {
 					chg.firstCell = min(chg.firstCell, x)
 					chg.lastCell = max(chg.lastCell, x+newc.Width)
 				}
-				s.touch[y] = chg
+				s.touch.Store(y, chg)
 			}
 		}
 	}
@@ -1193,12 +1195,20 @@ func (s *terminalWriter) Render(newbuf *Buffer) {
 	s.mu.Unlock()
 }
 
+func syncMapLen(m *sync.Map) (n int) {
+	m.Range(func(_, _ any) bool {
+		n++
+		return true
+	})
+	return
+}
+
 func (s *terminalWriter) render(newbuf *Buffer) {
 	// Do we need to render anything?
 	if s.opts.AltScreen == s.altScreenMode &&
 		!s.opts.ShowCursor == s.cursorHidden &&
 		!s.clear &&
-		len(s.touch) == 0 {
+		syncMapLen(&s.touch) == 0 {
 		return
 	}
 
@@ -1249,7 +1259,7 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 	if s.clear {
 		s.clearUpdate(newbuf)
 		s.clear = false
-	} else if len(s.touch) > 0 {
+	} else if syncMapLen(&s.touch) > 0 {
 		if s.opts.AltScreen {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
@@ -1268,7 +1278,7 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
-			_, ok := s.touch[i]
+			_, ok := s.touch.Load(i)
 			if ok {
 				s.transformLine(newbuf, i)
 				changedLines++
@@ -1283,7 +1293,7 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 	}
 
 	// Sync windows and screen
-	s.touch = make(map[int]lineData, newbuf.Height())
+	s.touch = sync.Map{}
 
 	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
 		// Resize the old buffer to match the new buffer.
@@ -1345,7 +1355,7 @@ func (s *terminalWriter) reset() {
 	s.scrollHeight = 0
 	s.cursorHidden = false
 	s.altScreenMode = false
-	s.touch = make(map[int]lineData, s.curbuf.Height())
+	s.touch = sync.Map{}
 	if s.curbuf != nil {
 		s.curbuf.Clear()
 	}
