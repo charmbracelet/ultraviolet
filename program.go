@@ -15,28 +15,29 @@ type Programable interface {
 
 // Program is a generic type that represents a program with a [Screen].
 type Program[T Programable] struct {
-	scr      T
-	buf      Buffer   // The new buffer to be drawn to the screen.
-	size     Size     // The last known size of the terminal.
-	viewport Viewport // The viewport area to operate on.
-	started  bool
+	scr     T
+	buf     Buffer   // The new buffer to be drawn to the screen.
+	size    Size     // The last known size of the terminal.
+	vp      Viewport // The viewport area to operate on.
+	started bool
 }
 
 // NewProgram creates a new [Programable] with the given screen.
 func NewProgram[T Programable](scr T) *Program[T] {
 	return &Program[T]{
-		scr:      scr,
-		viewport: FullViewport{},
+		scr: scr,
+		vp:  FullViewport{},
 	}
 }
 
 // SetViewport sets the viewport area for the program. It defaults to
 // [FullViewport] which covers the entire program screen.
-func (p *Program[T]) SetViewport(v Viewport) {
+func (p *Program[T]) SetViewport(v Viewport) error {
 	if v == nil {
 		v = FullViewport{}
 	}
-	p.viewport = v
+	p.vp = v
+	return p.Resize(p.size.Width, p.size.Height)
 }
 
 // Resize resizes the program to the given width and height. It returns an
@@ -46,17 +47,12 @@ func (p *Program[T]) Resize(width, height int) error {
 		return fmt.Errorf("invalid size: %dx%d", width, height)
 	}
 
-	bufw, bufh := width, height
 	p.size = Size{Width: width, Height: height}
-	switch vp := p.viewport.(type) {
-	case FullViewport:
-	case InlineViewport:
-		bufh = int(vp)
-	}
-
-	p.buf.Resize(bufw, bufh)
+	area := p.vp.ComputeArea(p.size)
+	areaWidth, areaHeight := area.Dx(), area.Dy()
+	p.buf.Resize(areaWidth, areaHeight)
 	if re, ok := any(p.scr).(Resizer); ok {
-		if err := re.Resize(bufw, bufh); err != nil {
+		if err := re.Resize(width, height); err != nil {
 			return fmt.Errorf("error resizing screen: %w", err)
 		}
 	}
@@ -131,8 +127,8 @@ func (p *Program[T]) Display(fn Renderer) error {
 
 	f := &Frame{
 		Buffer:   &p.buf,
-		Viewport: p.viewport,
-		Area:     p.viewport.ComputeArea(p.size),
+		Viewport: p.vp,
+		Area:     p.size.Bounds(),
 	}
 	if err := fn(f); err != nil {
 		return err

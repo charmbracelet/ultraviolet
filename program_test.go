@@ -121,7 +121,7 @@ func TestNewProgram(t *testing.T) {
 		t.Error("Program screen not set correctly")
 	}
 
-	if _, ok := program.viewport.(FullViewport); !ok {
+	if _, ok := program.vp.(FullViewport); !ok {
 		t.Error("Program viewport not set to FullViewport")
 	}
 }
@@ -132,14 +132,14 @@ func TestSetViewport(t *testing.T) {
 
 	// Test with nil viewport (should default to FullViewport)
 	program.SetViewport(nil)
-	if _, ok := program.viewport.(FullViewport); !ok {
+	if _, ok := program.vp.(FullViewport); !ok {
 		t.Error("Program viewport not set to FullViewport when nil provided")
 	}
 
 	// Test with InlineViewport
 	var inlineViewport InlineViewport = 10
 	program.SetViewport(inlineViewport)
-	if vp, ok := program.viewport.(InlineViewport); !ok || vp != 10 {
+	if vp, ok := program.vp.(InlineViewport); !ok || vp != 10 {
 		t.Error("Program viewport not set to InlineViewport correctly")
 	}
 }
@@ -471,7 +471,7 @@ func TestProgramDisplay(t *testing.T) {
 			if f.Buffer != &program.buf {
 				t.Error("Frame buffer not set correctly")
 			}
-			if f.Viewport != program.viewport {
+			if f.Viewport != program.vp {
 				t.Error("Frame viewport not set correctly")
 			}
 			return nil
