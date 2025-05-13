@@ -175,6 +175,16 @@ func (t *Terminal) Display(f *Frame) error {
 		t.scr.MoveTo(f.Position.X, f.Position.Y)
 	}
 
+	return nil
+}
+
+// Flush flushes the terminal screen. This is typically used to flush the
+// underlying screen buffer to the terminal. It is a no-op if the screen is
+// nil.
+func (t *Terminal) Flush() error {
+	if t.scr == nil {
+		return nil
+	}
 	return t.scr.Flush()
 }
 
@@ -184,7 +194,7 @@ func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
 	if len(modes) == 0 {
 		return nil
 	}
-	_, err := io.WriteString(t.out, ansi.SetMode(modes...))
+	_, err := t.WriteString(ansi.SetMode(modes...))
 	return err
 }
 
@@ -535,5 +545,8 @@ func (t *Terminal) Write(p []byte) (n int, err error) {
 // WriteString writes the given string to the output stream. It implements the
 // [io.StringWriter] interface.
 func (t *Terminal) WriteString(s string) (n int, err error) {
-	return io.WriteString(t.out, s)
+	if t.scr == nil {
+		return 0, nil
+	}
+	return t.scr.WriteString(s)
 }

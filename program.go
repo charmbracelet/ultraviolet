@@ -138,7 +138,17 @@ func (p *Program[T]) Display(fn Renderer) error {
 		return err
 	}
 
-	return p.scr.Display(f)
+	if err := p.scr.Display(f); err != nil {
+		return fmt.Errorf("error displaying frame: %w", err)
+	}
+
+	if f, ok := any(p.scr).(Flusher); ok {
+		if err := f.Flush(); err != nil {
+			return fmt.Errorf("error flushing screen: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // Starter represents types that can be started.
@@ -154,4 +164,9 @@ type Shutdowner interface {
 // Resizer represents types that can be resized.
 type Resizer interface {
 	Resize(width, height int) error
+}
+
+// Flusher represents types that can be flushed.
+type Flusher interface {
+	Flush() error
 }
