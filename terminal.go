@@ -34,6 +34,7 @@ type Terminal struct {
 	inTtyState  *term.State
 	outTty      term.File
 	outTtyState *term.State
+	winchTty    term.File // The terminal to receive window size changes from.
 
 	// Terminal type, screen and buffer.
 	termtype     string   // The $TERM type.
@@ -352,6 +353,15 @@ func (t *Terminal) MakeRaw() error {
 func (t *Terminal) Start() error {
 	// Set terminal screen optimizations.
 	t.optimizeMovements()
+	if t.inTty == nil && t.outTty == nil {
+		return ErrNotTerminal
+	}
+
+	t.winchTty = t.inTty
+	if t.winchTty == nil {
+		t.winchTty = t.outTty
+	}
+
 	return t.rd.Start()
 }
 
@@ -462,7 +472,7 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 		}
 		if runtime.GOOS != "windows" {
 			// SIGWINCH receiver for window size changes.
-			receivers = append(receivers, &WinChReceiver{t.out})
+			receivers = append(receivers, &WinChReceiver{t.winchTty})
 		}
 
 		t.err = NewInputManager(receivers...).ReceiveEvents(ctx, t.evch)
