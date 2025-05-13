@@ -362,11 +362,10 @@ type lineData struct {
 // cursor during rendering before flushing the buffer when the cursor is
 // set to be shown.
 type terminalWriter struct {
-	w      io.Writer
-	buf    *bytes.Buffer // buffer for writing to the screen
-	curbuf *Buffer       // the current buffer
-	tabs   *TabStops
-	// touch            map[int]lineData
+	w                io.Writer
+	buf              *bytes.Buffer // buffer for writing to the screen
+	curbuf           *Buffer       // the current buffer
+	tabs             *TabStops
 	touch            sync.Map
 	oldhash, newhash []uint64  // the old and new hash values for each line
 	hashtab          []hashmap // the hashmap table
@@ -437,25 +436,34 @@ func (s *terminalWriter) HideCursor() {
 // populateDiff populates the diff between the two buffers. This is used to
 // determine which cells have changed and need to be redrawn.
 func (s *terminalWriter) populateDiff(newbuf *Buffer) {
-	// TODO: Make this more efficient by splitting the comparison into multiple
-	// goroutines.
+	var wg sync.WaitGroup
 	for y := 0; y < newbuf.Height(); y++ {
-		for x := 0; x < newbuf.Width(); x++ {
-			oldc := s.curbuf.CellAt(x, y)
-			newc := newbuf.CellAt(x, y)
-			if !cellEqual(oldc, newc) {
-				v, ok := s.touch.Load(y)
-				chg := v.(lineData)
-				if !ok {
-					chg = lineData{firstCell: x, lastCell: x + newc.Width}
-				} else {
-					chg.firstCell = min(chg.firstCell, x)
-					chg.lastCell = max(chg.lastCell, x+newc.Width)
-				}
-				s.touch.Store(y, chg)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v, ok := s.touch.Load(y)
+			if !ok {
+				return
 			}
-		}
+
+			chg, ok := v.(lineData)
+			for x := 0; x < newbuf.Width(); x++ {
+				oldc := s.curbuf.CellAt(x, y)
+				newc := newbuf.CellAt(x, y)
+				if !cellEqual(oldc, newc) {
+					if !ok {
+						chg = lineData{firstCell: x, lastCell: x + newc.Width}
+					} else {
+						chg.firstCell = min(chg.firstCell, x)
+						chg.lastCell = max(chg.lastCell, x+newc.Width)
+					}
+				}
+			}
+
+			s.touch.Store(y, chg)
+		}()
 	}
+	wg.Wait()
 }
 
 // capabilities represents a mask of supported ANSI escape sequences.

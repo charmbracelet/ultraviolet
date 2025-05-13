@@ -344,7 +344,7 @@ func (t *Terminal) Resize(width, height int) error {
 	if t.scr == nil {
 		return nil
 	}
-	t.scr.Resize(nil, width, height)
+	t.scr.Resize(t.buf, width, height)
 	return nil
 }
 
