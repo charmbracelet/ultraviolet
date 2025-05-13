@@ -939,9 +939,11 @@ func (s *terminalWriter) flush() (err error) {
 	// Write the buffer
 	if n := s.buffered(); n > 0 {
 		logger.Printf("Flushing %d bytes to the screen %q\n", n, s.buf.String())
-		_, err = s.w.Write(s.buf.Bytes()) //nolint:errcheck
-		if err == nil {
-			s.buf.Reset()
+		nr, err := s.buf.WriteTo(s.w)
+		if err != nil {
+			// When we get a short write error, truncate the buffer to the
+			// remaining bytes.
+			s.buf.Truncate(int(nr))
 		}
 	}
 
