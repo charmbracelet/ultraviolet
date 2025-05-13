@@ -37,10 +37,10 @@ type Terminal struct {
 	winchTty    term.File // The terminal to receive window size changes from.
 
 	// Terminal type, screen and buffer.
-	termtype     string   // The $TERM type.
-	environ      Environ  // The environment variables.
-	scr          *tScreen // The actual screen to be drawn to.
-	size         Size     // The last known size of the terminal.
+	termtype     string          // The $TERM type.
+	environ      Environ         // The environment variables.
+	scr          *terminalWriter // The actual screen to be drawn to.
+	size         Size            // The last known size of the terminal.
 	profile      colorprofile.Profile
 	useTabs      bool // Whether to use hard tabs or not.
 	useBspace    bool // Whether to use backspace or not.
@@ -124,7 +124,7 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 
 var _ Displayer = (*Terminal)(nil)
 
-func (t *Terminal) newScreen(buf *Buffer) *tScreen {
+func (t *Terminal) newScreen(buf *Buffer) *terminalWriter {
 	s := newTScreen(t.out, buf)
 	s.SetTermType(t.termtype)
 	s.SetColorProfile(t.profile)
@@ -342,7 +342,7 @@ func (t *Terminal) Resize(width, height int) error {
 	if t.scr == nil {
 		return nil
 	}
-	t.scr.Resize(width, height)
+	t.scr.Resize(nil, width, height)
 	return nil
 }
 
