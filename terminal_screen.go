@@ -15,232 +15,204 @@ import (
 // for the operation.
 var ErrInvalidDimensions = errors.New("invalid dimensions")
 
-// notLocal returns whether the coordinates are not considered local movement
-// using the defined thresholds.
-// This takes the number of columns, and the coordinates of the current and
-// target positions.
-func notLocal(cols, fx, fy, tx, ty int) bool {
-	// The typical distance for a [ansi.CUP] sequence. Anything less than this
-	// is considered local movement.
-	const longDist = 8 - 1
-	return (tx > longDist) &&
-		(tx < cols-1-longDist) &&
-		(abs(ty-fy)+abs(tx-fx) > longDist)
+// capabilities represents a mask of supported ANSI escape sequences.
+type capabilities uint
+
+const (
+	// Vertical Position Absolute [ansi.VPA].
+	capVPA capabilities = 1 << iota
+	// Horizontal Position Absolute [ansi.HPA].
+	capHPA
+	// Cursor Horizontal Tab [ansi.CHT].
+	capCHT
+	// Cursor Backward Tab [ansi.CBT].
+	capCBT
+	// Repeat Previous Character [ansi.REP].
+	capREP
+	// Erase Character [ansi.ECH].
+	capECH
+	// Insert Character [ansi.ICH].
+	capICH
+	// Scroll Down [ansi.SD].
+	capSD
+	// Scroll Up [ansi.SU].
+	capSU
+
+	noCaps  capabilities = 0
+	allCaps              = capVPA | capHPA | capCHT | capCBT | capREP | capECH | capICH |
+		capSD | capSU
+)
+
+// Contains returns whether the capabilities contains the given capability.
+func (v capabilities) Contains(c capabilities) bool {
+	return v&c == c
 }
 
-// relativeCursorMove returns the relative cursor movement sequence using one or two
-// of the following sequences [ansi.CUU], [ansi.CUD], [ansi.CUF], [ansi.CUB],
-// [ansi.VPA], [ansi.HPA].
-// When overwrite is true, this will try to optimize the sequence by using the
-// screen cells values to move the cursor instead of using escape sequences.
-func relativeCursorMove(s *terminalWriter, newbuf *Buffer, fx, fy, tx, ty int, overwrite, useTabs, useBackspace bool) string {
-	var seq strings.Builder
-
-	width, height := newbuf.Width(), newbuf.Height()
-	if ty != fy {
-		var yseq string
-		if s.caps.Contains(capVPA) && !s.opts.RelativeCursor {
-			yseq = ansi.VerticalPositionAbsolute(ty + 1)
-		}
-
-		// OPTIM: Use [ansi.LF] and [ansi.ReverseIndex] as optimizations.
-
-		if ty > fy {
-			n := ty - fy
-			if cud := ansi.CursorDown(n); yseq == "" || len(cud) < len(yseq) {
-				yseq = cud
-			}
-			shouldScroll := !s.opts.AltScreen && fy+n >= s.scrollHeight
-			if lf := strings.Repeat("\n", n); shouldScroll || (fy+n < height && len(lf) < len(yseq)) {
-				// TODO: Ensure we're not unintentionally scrolling the screen down.
-				yseq = lf
-				s.scrollHeight = max(s.scrollHeight, fy+n)
-				if s.opts.MapNL {
-					fx = 0
-				}
-			}
-		} else if ty < fy {
-			n := fy - ty
-			if cuu := ansi.CursorUp(n); yseq == "" || len(cuu) < len(yseq) {
-				yseq = cuu
-			}
-			if n == 1 && fy-1 > 0 {
-				// TODO: Ensure we're not unintentionally scrolling the screen up.
-				yseq = ansi.ReverseIndex
-			}
-		}
-
-		seq.WriteString(yseq)
-	}
-
-	if tx != fx {
-		var xseq string
-		if s.caps.Contains(capHPA) && !s.opts.RelativeCursor {
-			xseq = ansi.HorizontalPositionAbsolute(tx + 1)
-		}
-
-		if tx > fx {
-			n := tx - fx
-			if useTabs {
-				var tabs int
-				var col int
-				for col = fx; s.tabs.Next(col) <= tx; col = s.tabs.Next(col) {
-					tabs++
-					if col == s.tabs.Next(col) || col >= width-1 {
-						break
-					}
-				}
-
-				if tabs > 0 {
-					cht := ansi.CursorHorizontalForwardTab(tabs)
-					tab := strings.Repeat("\t", tabs)
-					if false && s.caps.Contains(capCHT) && len(cht) < len(tab) {
-						// TODO: The linux console and some terminals such as
-						// Alacritty don't support [ansi.CHT]. Enable this when
-						// we have a way to detect this, or after 5 years when
-						// we're sure everyone has updated their terminals :P
-						seq.WriteString(cht)
-					} else {
-						seq.WriteString(tab)
-					}
-
-					n = tx - col
-					fx = col
-				}
-			}
-
-			if cuf := ansi.CursorForward(n); xseq == "" || len(cuf) < len(xseq) {
-				xseq = cuf
-			}
-
-			// If we have no attribute and style changes, overwrite is cheaper.
-			var ovw string
-			if overwrite && ty >= 0 {
-				for i := 0; i < n; i++ {
-					cell := newbuf.CellAt(fx+i, ty)
-					if cell != nil && cell.Width > 0 {
-						i += cell.Width - 1
-						if !cell.Style.Equal(&s.cur.Style) || !cell.Link.Equal(&s.cur.Link) {
-							overwrite = false
-							break
-						}
-					}
-				}
-			}
-
-			if overwrite && ty >= 0 {
-				for i := 0; i < n; i++ {
-					cell := newbuf.CellAt(fx+i, ty)
-					if cell != nil && cell.Width > 0 {
-						ovw += cell.String()
-						i += cell.Width - 1
-					} else {
-						ovw += " "
-					}
-				}
-			}
-
-			if overwrite && len(ovw) < len(xseq) {
-				xseq = ovw
-			}
-		} else if tx < fx {
-			n := fx - tx
-			if useTabs && s.caps.Contains(capCBT) {
-				// VT100 does not support backward tabs [ansi.CBT].
-
-				col := fx
-
-				var cbt int // cursor backward tabs count
-				for s.tabs.Prev(col) >= tx {
-					col = s.tabs.Prev(col)
-					cbt++
-					if col == s.tabs.Prev(col) || col <= 0 {
-						break
-					}
-				}
-
-				if cbt > 0 {
-					seq.WriteString(ansi.CursorBackwardTab(cbt))
-					n = col - tx
-				}
-			}
-
-			if cub := ansi.CursorBackward(n); xseq == "" || len(cub) < len(xseq) {
-				xseq = cub
-			}
-
-			if useBackspace && n < len(xseq) {
-				xseq = strings.Repeat("\b", n)
-			}
-		}
-
-		seq.WriteString(xseq)
-	}
-
-	return seq.String()
+// cursor represents a terminal cursor.
+type cursor struct {
+	Style
+	Link
+	Position
 }
 
-// moveCursor moves and returns the cursor movement sequence to move the cursor
-// to the specified position.
-// When overwrite is true, this will try to optimize the sequence by using the
-// screen cells values to move the cursor instead of using escape sequences.
-func moveCursor(s *terminalWriter, newbuf *Buffer, x, y int, overwrite bool) (seq string) {
-	fx, fy := s.cur.X, s.cur.Y
+// lineData represents the metadata for a line.
+type lineData struct {
+	// first and last changed cell indices
+	firstCell, lastCell int
+	// old index used for scrolling
+	oldIndex int //nolint:unused
+}
 
-	if !s.opts.RelativeCursor {
-		// Method #0: Use [ansi.CUP] if the distance is long.
-		seq = ansi.CursorPosition(x+1, y+1)
-		if fx == -1 || fy == -1 || notLocal(newbuf.Width(), fx, fy, x, y) {
-			return
+// tFlag is a bitmask of terminal flags.
+type tFlag uint
+
+// Terminal writer flags.
+const (
+	tHardTabs tFlag = 1 << iota
+	tBackspace
+	tRelativeCursor
+	tAltScreen
+	tMapNewline
+)
+
+// Set sets the given flags.
+func (v *tFlag) Set(c tFlag) {
+	*v |= c
+}
+
+// Reset resets the given flags.
+func (v *tFlag) Reset(c tFlag) {
+	*v &^= c
+}
+
+// Contains returns whether the terminal flags contains the given flags.
+func (v tFlag) Contains(c tFlag) bool {
+	return v&c == c
+}
+
+// terminalWriter is a writer that buffers the output until it is flushed. It
+// handles rendering [Buffer] cells to the screen and supports various
+// terminal optimizations.
+// The alt-screen and cursor visibility are not managed by the writer and
+// should be managed by the caller. The writer however, will handle hiding the
+// cursor during rendering before flushing the buffer when the cursor is
+// set to be shown.
+type terminalWriter struct {
+	w                io.Writer
+	buf              *bytes.Buffer // buffer for writing to the screen
+	curbuf           *Buffer       // the current buffer
+	tabs             *TabStops
+	touch            sync.Map
+	oldhash, newhash []uint64  // the old and new hash values for each line
+	hashtab          []hashmap // the hashmap table
+	oldnum           []int     // old indices from previous hash
+	cur, saved       cursor    // the current and saved cursors
+	flags            tFlag     // terminal writer flags.
+	term             string    // the terminal type
+	profile          colorprofile.Profile
+	mu               sync.Mutex
+	width            int          // the width of the terminal.
+	scrollHeight     int          // keeps track of how many lines we've scrolled down (inline mode)
+	clear            bool         // whether to force clear the screen
+	caps             capabilities // terminal control sequence capabilities
+	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
+}
+
+// SetColorProfile sets the color profile to use when writing to the screen.
+func (s *terminalWriter) SetColorProfile(p colorprofile.Profile) {
+	s.mu.Lock()
+	s.profile = p
+	s.mu.Unlock()
+}
+
+// SetBackspace sets whether to use backspace as a movement optimization.
+func (s *terminalWriter) SetBackspace(v bool) {
+	s.mu.Lock()
+	if v {
+		s.flags.Set(tBackspace)
+	} else {
+		s.flags.Reset(tBackspace)
+	}
+	s.mu.Unlock()
+}
+
+// SetHardTabs sets whether to use hard tabs as movement optimization.
+func (s *terminalWriter) SetHardTabs(v bool) {
+	s.mu.Lock()
+	// We always disable HardTabs when termtype is "linux".
+	if !strings.HasPrefix(s.term, "linux") {
+		if v {
+			s.flags.Set(tHardTabs)
+		} else {
+			s.flags.Reset(tHardTabs)
 		}
 	}
+	s.mu.Unlock()
+}
 
-	// Optimize based on options.
-	trials := 0
-	if s.opts.HardTabs {
-		trials |= 2 // 0b10 in binary
+// SetRelativeCursor sets whether to use relative cursor movements.
+func (s *terminalWriter) SetRelativeCursor(v bool) {
+	s.mu.Lock()
+	if v {
+		s.flags.Set(tRelativeCursor)
+	} else {
+		s.flags.Reset(tRelativeCursor)
 	}
-	if s.opts.Backspace {
-		trials |= 1 // 0b01 in binary
+	s.mu.Unlock()
+}
+
+// SetAltScreen sets whether we're using the alternate screen.
+func (s *terminalWriter) SetAltScreen(v bool) {
+	s.mu.Lock()
+	if v {
+		s.flags.Set(tAltScreen)
+	} else {
+		s.flags.Reset(tAltScreen)
 	}
+	s.mu.Unlock()
+}
 
-	// Try all possible combinations of hard tabs and backspace optimizations.
-	for i := 0; i <= trials; i++ {
-		// Skip combinations that are not enabled.
-		if i & ^trials != 0 {
-			continue
-		}
-
-		useHardTabs := i&2 != 0
-		useBackspace := i&1 != 0
-
-		// Method #1: Use local movement sequences.
-		nseq := relativeCursorMove(s, newbuf, fx, fy, x, y, overwrite, useHardTabs, useBackspace)
-		if (i == 0 && len(seq) == 0) || len(nseq) < len(seq) {
-			seq = nseq
-		}
-
-		// Method #2: Use [ansi.CR] and local movement sequences.
-		nseq = "\r" + relativeCursorMove(s, newbuf, 0, fy, x, y, overwrite, useHardTabs, useBackspace)
-		if len(nseq) < len(seq) {
-			seq = nseq
-		}
-
-		if !s.opts.RelativeCursor {
-			// Method #3: Use [ansi.CursorHomePosition] and local movement sequences.
-			nseq = ansi.CursorHomePosition + relativeCursorMove(s, newbuf, 0, 0, x, y, overwrite, useHardTabs, useBackspace)
-			if len(nseq) < len(seq) {
-				seq = nseq
+// populateDiff populates the diff between the two buffers. This is used to
+// determine which cells have changed and need to be redrawn.
+func (s *terminalWriter) populateDiff(newbuf *Buffer) {
+	var wg sync.WaitGroup
+	for y := 0; y < newbuf.Height(); y++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var chg lineData
+			v, ok := s.touch.Load(y)
+			if !ok {
+				chg = lineData{firstCell: 0, lastCell: newbuf.Width() - 1}
+			} else if e, ok := v.(lineData); ok {
+				chg = e
 			}
-		}
-	}
+			for x := 0; x < newbuf.Width(); x++ {
+				var oldc *Cell
+				if s.curbuf != nil {
+					oldc = s.curbuf.CellAt(x, y)
+				}
+				newc := newbuf.CellAt(x, y)
+				if !cellEqual(oldc, newc) {
+					if !ok {
+						chg = lineData{firstCell: x, lastCell: x + newc.Width}
+					} else {
+						chg.firstCell = min(chg.firstCell, x)
+						chg.lastCell = max(chg.lastCell, x+newc.Width)
+					}
+				}
+			}
 
-	return
+			s.touch.Store(y, chg)
+		}()
+	}
+	wg.Wait()
 }
 
 // moveCursor moves the cursor to the specified position.
 func (s *terminalWriter) moveCursor(newbuf *Buffer, x, y int, overwrite bool) {
-	if !s.opts.AltScreen && s.opts.RelativeCursor && s.cur.X == -1 && s.cur.Y == -1 {
+	if !s.flags.Contains(tAltScreen) && s.flags.Contains(tRelativeCursor) &&
+		s.cur.X == -1 && s.cur.Y == -1 {
 		// First cursor movement in inline mode, move the cursor to the first
 		// column before moving to the target position.
 		s.buf.WriteByte('\r') //nolint:errcheck
@@ -315,241 +287,27 @@ func (s *terminalWriter) move(newbuf *Buffer, x, y int) {
 	s.moveCursor(newbuf, x, y, true) // Overwrite cells if possible
 }
 
-// cursor represents a terminal cursor.
-type cursor struct {
-	Style
-	Link
-	Position
-}
-
-// tScreenOptions are options for the screen.
-type tScreenOptions struct {
-	// Term is the terminal type to use when writing to the screen. When empty,
-	// `$TERM` is used from [os.Getenv].
-	Term string
-	// Profile is the color profile to use when writing to the screen.
-	Profile colorprofile.Profile
-	// RelativeCursor is whether to use relative cursor movements. This is
-	// useful when alt-screen is not used or when using inline mode.
-	RelativeCursor bool
-	// AltScreen is whether to use the alternate screen buffer.
-	AltScreen bool
-	// ShowCursor is whether to show the cursor.
-	ShowCursor bool
-	// HardTabs is whether to use hard tabs to optimize cursor movements.
-	HardTabs bool
-	// Backspace is whether to use backspace characters to move the cursor.
-	Backspace bool
-	// MapNL whether we have ONLCR mapping enabled. When we set the terminal to
-	// raw mode, the ONLCR mode gets disabled. ONLCR maps any newline/linefeed
-	// (`\n`) character to carriage return + line feed (`\r\n`).
-	MapNL bool
-}
-
-// lineData represents the metadata for a line.
-type lineData struct {
-	// first and last changed cell indices
-	firstCell, lastCell int
-	// old index used for scrolling
-	oldIndex int //nolint:unused
-}
-
-// terminalWriter is a writer that buffers the output until it is flushed. It
-// handles rendering [Buffer] cells to the screen and supports various
-// terminal optimizations.
-// The alt-screen and cursor visibility are not managed by the writer and
-// should be managed by the caller. The writer however, will handle hiding the
-// cursor during rendering before flushing the buffer when the cursor is
-// set to be shown.
-type terminalWriter struct {
-	w                io.Writer
-	buf              *bytes.Buffer // buffer for writing to the screen
-	curbuf           *Buffer       // the current buffer
-	tabs             *TabStops
-	touch            sync.Map
-	oldhash, newhash []uint64  // the old and new hash values for each line
-	hashtab          []hashmap // the hashmap table
-	oldnum           []int     // old indices from previous hash
-	cur, saved       cursor    // the current and saved cursors
-	opts             tScreenOptions
-	mu               sync.Mutex
-	scrollHeight     int          // keeps track of how many lines we've scrolled down (inline mode)
-	altScreenMode    bool         // whether alternate screen mode is enabled
-	cursorHidden     bool         // whether text cursor mode is enabled
-	clear            bool         // whether to force clear the screen
-	caps             capabilities // terminal control sequence capabilities
-	queuedText       bool         // whether we have queued non-zero width text queued up
-	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
-}
-
-// SetTermType sets the terminal type to use when writing to the screen. This
-// is the type advertised by the terminal in the `TERM` environment variable.
-func (s *terminalWriter) SetTermType(term string) {
-	s.opts.Term = term
-	s.caps = xtermCaps(term)
-}
-
-// UseBackspaces sets whether to use backspace characters to move the cursor.
-func (s *terminalWriter) UseBackspaces(v bool) {
-	s.opts.Backspace = v
-}
-
-// UseHardTabs sets whether to use hard tabs to optimize cursor movements.
-func (s *terminalWriter) UseHardTabs(v bool) {
-	s.opts.HardTabs = v
-}
-
-// SetColorProfile sets the color profile to use when writing to the screen.
-func (s *terminalWriter) SetColorProfile(p colorprofile.Profile) {
-	s.opts.Profile = p
-}
-
-// SetRelativeCursor sets whether to use relative cursor movements.
-func (s *terminalWriter) SetRelativeCursor(v bool) {
-	s.opts.RelativeCursor = v
-}
-
-// EnterAltScreen enters the alternate screen buffer.
-func (s *terminalWriter) EnterAltScreen() {
-	s.opts.AltScreen = true
-	s.clear = true
-	s.saved = s.cur
-}
-
-// ExitAltScreen exits the alternate screen buffer.
-func (s *terminalWriter) ExitAltScreen() {
-	s.opts.AltScreen = false
-	s.clear = true
-	s.cur = s.saved
-}
-
-// ShowCursor shows the cursor.
-func (s *terminalWriter) ShowCursor() {
-	s.opts.ShowCursor = true
-}
-
-// HideCursor hides the cursor.
-func (s *terminalWriter) HideCursor() {
-	s.opts.ShowCursor = false
-}
-
-// populateDiff populates the diff between the two buffers. This is used to
-// determine which cells have changed and need to be redrawn.
-func (s *terminalWriter) populateDiff(newbuf *Buffer) {
-	var wg sync.WaitGroup
-	for y := 0; y < newbuf.Height(); y++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			v, ok := s.touch.Load(y)
-			if !ok {
-				return
-			}
-
-			chg, ok := v.(lineData)
-			for x := 0; x < newbuf.Width(); x++ {
-				oldc := s.curbuf.CellAt(x, y)
-				newc := newbuf.CellAt(x, y)
-				if !cellEqual(oldc, newc) {
-					if !ok {
-						chg = lineData{firstCell: x, lastCell: x + newc.Width}
-					} else {
-						chg.firstCell = min(chg.firstCell, x)
-						chg.lastCell = max(chg.lastCell, x+newc.Width)
-					}
-				}
-			}
-
-			s.touch.Store(y, chg)
-		}()
-	}
-	wg.Wait()
-}
-
-// capabilities represents a mask of supported ANSI escape sequences.
-type capabilities uint
-
-const (
-	// Vertical Position Absolute [ansi.VPA].
-	capVPA capabilities = 1 << iota
-	// Horizontal Position Absolute [ansi.HPA].
-	capHPA
-	// Cursor Horizontal Tab [ansi.CHT].
-	capCHT
-	// Cursor Backward Tab [ansi.CBT].
-	capCBT
-	// Repeat Previous Character [ansi.REP].
-	capREP
-	// Erase Character [ansi.ECH].
-	capECH
-	// Insert Character [ansi.ICH].
-	capICH
-	// Scroll Down [ansi.SD].
-	capSD
-	// Scroll Up [ansi.SU].
-	capSU
-
-	noCaps  capabilities = 0
-	allCaps              = capVPA | capHPA | capCHT | capCBT | capREP | capECH | capICH |
-		capSD | capSU
-)
-
-// Contains returns whether the capabilities contains the given capability.
-func (v capabilities) Contains(c capabilities) bool {
-	return v&c == c
-}
-
-// xtermCaps returns whether the terminal is xterm-like. This means that the
-// terminal supports ECMA-48 and ANSI X3.64 escape sequences.
-// xtermCaps returns a list of control sequence capabilities for the given
-// terminal type. This only supports a subset of sequences that can
-// be different among terminals.
-// NOTE: A hybrid approach would be to support Terminfo databases for a full
-// set of capabilities.
-func xtermCaps(termtype string) (v capabilities) {
-	parts := strings.Split(termtype, "-")
-	if len(parts) == 0 {
-		return
-	}
-
-	switch parts[0] {
-	case
-		"contour",
-		"foot",
-		"ghostty",
-		"kitty",
-		"rio",
-		"st",
-		"tmux",
-		"wezterm",
-		"xterm":
-		v = allCaps
-	case "alacritty":
-		v = allCaps
-		v &^= capCHT // NOTE: alacritty added support for [ansi.CHT] in 2024-12-28 #62d5b13.
-	case "screen":
-		// See https://www.gnu.org/software/screen/manual/screen.html#Control-Sequences-1
-		v = allCaps
-		v &^= capREP
-	case "linux":
-		// See https://man7.org/linux/man-pages/man4/console_codes.4.html
-		v = capVPA | capHPA | capECH | capICH
-	}
-
-	return
-}
-
-// newTScreen creates a new [tScreen].
-func newTScreen(w io.Writer) (s *terminalWriter) {
+// newTerminalWriter creates a new [terminalWriter].
+func newTerminalWriter(w io.Writer, termtype string, width int) (s *terminalWriter) {
 	s = new(terminalWriter)
 	s.w = w
+	s.profile = colorprofile.TrueColor
+	s.width = width
 	s.buf = new(bytes.Buffer)
-	s.caps = xtermCaps(s.opts.Term)
-	s.curbuf = NewBuffer(0, 0)
+	s.term = termtype
+	s.caps = xtermCaps(termtype)
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
-	s.reset()
-
+	s.scrollHeight = 0
+	s.touch = sync.Map{}
+	s.tabs = DefaultTabStops(s.width)
+	s.buf.Reset()
+	s.oldhash, s.newhash = nil, nil
+	s.scrollHeight = 0
+	s.touch = sync.Map{}
+	s.tabs = DefaultTabStops(width)
+	s.buf.Reset()
+	s.oldhash, s.newhash = nil, nil
 	return
 }
 
@@ -571,7 +329,7 @@ func cellEqual(a, b *Cell) bool {
 // putCell draws a cell at the current cursor position.
 func (s *terminalWriter) putCell(newbuf *Buffer, cell *Cell) {
 	width, height := newbuf.Width(), newbuf.Height()
-	if s.opts.AltScreen && s.cur.X == width-1 && s.cur.Y == height-1 {
+	if s.flags.Contains(tAltScreen) && s.cur.X == width-1 && s.cur.Y == height-1 {
 		s.putCellLR(newbuf, cell)
 	} else {
 		s.putAttrCell(newbuf, cell)
@@ -619,11 +377,6 @@ func (s *terminalWriter) putAttrCell(newbuf *Buffer, cell *Cell) {
 	}
 
 	s.cur.X += cell.Width
-
-	if cell.Width > 0 {
-		s.queuedText = true
-	}
-
 	if s.cur.X >= newbuf.Width() {
 		s.atPhantom = true
 	}
@@ -649,10 +402,10 @@ func (s *terminalWriter) updatePen(cell *Cell) {
 		cell = &BlankCell
 	}
 
-	if s.opts.Profile != 0 {
+	if s.profile != 0 {
 		// Downsample colors to the given color profile.
-		cell.Style = ConvertStyle(cell.Style, s.opts.Profile)
-		cell.Link = ConvertLink(cell.Link, s.opts.Profile)
+		cell.Style = ConvertStyle(cell.Style, s.profile)
+		cell.Link = ConvertLink(cell.Link, s.profile)
 	}
 
 	if !cell.Style.Equal(&s.cur.Style) {
@@ -1095,7 +848,7 @@ func (s *terminalWriter) clearBottom(newbuf *Buffer, total int) (top int) {
 	}
 
 	top = total
-	last := newbuf.Width()
+	last := min(s.curbuf.Width(), newbuf.Width())
 	blank := s.clearBlank()
 	canClearWithBlank := blank == nil || blank.Clear()
 
@@ -1115,7 +868,7 @@ func (s *terminalWriter) clearBottom(newbuf *Buffer, total int) (top int) {
 			}
 
 			for col = 0; ok && col < last; col++ {
-				ok = len(oldLine) == last && cellEqual(oldLine.At(col), blank)
+				ok = cellEqual(oldLine.At(col), blank)
 			}
 			if !ok {
 				top = row
@@ -1156,9 +909,10 @@ func (s *terminalWriter) clearBelow(newbuf *Buffer, blank *Cell, row int) {
 func (s *terminalWriter) clearUpdate(newbuf *Buffer) {
 	blank := s.clearBlank()
 	var nonEmpty int
-	if s.opts.AltScreen {
-		// XXX: We're using the maximum height of the two buffers to ensure
-		// we write newly added lines to the screen in tscreen.transformLine].
+	if s.flags.Contains(tAltScreen) {
+		// XXX: We're using the maximum height of the two buffers to ensure we
+		// write newly added lines to the screen in
+		// [terminalWriter.transformLine].
 		nonEmpty = max(s.curbuf.Height(), newbuf.Height())
 		s.clearScreen(blank)
 	} else {
@@ -1183,8 +937,8 @@ func (s *terminalWriter) Flush() (err error) {
 
 func (s *terminalWriter) flush() (err error) {
 	// Write the buffer
-	if s.buf.Len() > 0 {
-		logger.Printf("Flush %d: %q", s.buf.Len(), s.buf.String())
+	if n := s.buffered(); n > 0 {
+		logger.Printf("Flushing %d bytes to the screen %q\n", n, s.buf.String())
 		_, err = s.w.Write(s.buf.Bytes()) //nolint:errcheck
 		if err == nil {
 			s.buf.Reset()
@@ -1192,6 +946,28 @@ func (s *terminalWriter) flush() (err error) {
 	}
 
 	return
+}
+
+// Buffered returns how many bytes are currently buffered.
+func (s *terminalWriter) Buffered() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buffered()
+}
+
+func (s *terminalWriter) buffered() int {
+	return s.buf.Len()
+}
+
+// Touched returns the number of lines that have been touched or changed.
+func (s *terminalWriter) Touched() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.touched()
+}
+
+func (t *terminalWriter) touched() int {
+	return syncMapLen(&t.touch)
 }
 
 // Render renders changes of the screen to the internal buffer. Call
@@ -1212,11 +988,14 @@ func syncMapLen(m *sync.Map) (n int) {
 }
 
 func (s *terminalWriter) render(newbuf *Buffer) {
+	// Do we have a buffer to compare to?
+	if s.curbuf == nil {
+		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
+	}
+
 	// Do we need to render anything?
-	if s.opts.AltScreen == s.altScreenMode &&
-		!s.opts.ShowCursor == s.cursorHidden &&
-		!s.clear &&
-		syncMapLen(&s.touch) == 0 {
+	touchedLines := s.touched()
+	if !s.clear && touchedLines == 0 {
 		return
 	}
 
@@ -1231,31 +1010,13 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 	// 	s.initTabs = true
 	// }
 
-	// Do we need alt-screen mode?
-	if s.opts.AltScreen != s.altScreenMode {
-		if s.opts.AltScreen {
-			s.buf.WriteString(ansi.SetAltScreenSaveCursorMode)
-		} else {
-			s.buf.WriteString(ansi.ResetAltScreenSaveCursorMode)
-		}
-		s.altScreenMode = s.opts.AltScreen
-	}
-
-	// Do we need text cursor mode?
-	if !s.opts.ShowCursor != s.cursorHidden {
-		s.cursorHidden = !s.opts.ShowCursor
-		if s.cursorHidden {
-			s.buf.WriteString(ansi.HideCursor)
-		}
-	}
-
 	var nonEmpty int
 
 	// XXX: In inline mode, after a screen resize, we need to clear the extra
 	// lines at the bottom of the screen. This is because in inline mode, we
 	// don't use the full screen height and the current buffer size might be
 	// larger than the new buffer size.
-	partialClear := !s.opts.AltScreen && s.cur.X != -1 && s.cur.Y != -1 &&
+	partialClear := !s.flags.Contains(tAltScreen) && s.cur.X != -1 && s.cur.Y != -1 &&
 		s.curbuf.Width() == newbuf.Width() &&
 		s.curbuf.Height() > 0 &&
 		s.curbuf.Height() > newbuf.Height()
@@ -1267,8 +1028,8 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 	if s.clear {
 		s.clearUpdate(newbuf)
 		s.clear = false
-	} else if syncMapLen(&s.touch) > 0 {
-		if s.opts.AltScreen {
+	} else if s.touched() > 0 {
+		if s.flags.Contains(tAltScreen) {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].
@@ -1278,7 +1039,7 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 		var changedLines int
 		var i int
 
-		if s.opts.AltScreen {
+		if s.flags.Contains(tAltScreen) {
 			nonEmpty = min(s.curbuf.Height(), newbuf.Height())
 		} else {
 			nonEmpty = newbuf.Height()
@@ -1296,7 +1057,7 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 
 	// Ensure we have scrolled the screen to the bottom when we're not using
 	// alt screen mode.
-	if !s.opts.AltScreen && s.scrollHeight < newbuf.Height()-1 {
+	if !s.flags.Contains(tAltScreen) && s.scrollHeight < newbuf.Height()-1 {
 		s.move(newbuf, 0, newbuf.Height()-1)
 	}
 
@@ -1314,78 +1075,28 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 	}
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles
-
-	// Do we have enough changes to justify toggling the cursor?
-	if s.buf.Len() > 1 && s.opts.ShowCursor && !s.cursorHidden && s.queuedText {
-		nb := new(bytes.Buffer)
-		nb.Grow(s.buf.Len() + len(ansi.HideCursor) + len(ansi.ShowCursor))
-		nb.WriteString(ansi.HideCursor)
-		nb.Write(s.buf.Bytes())
-		nb.WriteString(ansi.ShowCursor)
-		*s.buf = *nb
-	}
-
-	s.queuedText = false
 }
-
-// Close writes the final screen update and resets the screen.
-// func (s *terminalWriter) Close() (err error) {
-// 	s.mu.Lock()
-// 	defer s.mu.Unlock()
-//
-// 	s.render()
-// 	s.updatePen(nil)
-// 	// Go to the bottom of the screen
-// 	s.move(0, newbuf.Height()-1)
-//
-// 	if s.altScreenMode {
-// 		s.buf.WriteString(ansi.ResetAltScreenSaveCursorMode)
-// 		s.altScreenMode = false
-// 	}
-//
-// 	if s.cursorHidden {
-// 		s.buf.WriteString(ansi.ShowCursor)
-// 		s.cursorHidden = false
-// 	}
-//
-// 	// Write the buffer
-// 	err = s.flush()
-// 	if err != nil {
-// 		return
-// 	}
-//
-// 	s.reset()
-// 	return
-// }
 
 // reset resets the screen to its initial state.
 func (s *terminalWriter) reset() {
-	s.scrollHeight = 0
-	s.cursorHidden = false
-	s.altScreenMode = false
-	s.touch = sync.Map{}
-	if s.curbuf != nil {
-		s.curbuf.Clear()
-	}
-	// if newbuf != nil {
-	// 	newbuf.Clear()
-	// }
-	s.buf.Reset()
-	s.tabs = DefaultTabStops(s.curbuf.Width())
-	s.oldhash, s.newhash = nil, nil
+}
 
-	// We always disable HardTabs when termtype is "linux".
-	if strings.HasPrefix(s.opts.Term, "linux") {
-		s.opts.HardTabs = false
-	}
+// Clear marks the screen to be fully cleared on the next render.
+func (s *terminalWriter) Clear() {
+	s.mu.Lock()
+	s.clear = true
+	s.mu.Unlock()
 }
 
 // Resize resizes the screen.
 func (s *terminalWriter) Resize(newbuf *Buffer, width, height int) bool {
+	s.width = width
+
 	oldw := newbuf.Width()
 	oldh := newbuf.Height()
 
-	if s.opts.AltScreen || width != oldw {
+	altScreen := s.flags.Contains(tAltScreen)
+	if altScreen || width != oldw {
 		// We only clear the whole screen if the width changes. Adding/removing
 		// rows is handled by the [tScreen.render] and [tScreen.transformLine]
 		// methods.
@@ -1415,13 +1126,6 @@ func (s *terminalWriter) Resize(newbuf *Buffer, width, height int) bool {
 	return true
 }
 
-// MoveTo moves the cursor to the given position.
-func (s *terminalWriter) MoveTo(newbuf *Buffer, x, y int) {
-	s.mu.Lock()
-	s.move(newbuf, x, y)
-	s.mu.Unlock()
-}
-
 // Position returns the current cursor position.
 func (s *terminalWriter) Position() (x, y int) {
 	return s.cur.X, s.cur.Y
@@ -1448,4 +1152,276 @@ func (s *terminalWriter) Write(b []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.buf.Write(b)
+}
+
+// MoveTo calculates and writes the shortest sequence to move the cursor to the
+// given position. It uses the current cursor position and the new position to
+// calculate the shortest amount of sequences to move the cursor.
+func (s *terminalWriter) MoveTo(newbuf *Buffer, x, y int) {
+	s.mu.Lock()
+	s.move(newbuf, x, y)
+	s.mu.Unlock()
+}
+
+// notLocal returns whether the coordinates are not considered local movement
+// using the defined thresholds.
+// This takes the number of columns, and the coordinates of the current and
+// target positions.
+func notLocal(cols, fx, fy, tx, ty int) bool {
+	// The typical distance for a [ansi.CUP] sequence. Anything less than this
+	// is considered local movement.
+	const longDist = 8 - 1
+	return (tx > longDist) &&
+		(tx < cols-1-longDist) &&
+		(abs(ty-fy)+abs(tx-fx) > longDist)
+}
+
+// relativeCursorMove returns the relative cursor movement sequence using one or two
+// of the following sequences [ansi.CUU], [ansi.CUD], [ansi.CUF], [ansi.CUB],
+// [ansi.VPA], [ansi.HPA].
+// When overwrite is true, this will try to optimize the sequence by using the
+// screen cells values to move the cursor instead of using escape sequences.
+func relativeCursorMove(s *terminalWriter, newbuf *Buffer, fx, fy, tx, ty int, overwrite, useTabs, useBackspace bool) string {
+	var seq strings.Builder
+
+	width, height := newbuf.Width(), newbuf.Height()
+	if ty != fy {
+		var yseq string
+		if s.caps.Contains(capVPA) && !s.flags.Contains(tRelativeCursor) {
+			yseq = ansi.VerticalPositionAbsolute(ty + 1)
+		}
+
+		// OPTIM: Use [ansi.LF] and [ansi.ReverseIndex] as optimizations.
+
+		if ty > fy {
+			n := ty - fy
+			if cud := ansi.CursorDown(n); yseq == "" || len(cud) < len(yseq) {
+				yseq = cud
+			}
+			shouldScroll := !s.flags.Contains(tAltScreen) && fy+n >= s.scrollHeight
+			if lf := strings.Repeat("\n", n); shouldScroll || (fy+n < height && len(lf) < len(yseq)) {
+				// TODO: Ensure we're not unintentionally scrolling the screen down.
+				yseq = lf
+				s.scrollHeight = max(s.scrollHeight, fy+n)
+				if s.flags.Contains(tMapNewline) {
+					fx = 0
+				}
+			}
+		} else if ty < fy {
+			n := fy - ty
+			if cuu := ansi.CursorUp(n); yseq == "" || len(cuu) < len(yseq) {
+				yseq = cuu
+			}
+			if n == 1 && fy-1 > 0 {
+				// TODO: Ensure we're not unintentionally scrolling the screen up.
+				yseq = ansi.ReverseIndex
+			}
+		}
+
+		seq.WriteString(yseq)
+	}
+
+	if tx != fx {
+		var xseq string
+		if s.caps.Contains(capHPA) && !s.flags.Contains(tRelativeCursor) {
+			xseq = ansi.HorizontalPositionAbsolute(tx + 1)
+		}
+
+		if tx > fx {
+			n := tx - fx
+			if useTabs {
+				var tabs int
+				var col int
+				for col = fx; s.tabs.Next(col) <= tx; col = s.tabs.Next(col) {
+					tabs++
+					if col == s.tabs.Next(col) || col >= width-1 {
+						break
+					}
+				}
+
+				if tabs > 0 {
+					cht := ansi.CursorHorizontalForwardTab(tabs)
+					tab := strings.Repeat("\t", tabs)
+					if false && s.caps.Contains(capCHT) && len(cht) < len(tab) {
+						// TODO: The linux console and some terminals such as
+						// Alacritty don't support [ansi.CHT]. Enable this when
+						// we have a way to detect this, or after 5 years when
+						// we're sure everyone has updated their terminals :P
+						seq.WriteString(cht)
+					} else {
+						seq.WriteString(tab)
+					}
+
+					n = tx - col
+					fx = col
+				}
+			}
+
+			if cuf := ansi.CursorForward(n); xseq == "" || len(cuf) < len(xseq) {
+				xseq = cuf
+			}
+
+			// If we have no attribute and style changes, overwrite is cheaper.
+			var ovw string
+			if overwrite && ty >= 0 {
+				for i := 0; i < n; i++ {
+					cell := newbuf.CellAt(fx+i, ty)
+					if cell != nil && cell.Width > 0 {
+						i += cell.Width - 1
+						if !cell.Style.Equal(&s.cur.Style) || !cell.Link.Equal(&s.cur.Link) {
+							overwrite = false
+							break
+						}
+					}
+				}
+			}
+
+			if overwrite && ty >= 0 {
+				for i := 0; i < n; i++ {
+					cell := newbuf.CellAt(fx+i, ty)
+					if cell != nil && cell.Width > 0 {
+						ovw += cell.String()
+						i += cell.Width - 1
+					} else {
+						ovw += " "
+					}
+				}
+			}
+
+			if overwrite && len(ovw) < len(xseq) {
+				xseq = ovw
+			}
+		} else if tx < fx {
+			n := fx - tx
+			if useTabs && s.caps.Contains(capCBT) {
+				// VT100 does not support backward tabs [ansi.CBT].
+
+				col := fx
+
+				var cbt int // cursor backward tabs count
+				for s.tabs.Prev(col) >= tx {
+					col = s.tabs.Prev(col)
+					cbt++
+					if col == s.tabs.Prev(col) || col <= 0 {
+						break
+					}
+				}
+
+				if cbt > 0 {
+					seq.WriteString(ansi.CursorBackwardTab(cbt))
+					n = col - tx
+				}
+			}
+
+			if cub := ansi.CursorBackward(n); xseq == "" || len(cub) < len(xseq) {
+				xseq = cub
+			}
+
+			if useBackspace && n < len(xseq) {
+				xseq = strings.Repeat("\b", n)
+			}
+		}
+
+		seq.WriteString(xseq)
+	}
+
+	return seq.String()
+}
+
+// moveCursor moves and returns the cursor movement sequence to move the cursor
+// to the specified position.
+// When overwrite is true, this will try to optimize the sequence by using the
+// screen cells values to move the cursor instead of using escape sequences.
+func moveCursor(s *terminalWriter, newbuf *Buffer, x, y int, overwrite bool) (seq string) {
+	fx, fy := s.cur.X, s.cur.Y
+
+	if !s.flags.Contains(tRelativeCursor) {
+		// Method #0: Use [ansi.CUP] if the distance is long.
+		seq = ansi.CursorPosition(x+1, y+1)
+		if fx == -1 || fy == -1 || notLocal(newbuf.Width(), fx, fy, x, y) {
+			return
+		}
+	}
+
+	// Optimize based on options.
+	trials := 0
+	if s.flags.Contains(tHardTabs) {
+		trials |= 2 // 0b10 in binary
+	}
+	if s.flags.Contains(tBackspace) {
+		trials |= 1 // 0b01 in binary
+	}
+
+	// Try all possible combinations of hard tabs and backspace optimizations.
+	for i := 0; i <= trials; i++ {
+		// Skip combinations that are not enabled.
+		if i & ^trials != 0 {
+			continue
+		}
+
+		useHardTabs := i&2 != 0
+		useBackspace := i&1 != 0
+
+		// Method #1: Use local movement sequences.
+		nseq := relativeCursorMove(s, newbuf, fx, fy, x, y, overwrite, useHardTabs, useBackspace)
+		if (i == 0 && len(seq) == 0) || len(nseq) < len(seq) {
+			seq = nseq
+		}
+
+		// Method #2: Use [ansi.CR] and local movement sequences.
+		nseq = "\r" + relativeCursorMove(s, newbuf, 0, fy, x, y, overwrite, useHardTabs, useBackspace)
+		if len(nseq) < len(seq) {
+			seq = nseq
+		}
+
+		if !s.flags.Contains(tRelativeCursor) {
+			// Method #3: Use [ansi.CursorHomePosition] and local movement sequences.
+			nseq = ansi.CursorHomePosition + relativeCursorMove(s, newbuf, 0, 0, x, y, overwrite, useHardTabs, useBackspace)
+			if len(nseq) < len(seq) {
+				seq = nseq
+			}
+		}
+	}
+
+	return
+}
+
+// xtermCaps returns whether the terminal is xterm-like. This means that the
+// terminal supports ECMA-48 and ANSI X3.64 escape sequences.
+// xtermCaps returns a list of control sequence capabilities for the given
+// terminal type. This only supports a subset of sequences that can
+// be different among terminals.
+// NOTE: A hybrid approach would be to support Terminfo databases for a full
+// set of capabilities.
+func xtermCaps(termtype string) (v capabilities) {
+	parts := strings.Split(termtype, "-")
+	if len(parts) == 0 {
+		return
+	}
+
+	switch parts[0] {
+	case
+		"contour",
+		"foot",
+		"ghostty",
+		"kitty",
+		"rio",
+		"st",
+		"tmux",
+		"wezterm",
+		"xterm":
+		v = allCaps
+	case "alacritty":
+		v = allCaps
+		v &^= capCHT // NOTE: alacritty added support for [ansi.CHT] in 2024-12-28 #62d5b13.
+	case "screen":
+		// See https://www.gnu.org/software/screen/manual/screen.html#Control-Sequences-1
+		v = allCaps
+		v &^= capREP
+	case "linux":
+		// See https://man7.org/linux/man-pages/man4/console_codes.4.html
+		v = capVPA | capHPA | capECH | capICH
+	}
+
+	return
 }
