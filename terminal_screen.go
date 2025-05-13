@@ -153,23 +153,33 @@ func (s *terminalWriter) SetHardTabs(v bool) {
 // SetRelativeCursor sets whether to use relative cursor movements.
 func (s *terminalWriter) SetRelativeCursor(v bool) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v == s.flags.Contains(tRelativeCursor) {
+		return
+	}
 	if v {
 		s.flags.Set(tRelativeCursor)
 	} else {
 		s.flags.Reset(tRelativeCursor)
 	}
-	s.mu.Unlock()
 }
 
-// SetAltScreen sets whether we're using the alternate screen.
+// SetAltScreen sets whether we're using the alternate screen. It saves and
+// restores the cursor position to be used later when exiting the alternate
+// screen.
 func (s *terminalWriter) SetAltScreen(v bool) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v == s.flags.Contains(tAltScreen) {
+		return
+	}
 	if v {
 		s.flags.Set(tAltScreen)
+		s.saved = s.cur
 	} else {
 		s.flags.Reset(tAltScreen)
+		s.cur = s.saved
 	}
-	s.mu.Unlock()
 }
 
 // populateDiff populates the diff between the two buffers. This is used to
@@ -301,12 +311,10 @@ func newTerminalWriter(w io.Writer, termtype string, width int) (s *terminalWrit
 	s.scrollHeight = 0
 	s.touch = sync.Map{}
 	s.tabs = DefaultTabStops(s.width)
-	s.buf.Reset()
 	s.oldhash, s.newhash = nil, nil
 	s.scrollHeight = 0
 	s.touch = sync.Map{}
 	s.tabs = DefaultTabStops(width)
-	s.buf.Reset()
 	s.oldhash, s.newhash = nil, nil
 	return
 }
@@ -946,7 +954,6 @@ func (s *terminalWriter) flush() (err error) {
 			s.buf.Truncate(int(nr))
 		}
 	}
-
 	return
 }
 
@@ -1077,10 +1084,6 @@ func (s *terminalWriter) render(newbuf *Buffer) {
 	}
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles
-}
-
-// reset resets the screen to its initial state.
-func (s *terminalWriter) reset() {
 }
 
 // Clear marks the screen to be fully cleared on the next render.
