@@ -393,7 +393,7 @@ func (k Key) MatchStrings(ss ...string) bool {
 // For example, you'll always get "?" and instead of "shift+/" on a US ANSI
 // keyboard.
 func (k Key) String() string {
-	if len(k.Text) > 0 {
+	if len(k.Text) > 0 && k.Text != " " {
 		return k.Text
 	}
 	return k.Keystroke()
