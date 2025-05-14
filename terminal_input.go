@@ -2,6 +2,7 @@ package tv
 
 import (
 	"context"
+	"time"
 )
 
 // TerminalInputReceiver receive input events from the terminal input stream.
@@ -11,21 +12,32 @@ import (
 // uses the [SequenceParser] to parse escape sequences incoming from the
 // Windows Console API as key events.
 type TerminalInputReceiver struct {
-	*TerminalReader
+	rd           *TerminalReader
+	readLoopDone chan struct{}
 }
 
 var _ InputReceiver = (*TerminalInputReceiver)(nil)
 
+// NewTerminalInputReceiver creates a new [TerminalInputReceiver] for the given
+// [TerminalReader].
+func NewTerminalInputReceiver(rd *TerminalReader) *TerminalInputReceiver {
+	return &TerminalInputReceiver{
+		rd:           rd,
+		readLoopDone: make(chan struct{}),
+	}
+}
+
 // ReceiveEvents implements InputReceiver.
 func (t *TerminalInputReceiver) ReceiveEvents(ctx context.Context, events chan<- Event) (rErr error) {
 	go func() {
-		// Wait for the context to be done and cancel the reader.
 		<-ctx.Done()
-		t.Cancel()
+		t.rd.Cancel()
 	}()
 
+	defer close(t.readLoopDone)
+
 	for {
-		evs, err := t.ReadEvents()
+		evs, err := t.rd.ReadEvents()
 		if err != nil {
 			return err
 		}
@@ -37,4 +49,16 @@ func (t *TerminalInputReceiver) ReceiveEvents(ctx context.Context, events chan<-
 			}
 		}
 	}
+}
+
+// Shutdown gracefully shuts down the input receiver.
+func (t *TerminalInputReceiver) Shutdown(ctx context.Context) error {
+	select {
+	case <-t.readLoopDone:
+	case <-time.After(500 * time.Millisecond): //nolint:mnd
+		// The read loop hangs, which means the input
+		// cancelReader's cancel function has returned true even
+		// though it was not able to cancel the read.
+	}
+	return nil
 }
