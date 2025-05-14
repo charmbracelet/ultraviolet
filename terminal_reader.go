@@ -62,6 +62,8 @@ type TerminalReader struct {
 	// This indicates whether the reader is closed or not. It is used to
 	// prevent	multiple calls to the Close() method.
 	closed bool
+
+	logger Logger // The logger to use for debugging.
 }
 
 // NewTerminalReader returns a new input event reader. The reader reads input
@@ -84,6 +86,12 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 		r:    r,
 		term: termType,
 	}
+}
+
+// SetLogger sets the logger to use for debugging. If nil, no logging will be
+// performed.
+func (d *TerminalReader) SetLogger(logger Logger) {
+	d.logger = logger
 }
 
 // Start initializes the reader and prepares it for reading input events. It
@@ -136,6 +144,12 @@ func (d *TerminalReader) Close() (rErr error) {
 	return d.rd.Close() //nolint:wrapcheck
 }
 
+func (d *TerminalReader) logf(format string, v ...interface{}) {
+	if d.logger != nil {
+		d.logger.Printf(format, v...)
+	}
+}
+
 func (d *TerminalReader) readEvents() ([]Event, error) {
 	if err := d.Start(); err != nil {
 		return nil, err
@@ -152,6 +166,7 @@ func (d *TerminalReader) readEvents() ([]Event, error) {
 	// Lookup table first
 	if bytes.HasPrefix(buf, []byte{'\x1b'}) {
 		if k, ok := d.table[string(buf)]; ok {
+			d.logf("input: %q", buf)
 			events = append(events, KeyPressEvent(k))
 			return events, nil
 		}
@@ -160,6 +175,7 @@ func (d *TerminalReader) readEvents() ([]Event, error) {
 	var i int
 	for i < len(buf) {
 		nb, ev := d.parseSequence(buf[i:])
+		d.logf("input: %q", buf[i:i+nb])
 
 		// Handle bracketed-paste
 		if d.paste != nil {

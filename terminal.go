@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"io"
+	"log"
 	"os"
 	"runtime"
 	"strings"
@@ -56,6 +57,8 @@ type Terminal struct {
 	evch      chan Event
 	once      sync.Once
 	mouseMode MouseMode // The mouse mode for the terminal.
+
+	logger Logger // The debug logger for I/O.
 }
 
 // DefaultTerminal returns a new default terminal instance that uses
@@ -87,7 +90,28 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.rd.MouseMode = &t.mouseMode
 	t.evch = make(chan Event)
 	t.once = sync.Once{}
+
+	// Handle debugging I/O.
+	debug, ok := os.LookupEnv("TV_DEBUG")
+	if ok && len(debug) > 0 {
+		f, err := os.OpenFile(debug, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
+		if err != nil {
+			panic("failed to open debug file: " + err.Error())
+		}
+
+		logger := log.New(f, "tv: ", log.LstdFlags|log.Lshortfile)
+		t.SetLogger(logger)
+	}
+
 	return t
+}
+
+// SetLogger sets the debug logger for the terminal. This is used to log debug
+// information about the terminal I/O. By default, it is set to a no-op logger.
+func (t *Terminal) SetLogger(logger Logger) {
+	t.logger = logger
+	t.rd.SetLogger(logger)
+	t.scr.SetLogger(logger)
 }
 
 // ColorProfile returns the currently used color profile for the terminal.
@@ -139,6 +163,7 @@ func (t *Terminal) newScreen() *terminalWriter {
 	s.SetHardTabs(t.useTabs)
 	s.SetBackspace(t.useBspace)
 	s.SetAltScreen(t.altScreen)
+	s.SetLogger(t.logger)
 	return s
 }
 
@@ -494,7 +519,6 @@ func (t *Terminal) Close() (rErr error) {
 
 		// Reset screen.
 		t.scr = t.newScreen()
-		logger.Printf("Resetting screen...")
 	}()
 
 	defer func() {

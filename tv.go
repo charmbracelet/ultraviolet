@@ -2,9 +2,6 @@ package tv
 
 import (
 	"image/color"
-	"io"
-	"log"
-	"os"
 )
 
 // Screen represents a screen that can be drawn to.
@@ -66,19 +63,4 @@ func (f *Frame) SetCell(x, y int, c *Cell) {
 // CellAt returns an existing cell at the given position on the frame.
 func (f *Frame) CellAt(x, y int) *Cell {
 	return f.Buffer.CellAt(x, y)
-}
-
-var logger = log.New(io.Discard, "tv", log.LstdFlags|log.Lshortfile)
-
-func init() {
-	debug, ok := os.LookupEnv("TV_DEBUG")
-	if ok && len(debug) > 0 {
-		f, err := os.OpenFile(debug, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
-		if err != nil {
-			panic("failed to open debug file: " + err.Error())
-		}
-
-		logger.SetFlags(log.LstdFlags | log.Lshortfile)
-		logger.SetOutput(f)
-	}
 }

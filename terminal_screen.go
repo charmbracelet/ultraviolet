@@ -116,6 +116,15 @@ type terminalWriter struct {
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
+	logger           Logger       // The logger used for debugging.
+}
+
+// SetLogger sets the logger to use for debugging. If nil, no logging will be
+// performed.
+func (s *terminalWriter) SetLogger(logger Logger) {
+	s.mu.Lock()
+	s.logger = logger
+	s.mu.Unlock()
 }
 
 // SetColorProfile sets the color profile to use when writing to the screen.
@@ -943,10 +952,16 @@ func (s *terminalWriter) Flush() (err error) {
 	return s.flush()
 }
 
+func (s *terminalWriter) logf(format string, args ...any) {
+	if s.logger != nil {
+		s.logger.Printf(format, args...)
+	}
+}
+
 func (s *terminalWriter) flush() (err error) {
 	// Write the buffer
 	if n := s.buffered(); n > 0 {
-		logger.Printf("Flushing %d bytes to the screen %q\n", n, s.buf.String())
+		s.logf("output: %q", s.buf.String())
 		nr, err := s.buf.WriteTo(s.w)
 		if err != nil {
 			// When we get a short write error, truncate the buffer to the
