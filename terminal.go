@@ -612,24 +612,24 @@ func (t *Terminal) PrependLines(lines ...Line) error {
 	// We need to scroll the screen up by the number of lines in the queue.
 	// We can't use [ansi.SU] because we want the cursor to move down until
 	// it reaches the bottom of the screen.
-	_, y := t.scr.Position()
-	t.scr.MoveTo(t.buf, 0, t.buf.Height()-1)
-	t.scr.WriteString(strings.Repeat("\n", len(lines))) //nolint:errcheck
-	t.scr.SetPosition(0, y+len(lines))
-
-	// XXX: Now go to the top of the screen, insert new lines, and write
-	// the queued strings. It is important to use [tScreen.moveCursor]
-	// instead of [tScreen.move] because we don't want to perform any checks
-	// on the cursor position.
 	t.scr.mu.Lock()
+	defer t.scr.mu.Unlock()
+
+	t.scr.move(t.buf, 0, t.buf.Height()-1)
+	t.scr.buf.WriteString(strings.Repeat("\n", len(lines))) //nolint:errcheck
+	t.scr.cur.Y += len(lines)
+
+	// XXX: Now go to the top of the screen, insert new lines, and write the
+	// queued strings. It is important to use [terminalWriter.moveCursor]
+	// instead of [terminalWriter.move] because we don't want to perform any
+	// checks on the cursor position.
 	t.scr.moveCursor(t.buf, 0, 0, false)
-	t.scr.mu.Unlock()
-	t.scr.WriteString(ansi.InsertLine(len(lines))) //nolint:errcheck
+	t.scr.buf.WriteString(ansi.InsertLine(len(lines))) //nolint:errcheck
 	for _, line := range lines {
-		t.scr.WriteString(line.Render() + "\r\n") //nolint:errcheck
+		t.scr.buf.WriteString(line.Render() + "\r\n") //nolint:errcheck
 	}
 
-	return t.scr.Flush()
+	return t.scr.flush()
 }
 
 // Write writes the given data to the output stream. It implements the
