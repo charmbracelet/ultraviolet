@@ -90,6 +90,11 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	return t
 }
 
+// ColorProfile returns the currently used color profile for the terminal.
+func (t *Terminal) ColorProfile() colorprofile.Profile {
+	return t.profile
+}
+
 // SetColorProfile sets a custom color profile for the terminal. This is useful
 // for forcing a specific color output. By default, the terminal will use the
 // system's color profile inferred by the environment variables.
@@ -110,7 +115,7 @@ func (t *Terminal) CellAt(x int, y int) *Cell {
 
 // ColorModel returns the color model of the terminal screen.
 func (t *Terminal) ColorModel() color.Model {
-	return t.profile
+	return t.ColorProfile()
 }
 
 // GetSize returns the size of the terminal screen. It errors if the size
