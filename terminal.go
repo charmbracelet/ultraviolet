@@ -164,9 +164,9 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 var _ Displayer = (*Terminal)(nil)
 
 func (t *Terminal) newScreen() *TerminalRenderer {
-	s := NewTerminalRenderer(t.out, t.termtype, t.size.Width)
+	s := NewTerminalRenderer(t.out, t.environ)
 	s.SetColorProfile(t.profile)
-	s.SetHardTabs(t.useTabs)
+	s.SetTabStops(t.size.Width)
 	s.SetBackspace(t.useBspace)
 	if t.altScreen {
 		s.EnterAltScreen()
