@@ -145,9 +145,10 @@ func (d *TerminalReader) Close() (rErr error) {
 }
 
 func (d *TerminalReader) logf(format string, v ...interface{}) {
-	if d.logger != nil {
-		d.logger.Printf(format, v...)
+	if d.logger == nil {
+		return
 	}
+	d.logger.Printf(format, v...)
 }
 
 func (d *TerminalReader) readEvents() ([]Event, error) {
