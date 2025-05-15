@@ -1064,9 +1064,10 @@ func (s *TerminalRenderer) clearUpdate(newbuf *Buffer) {
 }
 
 func (s *TerminalRenderer) logf(format string, args ...any) {
-	if s.logger != nil {
-		s.logger.Printf(format, args...)
+	if s.logger == nil {
+		return
 	}
+	s.logger.Printf(format, args...)
 }
 
 // Flush flushes the buffer to the screen.
