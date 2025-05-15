@@ -38,10 +38,28 @@ const (
 	// Scroll Up [ansi.SU].
 	capSU
 
+	// These capabilities depend on the tty termios settings and are not
+	// enabled by default.
+
+	// Tabulation [ansi.HT].
+	capHT
+	// Backspace [ansi.BS].
+	capBS
+
 	noCaps  capabilities = 0
 	allCaps              = capVPA | capHPA | capCHT | capCBT | capREP | capECH | capICH |
 		capSD | capSU
 )
+
+// Set sets the given capabilities.
+func (v *capabilities) Set(c capabilities) {
+	*v |= c
+}
+
+// Reset resets the given capabilities.
+func (v *capabilities) Reset(c capabilities) {
+	*v &^= c
+}
 
 // Contains returns whether the capabilities contains the given capability.
 func (v capabilities) Contains(c capabilities) bool {
@@ -68,9 +86,7 @@ type tFlag uint
 
 // Terminal writer flags.
 const (
-	tHardTabs tFlag = 1 << iota
-	tBackspace
-	tRelativeCursor
+	tRelativeCursor tFlag = 1 << iota
 	tCursorHidden
 	tAltScreen
 	tMapNewline
@@ -91,24 +107,23 @@ func (v tFlag) Contains(c tFlag) bool {
 	return v&c == c
 }
 
-// TerminalRenderer is a writer that buffers the output until it is flushed. It
-// handles rendering [Buffer] cells to the screen and supports various
-// terminal optimizations.
-// The alt-screen and cursor visibility are not managed by the writer and
-// should be managed by the caller. The writer however, will handle hiding the
-// cursor during rendering before flushing the buffer when the cursor is
-// set to be shown.
-
-// TerminalRenderer handles rendering a screen from a [Buffer] to a terminal.
-// It compares the given buffer and produce the minimal necessary optimized
-// ANSI escape sequences to transition the terminal to the new buffer state.
-// Renderer commands are queued in a buffer and flushed to the writer when the
-// [TerminalRenderer.Flush] method is called. Use the [io.Writer] and
-// [io.StringWriter] interfaces to queue custom commands the renderer.
+// TerminalRenderer is a terminal screen render and lazy writer that buffers
+// the output until it is flushed. It handles rendering a screen from a
+// [Buffer] to the terminal with the minimal necessary escape sequences to
+// transition the terminal to the new buffer state. It uses various escape
+// sequence optimizations to reduce the number of bytes sent to the terminal.
+// It's designed to be lazy and only flush the output when necessary by calling
+// the [TerminalRenderer.Flush] method.
 //
-// It also handles the terminal's alternate screen and cursor visibility via
-// the [TerminalRenderer.EnterAltScreen], [TerminalRenderer.ExitAltScreen],
+// The renderer handles the terminal's alternate screen and cursor visibility
+// via the [TerminalRenderer.EnterAltScreen], [TerminalRenderer.ExitAltScreen],
 // [TerminalRenderer.ShowCursor] and [TerminalRenderer.HideCursor] methods.
+// Using these methods will queue the appropriate escape sequences to enter or
+// exit the alternate screen and show or hide the cursor respectively to be
+// flushed to the terminal.
+
+// Use the [io.Writer] and [io.StringWriter] interfaces to queue custom
+// commands the renderer.
 //
 // The renderer is not thread-safe, the caller must protect the renderer when
 // using it from multiple goroutines.
@@ -118,19 +133,21 @@ type TerminalRenderer struct {
 	curbuf           *Buffer       // the current buffer
 	tabs             *TabStops
 	touch            sync.Map
-	oldhash, newhash []uint64  // the old and new hash values for each line
-	hashtab          []hashmap // the hashmap table
-	oldnum           []int     // old indices from previous hash
-	cur, saved       cursor    // the current and saved cursors
-	flags            tFlag     // terminal writer flags.
-	term             string    // the terminal type
-	profile          colorprofile.Profile
-	width            int          // the width of the terminal.
+	oldhash, newhash []uint64     // the old and new hash values for each line
+	hashtab          []hashmap    // the hashmap table
+	oldnum           []int        // old indices from previous hash
+	cur, saved       cursor       // the current and saved cursors
+	flags            tFlag        // terminal writer flags.
+	term             string       // the terminal type
 	scrollHeight     int          // keeps track of how many lines we've scrolled down (inline mode)
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
 	logger           Logger       // The logger used for debugging.
+
+	// profile is the color profile to use when downsampling colors. This is
+	// used to determine the appropriate color the terminal can display.
+	profile colorprofile.Profile
 }
 
 // NewTerminalRenderer returns a new [TerminalRenderer] that uses the given
@@ -138,25 +155,23 @@ type TerminalRenderer struct {
 // terminal type is used to determine the capabilities of the terminal and
 // should be set to the value of the TERM environment variable.
 //
-// The renderer will always use [colorprofile.TrueColor] which means no color
-// degradation will be performed. Use [TerminalRenderer.SetColorProfile] method
+// The renderer will try to detect the color profile from the output and the
+// given environment variables. Use [TerminalRenderer.SetColorProfile] method
 // to set a specific color profile for downsampling.
 //
 // See [TerminalRenderer] for more information on how to use the renderer.
-func NewTerminalRenderer(w io.Writer, termtype string, termwidth int) (s *TerminalRenderer) {
+func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s = new(TerminalRenderer)
 	s.w = w
-	s.profile = colorprofile.TrueColor
-	s.width = termwidth
+	s.profile = colorprofile.Detect(w, env)
 	s.buf = new(bytes.Buffer)
-	s.term = termtype
-	s.caps = xtermCaps(termtype)
+	s.term = Environ(env).Getenv("TERM")
+	s.caps = xtermCaps(s.term)
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
 	s.scrollHeight = 0
 	s.touch = sync.Map{}
 	s.oldhash, s.newhash = nil, nil
-	s.tabs = DefaultTabStops(termwidth)
 	return
 }
 
@@ -166,9 +181,10 @@ func (s *TerminalRenderer) SetLogger(logger Logger) {
 	s.logger = logger
 }
 
-// SetColorProfile sets the color profile to use when writing to the screen.
-func (s *TerminalRenderer) SetColorProfile(p colorprofile.Profile) {
-	s.profile = p
+// SetColorProfile sets the color profile to use for downsampling colors. This
+// is used to determine the appropriate color the terminal can display.
+func (s *TerminalRenderer) SetColorProfile(profile colorprofile.Profile) {
+	s.profile = profile
 }
 
 // SetMapNewline sets whether the terminal is currently mapping newlines to
@@ -185,23 +201,22 @@ func (s *TerminalRenderer) SetMapNewline(v bool) {
 // SetBackspace sets whether to use backspace as a movement optimization.
 func (s *TerminalRenderer) SetBackspace(v bool) {
 	if v {
-		s.flags.Set(tBackspace)
+		s.caps.Set(capBS)
 	} else {
-		s.flags.Reset(tBackspace)
+		s.caps.Reset(capBS)
 	}
 }
 
-// SetHardTabs sets whether to use hard tabs as movement optimization. This
-// optimization is ignored when the terminal type is "linux" as it does not
-// support hard tabs.
-func (s *TerminalRenderer) SetHardTabs(v bool) {
-	// We always disable HardTabs when termtype is "linux".
-	if !strings.HasPrefix(s.term, "linux") {
-		if v {
-			s.flags.Set(tHardTabs)
-		} else {
-			s.flags.Reset(tHardTabs)
-		}
+// SetTabStops sets the tab stops for the terminal and enables hard tabs
+// movement optimizations. Use -1 to disable hard tabs. This option is ignored
+// when the terminal type is "linux" as it does not support hard tabs.
+func (s *TerminalRenderer) SetTabStops(width int) {
+	if width < 0 || strings.HasPrefix(s.term, "linux") {
+		// Linux terminal does not support hard tabs.
+		s.caps.Reset(capHT)
+	} else {
+		s.caps.Set(capHT)
+		s.tabs = DefaultTabStops(width)
 	}
 }
 
@@ -1187,7 +1202,6 @@ func (s *TerminalRenderer) Clear() {
 // Resize updates the terminal screen tab stops. This is used to calculate
 // terminal tab stops for hard tab optimizations.
 func (s *TerminalRenderer) Resize(width, _ int) {
-	s.width = width
 	s.tabs.Resize(width)
 }
 
@@ -1290,7 +1304,7 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 
 		if tx > fx {
 			n := tx - fx
-			if useTabs {
+			if useTabs && s.tabs != nil {
 				var tabs int
 				var col int
 				for col = fx; s.tabs.Next(col) <= tx; col = s.tabs.Next(col) {
@@ -1354,7 +1368,7 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 			}
 		} else if tx < fx {
 			n := fx - tx
-			if useTabs && s.caps.Contains(capCBT) {
+			if useTabs && s.tabs != nil && s.caps.Contains(capCBT) {
 				// VT100 does not support backward tabs [ansi.CBT].
 
 				col := fx
@@ -1406,10 +1420,10 @@ func moveCursor(s *TerminalRenderer, newbuf *Buffer, x, y int, overwrite bool) (
 
 	// Optimize based on options.
 	trials := 0
-	if s.flags.Contains(tHardTabs) {
+	if s.caps.Contains(capHT) {
 		trials |= 2 // 0b10 in binary
 	}
-	if s.flags.Contains(tBackspace) {
+	if s.caps.Contains(capBS) {
 		trials |= 1 // 0b01 in binary
 	}
 
