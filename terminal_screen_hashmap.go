@@ -29,7 +29,7 @@ type hashmap struct {
 const newIndex = -1
 
 // updateHashmap updates the hashmap with the new hash value.
-func (s *terminalWriter) updateHashmap(newbuf *Buffer) {
+func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 	height := newbuf.Height()
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
@@ -131,7 +131,7 @@ func (s *terminalWriter) updateHashmap(newbuf *Buffer) {
 }
 
 // scrollOldhash
-func (s *terminalWriter) scrollOldhash(n, top, bot int) {
+func (s *TerminalRenderer) scrollOldhash(n, top, bot int) {
 	if len(s.oldhash) == 0 {
 		return
 	}
@@ -154,7 +154,7 @@ func (s *terminalWriter) scrollOldhash(n, top, bot int) {
 	}
 }
 
-func (s *terminalWriter) growHunks(newbuf *Buffer) {
+func (s *TerminalRenderer) growHunks(newbuf *Buffer) {
 	var (
 		backLimit    int // limits for cells to fill
 		backRefLimit int // limit for references
@@ -237,7 +237,7 @@ func (s *terminalWriter) growHunks(newbuf *Buffer) {
 
 // costEffective returns true if the cost of moving line 'from' to line 'to' seems to be
 // cost effective. 'blank' indicates whether the line 'to' would become blank.
-func (s *terminalWriter) costEffective(newbuf *Buffer, from, to int, blank bool) bool {
+func (s *TerminalRenderer) costEffective(newbuf *Buffer, from, to int, blank bool) bool {
 	if from == to {
 		return false
 	}
@@ -280,7 +280,7 @@ func (s *terminalWriter) costEffective(newbuf *Buffer, from, to int, blank bool)
 	return costBeforeMove >= costAfterMove
 }
 
-func (s *terminalWriter) updateCost(newbuf *Buffer, from, to Line) (cost int) {
+func (s *TerminalRenderer) updateCost(newbuf *Buffer, from, to Line) (cost int) {
 	var fidx, tidx int
 	for i := newbuf.Width() - 1; i > 0; i, fidx, tidx = i-1, fidx+1, tidx+1 {
 		if !cellEqual(from.At(fidx), to.At(tidx)) {
@@ -290,7 +290,7 @@ func (s *terminalWriter) updateCost(newbuf *Buffer, from, to Line) (cost int) {
 	return
 }
 
-func (s *terminalWriter) updateCostBlank(newbuf *Buffer, to Line) (cost int) {
+func (s *TerminalRenderer) updateCostBlank(newbuf *Buffer, to Line) (cost int) {
 	var tidx int
 	for i := newbuf.Width() - 1; i > 0; i, tidx = i-1, tidx+1 {
 		if !cellEqual(nil, to.At(tidx)) {
