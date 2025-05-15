@@ -165,6 +165,7 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.w = w
 	s.profile = colorprofile.Detect(w, env)
 	s.buf = new(bytes.Buffer)
+	s.curbuf = NewBuffer(0, 0)
 	s.term = Environ(env).Getenv("TERM")
 	s.caps = xtermCaps(s.term)
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
@@ -294,6 +295,10 @@ func (s *TerminalRenderer) HideCursor() {
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
 func (s *TerminalRenderer) PrependLines(newbuf *Buffer, lines ...Line) {
+	if newbuf == nil || len(lines) == 0 {
+		return
+	}
+
 	// TODO: Use scrolling region if available.
 	// TODO: Use [Screen.Write] [io.Writer] interface.
 
@@ -319,6 +324,9 @@ func (s *TerminalRenderer) PrependLines(newbuf *Buffer, lines ...Line) {
 // [StyledString] and calls [TerminalRenderer.PrependLines] with the buffer
 // lines of the [StyledString].
 func (s *TerminalRenderer) PrependStyledString(newbuf *Buffer, method ansi.Method, str string) {
+	if newbuf == nil || len(str) == 0 {
+		return
+	}
 	ss := NewStyledString(method, str)
 	s.PrependLines(newbuf, ss.Buffer.Lines...)
 }
@@ -1100,7 +1108,7 @@ func (s *TerminalRenderer) Redraw(newbuf *Buffer) {
 // [terminalWriter.Flush] to flush pending changes to the screen.
 func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	// Do we have a buffer to compare to?
-	if s.curbuf == nil {
+	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
 		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
 	}
 
