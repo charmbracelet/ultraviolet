@@ -340,12 +340,7 @@ func (s *TerminalRenderer) populateDiff(newbuf *Buffer) {
 		go func() {
 			defer wg.Done()
 			var chg lineData
-			v, ok := s.touch.Load(y)
-			if !ok {
-				chg = lineData{firstCell: 0, lastCell: newbuf.Width() - 1}
-			} else if e, ok := v.(lineData); ok {
-				chg = e
-			}
+			_, ok := s.touch.Load(y)
 			for x := 0; x < newbuf.Width(); x++ {
 				var oldc *Cell
 				if s.curbuf != nil {
@@ -355,6 +350,7 @@ func (s *TerminalRenderer) populateDiff(newbuf *Buffer) {
 				if !cellEqual(oldc, newc) {
 					if !ok {
 						chg = lineData{firstCell: x, lastCell: x + newc.Width}
+						ok = true
 					} else {
 						chg.firstCell = min(chg.firstCell, x)
 						chg.lastCell = max(chg.lastCell, x+newc.Width)
@@ -362,7 +358,9 @@ func (s *TerminalRenderer) populateDiff(newbuf *Buffer) {
 				}
 			}
 
-			s.touch.Store(y, chg)
+			if ok {
+				s.touch.Store(y, chg)
+			}
 		}()
 	}
 	wg.Wait()
