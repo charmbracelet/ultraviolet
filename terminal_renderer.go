@@ -221,6 +221,44 @@ func (s *TerminalRenderer) SetTabStops(width int) {
 	}
 }
 
+// SetAltScreen sets whether the alternate screen is enabled. This is used to
+// control the internal alternate screen state when it was changed outside the
+// renderer.
+func (s *TerminalRenderer) SetAltScreen(v bool) {
+	if v {
+		s.flags.Set(tAltScreen)
+	} else {
+		s.flags.Reset(tAltScreen)
+	}
+}
+
+// AltScreen returns whether the alternate screen is enabled. This returns the
+// state of the renderer's alternate screen which does not necessarily reflect
+// the actual alternate screen state of the terminal if it was changed outside
+// the renderer.
+func (s *TerminalRenderer) AltScreen() bool {
+	return s.flags.Contains(tAltScreen)
+}
+
+// SetCursorHidden sets whether the cursor is hidden. This is used to control
+// the internal cursor visibility state when it was changed outside the
+// renderer.
+func (s *TerminalRenderer) SetCursorHidden(v bool) {
+	if v {
+		s.flags.Set(tCursorHidden)
+	} else {
+		s.flags.Reset(tCursorHidden)
+	}
+}
+
+// CursorHidden returns the current cursor visibility state. This returns the
+// state of the renderer's cursor visibility which does not necessarily reflect
+// the actual cursor visibility state of the terminal if it was changed outside
+// the renderer.
+func (s *TerminalRenderer) CursorHidden() bool {
+	return s.flags.Contains(tCursorHidden)
+}
+
 // SetRelativeCursor sets whether to use relative cursor movements.
 func (s *TerminalRenderer) SetRelativeCursor(v bool) {
 	if v {
@@ -238,11 +276,6 @@ func (s *TerminalRenderer) SetRelativeCursor(v bool) {
 func (s *TerminalRenderer) EnterAltScreen() {
 	if !s.flags.Contains(tAltScreen) {
 		s.buf.WriteString(ansi.SetAltScreenSaveCursorMode) //nolint:errcheck
-		if s.flags.Contains(tCursorHidden) {
-			s.buf.WriteString(ansi.HideCursor) //nolint:errcheck
-		} else {
-			s.buf.WriteString(ansi.ShowCursor) //nolint:errcheck
-		}
 		s.saved = s.cur
 		s.clear = true
 	}
@@ -257,11 +290,6 @@ func (s *TerminalRenderer) EnterAltScreen() {
 func (s *TerminalRenderer) ExitAltScreen() {
 	if s.flags.Contains(tAltScreen) {
 		s.buf.WriteString(ansi.ResetAltScreenSaveCursorMode) //nolint:errcheck
-		if s.flags.Contains(tCursorHidden) {
-			s.buf.WriteString(ansi.HideCursor) //nolint:errcheck
-		} else {
-			s.buf.WriteString(ansi.ShowCursor) //nolint:errcheck
-		}
 		s.cur = s.saved
 		s.clear = true
 	}
@@ -1073,12 +1101,17 @@ func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
 		s.logf("output: %q", s.buf.String())
-		nr, err := s.buf.WriteTo(s.w)
-		if err != nil {
-			// When we get a short write error, truncate the buffer to the
-			// remaining bytes.
-			s.buf.Truncate(int(nr))
+		bts := s.buf.Bytes()
+		if !s.flags.Contains(tCursorHidden) {
+			// Hide the cursor during the flush operation.
+			buf := make([]byte, len(bts)+len(ansi.HideCursor)+len(ansi.ShowCursor))
+			copy(buf, ansi.HideCursor)
+			copy(buf[len(ansi.HideCursor):], bts)
+			copy(buf[len(ansi.HideCursor)+len(bts):], ansi.ShowCursor)
+			bts = buf
 		}
+		_, err = s.w.Write(bts)
+		s.buf.Reset()
 	}
 	return
 }
@@ -1113,7 +1146,6 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
 		s.oldhash, s.newhash = nil, nil
-		s.scrollHeight = 0 // reset scroll lines
 	}
 
 	// Do we need to render anything?
@@ -1210,6 +1242,7 @@ func (s *TerminalRenderer) Clear() {
 // terminal tab stops for hard tab optimizations.
 func (s *TerminalRenderer) Resize(width, _ int) {
 	s.tabs.Resize(width)
+	s.scrollHeight = 0
 }
 
 // Position returns the cursor position in the screen buffer after applying any

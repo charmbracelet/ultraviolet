@@ -2,6 +2,7 @@ package tv
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ import (
 type TerminalInputReceiver struct {
 	rd           *TerminalReader
 	readLoopDone chan struct{}
+	once         sync.Once
 }
 
 var _ InputReceiver = (*TerminalInputReceiver)(nil)
@@ -29,12 +31,14 @@ func NewTerminalInputReceiver(rd *TerminalReader) *TerminalInputReceiver {
 
 // ReceiveEvents implements InputReceiver.
 func (t *TerminalInputReceiver) ReceiveEvents(ctx context.Context, events chan<- Event) (rErr error) {
-	go func() {
-		<-ctx.Done()
-		t.rd.Cancel()
-	}()
+	t.once.Do(func() {
+		go func() {
+			<-ctx.Done()
+			t.rd.Cancel()
+		}()
 
-	defer close(t.readLoopDone)
+		defer close(t.readLoopDone)
+	})
 
 	for {
 		evs, err := t.rd.ReadEvents()
