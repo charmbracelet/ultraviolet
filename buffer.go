@@ -138,8 +138,11 @@ func renderLine(buf interface {
 		pendingLine = ""
 	}
 
-	for x := 0; x < len(l); x++ {
-		if cell := l.At(x); cell != nil && cell.Width > 0 {
+	for _, cell := range l {
+		if cell == nil {
+			cell = &BlankCell
+		}
+		if cell.Width > 0 {
 			// Convert the cell's style and link to the given color profile.
 			cellStyle := cell.Style
 			cellLink := cell.Link
@@ -174,7 +177,7 @@ func renderLine(buf interface {
 				pendingWidth += cell.Width
 			} else {
 				writePending()
-				buf.WriteString(cell.String())
+				buf.WriteString(cell.String()) //nolint:errcheck
 			}
 		}
 	}
