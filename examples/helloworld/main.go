@@ -32,10 +32,14 @@ func main() {
 	// when we are done with our program.
 	defer t.ExitAltScreen()
 
+	width, height, err := t.GetSize()
+	if err != nil {
+		log.Fatalf("failed to get terminal size: %v", err)
+	}
+
 	// Create a new program
-	p := tv.NewProgram(t)
 	// Start the program
-	if err := p.Start(); err != nil {
+	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
@@ -44,12 +48,21 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	f := &tv.Frame{
+		Buffer:   tv.NewBuffer(width, height),
+		Viewport: tv.FullViewport{},
+		Area:     tv.Rect(0, 0, width, height),
+	}
+
 	// This will block until we close the events
 	// channel or cancel the context.
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
 		case tv.WindowSizeEvent:
-			p.Resize(ev.Width, ev.Height)
+			width, height = ev.Width, ev.Height
+			t.Resize(ev.Width, ev.Height)
+			f.Area = tv.Rect(0, 0, ev.Width, ev.Height)
+			f.Buffer.Resize(ev.Width, ev.Height)
 		case tv.KeyPressEvent:
 			if ev.MatchStrings("q", "ctrl+c") {
 				cancel() // This will stop the loop
@@ -57,26 +70,25 @@ func main() {
 		}
 
 		// Display the frame with the styled string
-		if err := p.Display(func(f *tv.Frame) error {
-			f.Buffer.Clear()
-			// We will use the StyledString component to simplify displaying
-			// text on the screen.
-			// Using [ansi.WcWidth] will ensure that the text is
-			// displayed correctly on the screen using traditional
-			// terminal width calculations.
-			ss := styledstring.New(ansi.WcWidth, "Hello, World!")
-			// We want the component to occupy the given area which is the
-			// entire screen because we're using the alternate screen buffer.
-			area := f.Area
-			area.Min.X = (area.Max.X / 2) - 6
-			area.Min.Y = (area.Max.Y / 2) - 1
-			return f.RenderComponent(ss, area)
-		}); err != nil {
+		f.Buffer.Clear()
+		// We will use the StyledString component to simplify displaying
+		// text on the screen.
+		// Using [ansi.WcWidth] will ensure that the text is
+		// displayed correctly on the screen using traditional
+		// terminal width calculations.
+		ss := styledstring.New(ansi.WcWidth, "Hello, World!")
+		// We want the component to occupy the given area which is the
+		// entire screen because we're using the alternate screen buffer.
+		area := f.Area
+		area.Min.X = (area.Max.X / 2) - 6
+		area.Min.Y = (area.Max.Y / 2) - 1
+		f.RenderComponent(ss, area)
+		if err := t.Display(f); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if err := p.Shutdown(ctx); err != nil {
+	if err := t.Shutdown(ctx); err != nil {
 		log.Fatal(err)
 	}
 }

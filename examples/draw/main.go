@@ -14,8 +14,7 @@ import (
 func main() {
 	t := tv.DefaultTerminal()
 	t.SetTitle("Draw Example")
-	p := tv.NewProgram(t)
-	if err := p.Start(); err != nil {
+	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
@@ -33,6 +32,13 @@ func main() {
 	// Enable mouse events.
 	t.EnableMouse()        //nolint:errcheck
 	defer t.DisableMouse() //nolint:errcheck
+
+	t.EnableMode(ansi.FocusEventMode)
+
+	width, height, err := t.GetSize()
+	if err != nil {
+		log.Fatalf("failed to get terminal size: %v", err)
+	}
 
 	// Listen for input and mouse events.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -56,33 +62,34 @@ Press any key to continue...`
 
 	var prevHelpBuf *tv.Buffer
 	showingHelp := true
+	f := &tv.Frame{
+		Buffer:   tv.NewBuffer(width, height),
+		Viewport: tv.FullViewport{},
+		Area:     tv.Rect(0, 0, width, height),
+	}
 	displayHelp := func(show bool) {
-		p.Display(func(f *tv.Frame) error {
-			midX, midY := f.Area.Max.X/2, f.Area.Max.Y/2
-			x, y := midX-helpW/2, midY-helpH/2
-			midArea := tv.Rect(x, y, helpW, helpH)
-			if show {
-				// Save the area under the help to restore it later.
-				prevHelpBuf = f.Buffer.CloneArea(midArea)
-				return f.RenderComponent(helpComp, midArea)
-			} else if prevHelpBuf != nil {
-				// Restore saved area under the help.
-				for y := 0; y < prevHelpBuf.Height(); y++ {
-					for x := 0; x < prevHelpBuf.Width(); x++ {
-						c := prevHelpBuf.CellAt(x, y)
-						f.Buffer.SetCell(x+midArea.Min.X, y+midArea.Min.Y, c)
-					}
+		midX, midY := f.Area.Max.X/2, f.Area.Max.Y/2
+		x, y := midX-helpW/2, midY-helpH/2
+		midArea := tv.Rect(x, y, helpW, helpH)
+		if show {
+			// Save the area under the help to restore it later.
+			prevHelpBuf = f.Buffer.CloneArea(midArea)
+			f.RenderComponent(helpComp, midArea)
+		} else if prevHelpBuf != nil {
+			// Restore saved area under the help.
+			for y := 0; y < prevHelpBuf.Height(); y++ {
+				for x := 0; x < prevHelpBuf.Width(); x++ {
+					c := prevHelpBuf.CellAt(x, y)
+					f.Buffer.SetCell(x+midArea.Min.X, y+midArea.Min.Y, c)
 				}
 			}
-			return nil
-		})
+		}
+		t.Display(f)
 	}
 
 	clearScreen := func() {
-		p.Display(func(f *tv.Frame) error {
-			f.Buffer.Clear()
-			return nil
-		})
+		f.Buffer.Clear()
+		t.Display(f)
 	}
 
 	// Display first frame.
@@ -93,20 +100,27 @@ Press any key to continue...`
 	char := defaultChar
 	draw := func(ev tv.MouseEvent) {
 		m := ev.Mouse()
-		p.Display(func(f *tv.Frame) error {
-			f.Buffer.SetCell(m.X, m.Y, &tv.Cell{
-				Rune:  char,
-				Width: method.StringWidth(string(char)),
-				Style: st,
-			})
-			return nil
+		f.Buffer.SetCell(m.X, m.Y, &tv.Cell{
+			Rune:  char,
+			Width: method.StringWidth(string(char)),
+			Style: st,
 		})
+		t.Display(f)
 	}
 
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
 		case tv.WindowSizeEvent:
-			p.Resize(ev.Width, ev.Height)
+			if showingHelp {
+				displayHelp(false)
+			}
+			width, height = ev.Width, ev.Height
+			f.Area = tv.Rect(0, 0, ev.Width, ev.Height)
+			t.Resize(ev.Width, ev.Height)
+			t.ClearScreen()
+			if showingHelp {
+				displayHelp(showingHelp)
+			}
 		case tv.KeyPressEvent:
 			if showingHelp {
 				showingHelp = false
@@ -151,7 +165,7 @@ Press any key to continue...`
 	}
 
 	// Shutdown the program.
-	if err := p.Shutdown(context.Background()); err != nil {
+	if err := t.Shutdown(context.Background()); err != nil {
 		log.Fatalf("failed to shutdown program: %v", err)
 	}
 }

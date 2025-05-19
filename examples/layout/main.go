@@ -367,12 +367,11 @@ func main() {
 	}
 
 	t := tv.DefaultTerminal()
-	p := tv.NewProgram(t)
-	if err := p.Start(); err != nil {
+	if err := t.Start(); err != nil {
 		log.Fatalf("starting program: %v", err)
 	}
 
-	physicalWidth, _, err := t.GetSize()
+	physicalWidth, physicalHeight, err := t.GetSize()
 	if err != nil {
 		log.Fatalf("getting size: %v", err)
 	}
@@ -399,15 +398,18 @@ func main() {
 	dialogHeight := lipgloss.Height(dialogUI) + dialogBoxStyle.GetVerticalFrameSize()
 	dialogX, dialogY := physicalWidth/2-dialogWidth/2-docStyle.GetVerticalFrameSize()-1, 12
 	mainDoc := docStyle.Render(doc.String())
+	f := &tv.Frame{
+		Buffer:   tv.NewBuffer(physicalWidth, physicalHeight),
+		Viewport: tv.FullViewport{},
+		Area:     tv.Rect(0, 0, physicalWidth, physicalHeight),
+	}
 	display := func() {
-		p.Display(func(f *tv.Frame) error {
-			mainSs := styledstring.New(ansi.WcWidth, mainDoc)
-			f.RenderComponent(mainSs, f.Area) //nolint:errcheck
-			boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
-			box := styledstring.New(ansi.WcWidth, dialogBoxStyle.Render(dialogUI))
-			f.RenderComponent(box, boxArea) //nolint:errcheck
-			return nil
-		})
+		mainSs := styledstring.New(ansi.WcWidth, mainDoc)
+		f.RenderComponent(mainSs, f.Area) //nolint:errcheck
+		boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
+		box := styledstring.New(ansi.WcWidth, dialogBoxStyle.Render(dialogUI))
+		f.RenderComponent(box, boxArea) //nolint:errcheck
+		t.Display(f)
 	}
 
 	// Set terminal to raw mode to read input events.
@@ -426,7 +428,10 @@ func main() {
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
 		case tv.WindowSizeEvent:
-			p.Resize(ev.Width, ev.Height)
+			area := tv.Rect(0, 0, ev.Width, ev.Height)
+			f.Area = area
+			f.Buffer.Resize(ev.Width, ev.Height)
+			t.Resize(ev.Width, ev.Height)
 		case tv.MouseClickEvent:
 			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
 		case tv.KeyPressEvent:
@@ -449,7 +454,7 @@ func main() {
 	}
 
 	// Shutdown the program gracefully and exit.
-	if err := p.Shutdown(ctx); err != nil {
+	if err := t.Shutdown(ctx); err != nil {
 		log.Fatalf("shutting down program: %v", err)
 	}
 }
