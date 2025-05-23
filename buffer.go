@@ -288,15 +288,15 @@ func (b *Buffer) Resize(width int, height int) {
 		return
 	}
 
-	if width > b.Width() {
-		line := make(Line, width-b.Width())
+	if bwid := b.Width(); width > bwid {
+		line := make(Line, width-bwid)
 		for i := range line {
 			line[i] = BlankCell
 		}
 		for i := range b.Lines {
 			b.Lines[i] = append(b.Lines[i], line...)
 		}
-	} else if width < b.Width() {
+	} else if width < bwid {
 		for i := range b.Lines {
 			b.Lines[i] = b.Lines[i][:width]
 		}
