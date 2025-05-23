@@ -105,8 +105,7 @@ func printString[T []byte | string](
 	bounds Rectangle, str T,
 	truncate bool, tail string,
 ) {
-	p := ansi.GetParser()
-	defer ansi.PutParser(p)
+	p := ansi.NewParser()
 
 	var tailc Cell
 	if truncate && len(tail) > 0 {
