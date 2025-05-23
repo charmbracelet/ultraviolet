@@ -8,7 +8,6 @@ import (
 
 	"github.com/charmbracelet/tv"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
 )
 
 func main() {
@@ -25,39 +24,23 @@ func main() {
 		log.Fatalf("failed to make terminal raw: %v", err)
 	}
 
-	// Create a new program that uses the terminal screen to display output.
-	// The [tv.NewProgram] takes a [tv.Screen] that is also a [tv.Displayer],
-	// or a [tv.Programable] type. This allows us to use any kind of screen
-	// that satisfies the [tv.Screen] and [tv.Displayer] interfaces.
-	//
-	//  ```go
-	//  // Screen represents a screen that can be drawn to.
-	//  type Screen interface {
-	//  	// GetSize returns the size of the screen. It errors if the size cannot be
-	//  	// determined.
-	//  	GetSize() (width, height int, err error)
-	//  	// CellAt returns the cell at the given position.
-	//  	CellAt(x, y int) *Cell
-	//  	// ColorModel returns the color model of the screen.
-	//  	ColorModel() color.Model
-	//  }
-	//
-	//  // Displayer is an interface that can display a frame.
-	//  type Displayer interface {
-	//  	// Display displays the given frame.
-	//  	Display(f *Frame) error
-	//  }
-	//  ```
-	p := tv.NewProgram(t)
+	w, h, err := t.GetSize()
+	if err != nil {
+		log.Fatalf("failed to get terminal size: %v", err)
+	}
 
-	p.SetViewport(tv.InlineViewport(1))
+	f := &tv.Frame{
+		Buffer:   tv.NewBuffer(w, 1),
+		Viewport: tv.InlineViewport(1),
+		Area:     tv.Rect(0, 0, w, h),
+	}
 
 	// We want to display the program in alternate screen mode.
 	// t.EnterAltScreen()
 	// defer t.LeaveAltScreen()
 
 	// Without starting the program, we cannot display anything on the screen.
-	if err := p.Start(); err != nil {
+	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
@@ -70,20 +53,18 @@ func main() {
 		// Under the hood, the program will call [tv.Screen.Display] to display the
 		// frame on the screen and the implementation will depend on the screen
 		// type and how it handles displaying frames.
-		p.Display(func(f *tv.Frame) error {
-			const hw = "Hello, World!"
-			bg := tv.BlankCell
-			bg.Style = st
-			f.Buffer.Fill(&bg)
-			for i, r := range hw {
-				f.Buffer.SetCell(i, 0, &tv.Cell{
-					Rune:  r,
-					Width: runewidth.RuneWidth(r),
-					Style: st,
-				})
-			}
-			return nil
-		})
+		const hw = "Hello, World!"
+		bg := tv.BlankCell
+		bg.Style = st
+		f.Buffer.Fill(&bg)
+		for i, r := range hw {
+			f.Buffer.SetCell(i, 0, &tv.Cell{
+				Rune:  r,
+				Style: st,
+				Width: 1,
+			})
+		}
+		t.Display(f)
 	}
 
 	// Now input is separate from the program. Just like a TV screen displaying
@@ -122,8 +103,10 @@ func main() {
 				cancel()
 			}
 		case tv.WindowSizeEvent:
+			f.Area = tv.Rect(0, 0, ev.Width, ev.Height)
+			f.Buffer.Resize(ev.Width, f.ComputeArea().Dy())
 			// Resize the program to fit the new window size.
-			p.Resize(ev.Width, ev.Height)
+			t.Resize(ev.Width, ev.Height)
 		}
 
 		t.PrependStyledString(ansi.WcWidth, fmt.Sprintf("%T %v", ev, ev))
@@ -137,7 +120,7 @@ func main() {
 	ctx, cancel = context.WithTimeout(context.Background(), 5)
 	defer cancel()
 
-	if err := p.Shutdown(ctx); err != nil {
+	if err := t.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
 }

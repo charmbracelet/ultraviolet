@@ -44,12 +44,17 @@ func NewStyledString(method ansi.Method, str string) *StyledString {
 		}
 	}
 
+	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
+	// output.
+	str = strings.ReplaceAll(str, "\r\n", "\n")
+	str = strings.ReplaceAll(str, "\n", "\r\n")
+
 	ss.Buffer = NewBuffer(w, h)
 	printString(ss.Buffer, method, 0, 0, ss.Buffer.Bounds(), str, false, "")
 	return ss
 }
 
-func newWcCell(s string, style *Style, link *Link) *Cell {
+func newWcCell(s string, style *Style, link *Link) Cell {
 	var c Cell
 	for i, r := range s {
 		if i == 0 {
@@ -69,10 +74,10 @@ func newWcCell(s string, style *Style, link *Link) *Cell {
 	if link != nil {
 		c.Link = *link
 	}
-	return &c
+	return c
 }
 
-func newGCell(s string, style *Style, link *Link) *Cell {
+func newGCell(s string, style *Style, link *Link) Cell {
 	var c Cell
 	g, _, w, _ := uniseg.FirstGraphemeClusterInString(s, -1)
 	c.Width = w
@@ -89,7 +94,7 @@ func newGCell(s string, style *Style, link *Link) *Cell {
 	if link != nil {
 		c.Link = *link
 	}
-	return &c
+	return c
 }
 
 // printString draws a string starting at the given position.
@@ -106,9 +111,9 @@ func printString[T []byte | string](
 	var tailc Cell
 	if truncate && len(tail) > 0 {
 		if m == ansi.WcWidth {
-			tailc = *newWcCell(tail, nil, nil)
+			tailc = newWcCell(tail, nil, nil)
 		} else {
-			tailc = *newGCell(tail, nil, nil)
+			tailc = newGCell(tail, nil, nil)
 		}
 	}
 
@@ -125,8 +130,8 @@ func printString[T []byte | string](
 		seq, width, n, newState := decoder(str, state, p)
 		switch width {
 		case 1, 2, 3, 4: // wide cells can go up to 4 cells wide
-			cell.Width += width
-			cell.Append([]rune(string(seq))...)
+			cell.Width = width
+			cell.SetString(string(seq))
 
 			if !truncate && x+cell.Width > bounds.Max.X && y+1 < bounds.Max.Y {
 				// Wrap the string to the width of the window
@@ -138,16 +143,16 @@ func printString[T []byte | string](
 			if pos.In(bounds) {
 				if truncate && tailc.Width > 0 && x+cell.Width > bounds.Max.X-tailc.Width {
 					// Truncate the string and append the tail if any.
-					cell := tailc
+					cell = tailc
 					cell.Style = style
 					cell.Link = link
-					s.SetCell(x, y, cell.Clone())
+					s.SetCell(x, y, &cell)
 					x += tailc.Width
 				} else {
 					// Print the cell to the screen
 					cell.Style = style
 					cell.Link = link
-					s.SetCell(x, y, cell.Clone()) //nolint:errcheck
+					s.SetCell(x, y, &cell) //nolint:errcheck
 					x += width
 				}
 			}
@@ -181,7 +186,7 @@ func printString[T []byte | string](
 
 	// Make sure to set the last cell if it's not empty.
 	if !cell.Empty() {
-		s.SetCell(x, y, cell.Clone()) //nolint:errcheck
+		s.SetCell(x, y, &cell) //nolint:errcheck
 		cell.Reset()
 	}
 }

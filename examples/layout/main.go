@@ -404,6 +404,7 @@ func main() {
 		Area:     tv.Rect(0, 0, physicalWidth, physicalHeight),
 	}
 	display := func() {
+		f.Buffer.Clear()
 		mainSs := styledstring.New(ansi.WcWidth, mainDoc)
 		f.RenderComponent(mainSs, f.Area) //nolint:errcheck
 		boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)

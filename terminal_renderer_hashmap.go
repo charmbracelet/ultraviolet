@@ -1,19 +1,9 @@
 package tv
 
-import (
-	"github.com/charmbracelet/x/ansi"
-)
-
 // hash returns the hash value of a [Line].
 func hash(l Line) (h uint64) {
 	for _, c := range l {
-		var r rune
-		if c == nil {
-			r = ansi.SP
-		} else {
-			r = c.Rune
-		}
-		h += (h << 5) + uint64(r)
+		h += (h << 5) + uint64(c.Rune)
 	}
 	return
 }
@@ -34,7 +24,9 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
-			_, ok := s.touch.Load(i)
+			s.touchmu.RLock()
+			_, ok := s.touch[i]
+			s.touchmu.RUnlock()
 			if ok {
 				s.oldhash[i] = hash(s.curbuf.Line(i))
 				s.newhash[i] = hash(newbuf.Line(i))

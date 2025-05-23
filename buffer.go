@@ -25,55 +25,67 @@ func Rect(x, y, w, h int) Rectangle {
 }
 
 // Line represents cells in a line.
-type Line []*Cell
+type Line []Cell
 
 // Set sets the cell at the given x position.
 func (l Line) Set(x int, c *Cell) {
 	// maxCellWidth is the maximum width a terminal cell is expected to have.
 	const maxCellWidth = 5
 
-	width := len(l)
-	if x < 0 || x >= width {
+	lineWidth := len(l)
+	if x < 0 || x >= lineWidth {
 		return
 	}
 
 	// When a wide cell is partially overwritten, we need
 	// to fill the rest of the cell with space cells to
 	// avoid rendering issues.
-	prev := l.At(x)
-	if prev != nil && prev.Width > 1 {
-		// Writing to the first wide cell
-		for j := 0; j < prev.Width && x+j < width; j++ {
-			l[x+j] = prev.Clone().Blank()
-		}
-	} else if prev != nil && prev.Width == 0 {
-		// Writing to wide cell placeholders
-		for j := 1; j < maxCellWidth && x-j >= 0; j++ {
-			wide := l.At(x - j)
-			if wide != nil && wide.Width > 1 && j < wide.Width {
-				for k := 0; k < wide.Width; k++ {
-					l[x-j+k] = wide.Clone().Blank()
+	var prev *Cell
+	if prev = l.At(x); prev != nil {
+		if pw := prev.Width; pw > 1 {
+			// Writing to the first wide cell
+			for j := 0; j < pw && x+j < lineWidth; j++ {
+				l[x+j] = *prev
+				l[x+j].Blank()
+			}
+		} else if pw == 0 {
+			// Writing to wide cell placeholders
+			for j := 1; j < maxCellWidth && x-j >= 0; j++ {
+				if wide := l.At(x - j); wide != nil {
+					if ww := wide.Width; ww > 1 && j < ww {
+						for k := 0; k < ww; k++ {
+							l[x-j+k] = *wide
+							l[x-j+k].Blank()
+						}
+						break
+					}
 				}
-				break
 			}
 		}
 	}
 
-	if c != nil && x+c.Width > width {
-		// If the cell is too wide, we write blanks with the same style.
-		for i := 0; i < c.Width && x+i < width; i++ {
-			l[x+i] = c.Clone().Blank()
-		}
-	} else {
-		l[x] = c
+	if c == nil {
+		// Nil cells are treated as blank empty cells.
+		l[x] = BlankCell
+		return
+	}
 
-		// Mark wide cells with an empty cell zero width
+	l[x] = *c
+	cw := c.Width
+	if x+cw > lineWidth {
+		// If the cell is too wide, we write blanks with the same style.
+		for i := 0; i < cw && x+i < lineWidth; i++ {
+			l[x+i] = *c
+			l[x+i].Blank()
+		}
+		return
+	}
+
+	if cw > 1 {
+		// Mark wide cells with an zero cells.
 		// We set the wide cell down below
-		if c != nil && c.Width > 1 {
-			for j := 1; j < c.Width && x+j < width; j++ {
-				var wide Cell
-				l[x+j] = &wide
-			}
+		for j := 1; j < cw && x+j < lineWidth; j++ {
+			l[x+j] = ZeroCell
 		}
 	}
 }
@@ -85,22 +97,14 @@ func (l Line) At(x int) *Cell {
 		return nil
 	}
 
-	c := l[x]
-	if c == nil {
-		newCell := BlankCell
-		return &newCell
-	}
-
-	return c
+	return &l[x]
 }
 
 // String returns the string representation of the line. Any trailing spaces
 // are removed.
 func (l Line) String() (s string) {
 	for _, c := range l {
-		if c == nil {
-			s += " "
-		} else if c.Empty() {
+		if c.Empty() {
 			continue
 		} else {
 			s += c.String()
@@ -139,9 +143,6 @@ func renderLine(buf interface {
 	}
 
 	for _, cell := range l {
-		if cell == nil {
-			cell = &BlankCell
-		}
 		if cell.Width > 0 {
 			// Convert the cell's style and link to the given color profile.
 			cellStyle := cell.Style
@@ -289,6 +290,9 @@ func (b *Buffer) Resize(width int, height int) {
 
 	if width > b.Width() {
 		line := make(Line, width-b.Width())
+		for i := range line {
+			line[i] = BlankCell
+		}
 		for i := range b.Lines {
 			b.Lines[i] = append(b.Lines[i], line...)
 		}
@@ -300,7 +304,11 @@ func (b *Buffer) Resize(width int, height int) {
 
 	if height > len(b.Lines) {
 		for i := len(b.Lines); i < height; i++ {
-			b.Lines = append(b.Lines, make(Line, width))
+			line := make(Line, width)
+			for j := range line {
+				line[j] = BlankCell
+			}
+			b.Lines = append(b.Lines, line)
 		}
 	} else if height < len(b.Lines) {
 		b.Lines = b.Lines[:height]

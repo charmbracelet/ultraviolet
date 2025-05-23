@@ -22,14 +22,15 @@ func (s StyledString) Display(buf *tv.Buffer, area tv.Rectangle) error {
 
 	var x, y int
 	for y = area.Min.Y; y < area.Max.Y; y++ {
-		for x = area.Min.X; x < area.Max.X; {
+		for x = area.Min.X; x < area.Max.X; x++ {
 			cell := s.Buffer.CellAt(x-area.Min.X, y-area.Min.Y)
-			width := 1
-			if cell != nil {
-				width = cell.Width
+			if cell == nil || cell.Empty() {
+				continue
 			}
 			buf.SetCell(x, y, cell)
-			x += width
+			if width := cell.Width; width > 0 {
+				x += width - 1 // -1 because we increment x in the loop
+			}
 		}
 	}
 	return nil
