@@ -1105,7 +1105,9 @@ func (s *TerminalRenderer) logf(format string, args ...any) {
 func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
-		s.logf("output: %q", s.buf.String())
+		if s.logger != nil {
+			s.logf("output: %q", s.buf.String())
+		}
 		bts := s.buf.Bytes()
 		if !s.flags.Contains(tCursorHidden) {
 			// Hide the cursor during the flush operation.
