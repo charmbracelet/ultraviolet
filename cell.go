@@ -29,7 +29,7 @@ type Cell struct {
 	// single rune or if it's a zero width cell that is part of a wider cell.
 	Comb []rune
 
-	// Width is the mono-space width of the grapheme cluster.
+	// Width is the mono-spaced width of the grapheme cluster.
 	Width int
 
 	// Rune is the main rune of the cell. This is zero if the cell is part of a

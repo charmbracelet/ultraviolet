@@ -184,9 +184,13 @@ func (s *TerminalRenderer) touchLine(width, height, y, n int, changed bool) {
 
 	for i := y; i < y+n && i < height; i++ {
 		if changed {
-			s.touch.Store(i, lineData{firstCell: 0, lastCell: width - 1})
+			s.touchmu.Lock()
+			s.touch[i] = lineData{firstCell: 0, lastCell: width - 1}
+			s.touchmu.Unlock()
 		} else {
-			s.touch.Delete(i)
+			s.touchmu.Lock()
+			delete(s.touch, i)
+			s.touchmu.Unlock()
 		}
 	}
 }

@@ -143,8 +143,10 @@ func TestStyledString(t *testing.T) {
 							newWcCell("o", nil, nil),
 							newWcCell(",", nil, nil),
 							newWcCell(" ", nil, nil),
-							newWcCell("世", nil, nil), &Cell{},
-							newWcCell("界", nil, nil), &Cell{},
+							newWcCell("世", nil, nil),
+							Cell{},
+							newWcCell("界", nil, nil),
+							Cell{},
 							newWcCell("!", nil, nil),
 						},
 					},
@@ -395,7 +397,7 @@ func TestStyledString(t *testing.T) {
 			}
 			for y, line := range ss.Buffer.Lines {
 				for x, cell := range line {
-					if !cellEqual(tc.expected.Buffer.CellAt(x, y), cell) {
+					if !cellEqual(tc.expected.Buffer.CellAt(x, y), &cell) {
 						t.Errorf("case %d expected cell (%d, %d) %q, got %q", y+1, x, y, tc.expected.Buffer.CellAt(x, y), cell)
 					}
 				}

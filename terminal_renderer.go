@@ -132,7 +132,8 @@ type TerminalRenderer struct {
 	buf              *bytes.Buffer // buffer for writing to the screen
 	curbuf           *Buffer       // the current buffer
 	tabs             *TabStops
-	touch            sync.Map
+	touch            map[int]lineData // the lines that have changed
+	touchmu          sync.RWMutex
 	oldhash, newhash []uint64     // the old and new hash values for each line
 	hashtab          []hashmap    // the hashmap table
 	oldnum           []int        // old indices from previous hash
@@ -171,7 +172,7 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
 	s.scrollHeight = 0
-	s.touch = sync.Map{}
+	s.touch = make(map[int]lineData)
 	s.oldhash, s.newhash = nil, nil
 	return
 }
@@ -368,7 +369,9 @@ func (s *TerminalRenderer) populateDiff(newbuf *Buffer) {
 		go func() {
 			defer wg.Done()
 			var chg lineData
-			_, ok := s.touch.Load(y)
+			s.touchmu.RLock()
+			_, ok := s.touch[y]
+			s.touchmu.RUnlock()
 			for x := 0; x < newbuf.Width(); x++ {
 				var oldc *Cell
 				if s.curbuf != nil {
@@ -387,7 +390,9 @@ func (s *TerminalRenderer) populateDiff(newbuf *Buffer) {
 			}
 
 			if ok {
-				s.touch.Store(y, chg)
+				s.touchmu.Lock()
+				s.touch[y] = chg
+				s.touchmu.Unlock()
 			}
 		}()
 	}
@@ -599,20 +604,20 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 
 		cell0 := line[0]
 		if n == 1 {
-			s.putCell(newbuf, cell0)
+			s.putCell(newbuf, &cell0)
 			return false
 		}
 
 		count = 2
-		for count < n && cellEqual(line.At(count), cell0) {
+		for count < n && cellEqual(line.At(count), &cell0) {
 			count++
 		}
 
 		ech := ansi.EraseCharacter(count)
 		cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
 		rep := ansi.RepeatPreviousCharacter(count)
-		if s.caps.Contains(capECH) && count > len(ech)+len(cup) && cell0 != nil && cell0.Clear() {
-			s.updatePen(cell0)
+		if s.caps.Contains(capECH) && count > len(ech)+len(cup) && cell0.Clear() {
+			s.updatePen(&cell0)
 			s.buf.WriteString(ech) //nolint:errcheck
 
 			// If this is the last cell, we don't need to move the cursor.
@@ -622,7 +627,7 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 				return true // cursor in the middle
 			}
 		} else if s.caps.Contains(capREP) && count > len(rep) &&
-			(cell0 == nil || (len(cell0.Comb) == 0 && cell0.Rune >= ansi.US && cell0.Rune < ansi.DEL)) {
+			(len(cell0.Comb) == 0 && cell0.Rune >= ansi.US && cell0.Rune < ansi.DEL) {
 			// We only support ASCII characters. Most terminals will handle
 			// non-ASCII characters correctly, but some might not, ahem xterm.
 			//
@@ -635,14 +640,14 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 				repCount--
 			}
 
-			s.updatePen(cell0)
-			s.putCell(newbuf, cell0)
+			s.updatePen(&cell0)
+			s.putCell(newbuf, &cell0)
 			repCount-- // cell0 is a single width cell ASCII character
 
 			s.buf.WriteString(ansi.RepeatPreviousCharacter(repCount)) //nolint:errcheck
 			s.cur.X += repCount
 			if wrapPossible {
-				s.putCell(newbuf, cell0)
+				s.putCell(newbuf, &cell0)
 			}
 		} else {
 			for i := 0; i < count; i++ {
@@ -749,7 +754,7 @@ func (s *TerminalRenderer) insertCells(newbuf *Buffer, line Line, count int) {
 	}
 
 	for i := 0; count > 0; i++ {
-		s.putAttrCell(newbuf, line[i])
+		s.putAttrCell(newbuf, &line[i])
 		count--
 	}
 
@@ -1116,17 +1121,11 @@ func (s *TerminalRenderer) Flush() (err error) {
 	return
 }
 
-func syncMapLen(m *sync.Map) (n int) {
-	m.Range(func(_, _ any) bool {
-		n++
-		return true
-	})
-	return
-}
-
 // Touched returns the number of lines that have been touched or changed.
 func (s *TerminalRenderer) Touched() int {
-	return syncMapLen(&s.touch)
+	s.touchmu.RLock()
+	defer s.touchmu.RUnlock()
+	return len(s.touch)
 }
 
 // Redraw forces a full redraw of the screen. It's equivalent to calling
@@ -1203,7 +1202,9 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
-			_, ok := s.touch.Load(i)
+			s.touchmu.RLock()
+			_, ok := s.touch[i]
+			s.touchmu.RUnlock()
 			if ok {
 				s.transformLine(newbuf, i)
 				changedLines++
@@ -1218,7 +1219,9 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	}
 
 	// Sync windows and screen
-	s.touch = sync.Map{}
+	s.touchmu.Lock()
+	s.touch = map[int]lineData{}
+	s.touchmu.Unlock()
 
 	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
 		// Resize the old buffer to match the new buffer.
