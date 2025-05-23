@@ -3,13 +3,23 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/tv"
 	"github.com/charmbracelet/tv/component/styledstring"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mattn/go-runewidth"
 )
+
+func init() {
+	f, err := os.OpenFile("tv_debug.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
+	if err != nil {
+		log.Fatalf("failed to open log file: %v", err)
+	}
+	log.SetOutput(f)
+}
 
 func main() {
 	t := tv.DefaultTerminal()
@@ -97,14 +107,58 @@ Press any key to continue...`
 
 	var st tv.Style
 	const defaultChar = '█'
-	char := defaultChar
+	pen := tv.BlankCell
+	pen.Rune = defaultChar
 	draw := func(ev tv.MouseEvent) {
 		m := ev.Mouse()
-		f.Buffer.SetCell(m.X, m.Y, &tv.Cell{
-			Rune:  char,
-			Width: method.StringWidth(string(char)),
-			Style: st,
-		})
+		cur := f.Buffer.CellAt(m.X, m.Y)
+		if cur == nil {
+			// Position out of bounds.
+			return
+		}
+
+		if cur.Empty() && pen.Width == 1 {
+			// Find the previous wide cell.
+			var wide *tv.Cell
+			var wideX, wideY int
+			for i := 1; i < 5 && m.X-i >= 0; i++ {
+				wide = f.Buffer.CellAt(m.X-i, m.Y)
+				if wide != nil && !wide.Empty() && wide.Width > 1 {
+					wideX, wideY = m.X-i, m.Y
+					break
+				}
+			}
+
+			if wide != nil {
+				// Found a wide cell, make all cells blank.
+				wc := *wide
+				wc.Blank()
+				f.Buffer.SetCell(wideX, wideY, &wc)
+			}
+		}
+
+		// Can we fit the cell?
+		fit := true
+		if w := pen.Width; w > 1 {
+			if cur.Empty() || cur.Width > 1 {
+				fit = false
+			} else {
+				for i := 1; i < w; i++ {
+					cur = f.Buffer.CellAt(m.X+i, m.Y)
+					if cur == nil || cur.Empty() || cur.Width > 1 {
+						// Position out of bounds or not empty.
+						fit = false
+						break
+					}
+				}
+			}
+		}
+		if !fit {
+			// Cell is too wide, ignore it.
+			return
+		}
+
+		f.Buffer.SetCell(m.X, m.Y, &pen)
 		t.Display(f)
 	}
 
@@ -132,7 +186,7 @@ Press any key to continue...`
 				cancel()
 			case ev.MatchString("alt+esc"):
 				st = tv.Style{}
-				char = defaultChar
+				pen.Rune = defaultChar
 				fallthrough
 			case ev.MatchString("esc"):
 				clearScreen()
@@ -149,7 +203,8 @@ Press any key to continue...`
 					st.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
 					break
 				}
-				char = r
+				pen.Rune = r
+				pen.Width = runewidth.RuneWidth(r)
 			}
 		case tv.MouseClickEvent:
 			if showingHelp {
@@ -157,7 +212,7 @@ Press any key to continue...`
 			}
 			draw(ev)
 		case tv.MouseMotionEvent:
-			if showingHelp {
+			if showingHelp || ev.Button == tv.MouseNone {
 				break
 			}
 			draw(ev)
