@@ -68,7 +68,8 @@ Press any key to continue...`
 
 	method := ansi.WcWidth
 	helpComp := styledstring.New(method, help)
-	helpW, helpH := helpComp.Buffer.Width(), helpComp.Buffer.Height()
+	helpArea := helpComp.Bounds()
+	helpW, helpH := helpArea.Dx(), helpArea.Dy()
 
 	var prevHelpBuf *tv.Buffer
 	showingHelp := true

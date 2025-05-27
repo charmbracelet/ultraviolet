@@ -109,7 +109,7 @@ func main() {
 			t.Resize(ev.Width, ev.Height)
 		}
 
-		t.PrependStyledString(ansi.WcWidth, fmt.Sprintf("%T %v", ev, ev))
+		t.PrependString(fmt.Sprintf("%T %v", ev, ev))
 
 		rd := rand.Intn(8)
 		st.Background(ansi.BasicColor(rd))
