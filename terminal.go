@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/colorprofile"
@@ -52,10 +53,11 @@ type Terminal struct {
 	scr          *TerminalRenderer // The actual screen to be drawn to.
 	size         Size              // The last known size of the terminal.
 	profile      colorprofile.Profile
-	modes        ansi.Modes // Keep track of terminal modes.
-	useTabs      bool       // Whether to use hard tabs or not.
-	useBspace    bool       // Whether to use backspace or not.
-	cursorHidden bool       // The current cursor visibility state.
+	method       ansi.Method // The width method used to calculate the width of each unicode character
+	modes        ansi.Modes  // Keep track of terminal modes.
+	useTabs      bool        // Whether to use hard tabs or not.
+	useBspace    bool        // Whether to use backspace or not.
+	cursorHidden bool        // The current cursor visibility state.
 
 	// Terminal input stream.
 	rd           *TerminalReader
@@ -131,6 +133,30 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	}
 
 	return t
+}
+
+// SetMethod sets the width method used to calculate the width of each
+// unicode character in the terminal.
+//
+// By default, this is set to [ansi.WcWidth] which provides the most
+// backwards-compatible behavior for calculating the width of unicode
+// characters in the terminal but not necessarily the most accurate and can
+// lead to unexpected results in some cases.
+//
+// To use the actual Unicode mono-width calculation, use [ansi.GraphemeWidth]
+// instead. You can use [Terminal.EnableMode] with
+// [ansi.GraphemeClusteringMode] to try to enable grapheme clustering support
+// in the terminal. Then use [Terminal.RequestMode] and listen for the
+// [ModeReportEvent] to check if grapheme clustering is actually supported by
+// the terminal.
+func (t *Terminal) SetMethod(method ansi.Method) {
+	t.method = method
+}
+
+// Method returns the currently used width method used to calculate the width
+// of each unicode character in the terminal.
+func (t *Terminal) Method() ansi.Method {
+	return t.method
 }
 
 // SetLogger sets the debug logger for the terminal. This is used to log debug
@@ -280,6 +306,7 @@ func (t *Terminal) Flush() error {
 
 // EnableMode enables the given modes on the terminal. This is typically used
 // to enable mouse support, bracketed paste mode, and other terminal features.
+//
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
@@ -296,6 +323,7 @@ func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
 // DisableMode disables the given modes on the terminal. This is typically
 // used to disable mouse support, bracketed paste mode, and other terminal
 // features.
+//
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
@@ -306,6 +334,17 @@ func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
 		t.modes[m] = ansi.ModeReset
 	}
 	_, err := t.WriteString(ansi.ResetMode(modes...))
+	return err
+}
+
+// RequestMode requests the current state of the given modes from the terminal.
+// This is typically used to check if a specific mode is recognized, enabled,
+// or disabled on the terminal.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
+func (t *Terminal) RequestMode(mode ansi.Mode) error {
+	_, err := t.WriteString(ansi.RequestMode(mode))
 	return err
 }
 
@@ -743,41 +782,87 @@ func (t *Terminal) Err() error {
 	return t.err
 }
 
-// PrependStyledString is a helper function to prepend a styled string to the
-// terminal screen. It is a convenience function that creates a new
-// [StyledString] and calls [PrependLines] with the buffer lines of the
-// [StyledString].
-func (t *Terminal) PrependStyledString(method ansi.Method, str string) error {
-	ss := NewStyledString(method, str)
-	return t.PrependLines(ss.Buffer.Lines...)
+// NewStyledString is a convenience function to create a new [StyledString]
+// with the string. It uses the [Terminal]'s [ansi.Method] to calculate the
+// width of the string and returns a new [StyledString] with the given string.
+func (t *Terminal) NewStyledString(str string) *StyledString {
+	return NewStyledString(t.method, str)
+}
+
+// PrependString adds the given string to the top of the terminal screen. The
+// string is split into lines and each line is added as a new line at the top
+// of the screen. The added lines are not managed by the terminal and will not
+// be cleared or updated by the [Terminal].
+//
+// This will truncate each line to the terminal width, so if the string is
+// longer than the terminal width, it will be truncated to fit.
+//
+// Using this when the terminal is using the alternate screen or when occupying
+// the whole screen may not produce any visible effects. This is because once
+// the terminal writes the prepended lines, they will get overwritten by the
+// next frame.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
+func (t *Terminal) PrependString(str string) error {
+	buf := t.buf
+	if buf == nil {
+		buf = NewBuffer(t.size.Width, t.size.Height)
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// We truncate the string to the terminal width.
+	var sb strings.Builder
+	lines := strings.Split(str, "\n")
+	for i, line := range lines {
+		if t.method.StringWidth(line) > buf.Width() {
+			sb.WriteString(t.method.Truncate(line, buf.Width(), ""))
+		} else {
+			sb.WriteString(line)
+		}
+		if i < len(lines)-1 {
+			sb.WriteByte('\n')
+		}
+	}
+
+	t.scr.PrependString(buf, sb.String())
+	return nil
 }
 
 // PrependLines adds lines of cells to the top of the terminal screen. The
 // added line is unmanaged and will not be cleared or updated by the
 // [Terminal].
 //
+// This will truncate each line to the terminal width, so if the string is
+// longer than the terminal width, it will be truncated to fit.
+//
 // Using this when the terminal is using the alternate screen or when occupying
 // the whole screen may not produce any visible effects. This is because once
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
 func (t *Terminal) PrependLines(lines ...Line) error {
-	if t.scr == nil || len(lines) == 0 {
-		return nil
-	}
-
 	buf := t.buf
 	if buf == nil {
 		buf = NewBuffer(t.size.Width, t.size.Height)
 	}
 
-	// We need to scroll the screen up by the number of lines in the queue.
-	// We can't use [ansi.SU] because we want the cursor to move down until
-	// it reaches the bottom of the screen.
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.scr.PrependLines(buf, lines...)
-	return t.scr.Flush()
+	truncatedLines := make([]Line, 0, len(lines))
+	for _, l := range lines {
+		// We truncate the line to the terminal width.
+		if len(l) > buf.Width() {
+			truncatedLines = append(truncatedLines, l[:buf.Width()])
+		} else {
+			truncatedLines = append(truncatedLines, l)
+		}
+	}
+
+	t.scr.PrependLines(buf, truncatedLines...)
+	return nil
 }
 
 // Write writes the given data to the underlying screen buffer. It implements
