@@ -315,15 +315,19 @@ func (s *TerminalRenderer) HideCursor() {
 	s.flags.Set(tCursorHidden)
 }
 
-// PrependLines adds lines of cells to the top of the terminal screen. The
-// added lines are unmanaged and will not be cleared or updated by the
-// renderer.
+// PrependString adds the lines of the given string to the top of the terminal
+// screen. The lines prepended are not managed by the renderer and will not be
+// cleared or updated by the renderer.
 //
 // Using this when the terminal is using the alternate screen or when occupying
-// the whole screen may not produce any visible effects. This is because once
-// the terminal writes the prepended lines, they will get overwritten by the
-// next frame.
-func (s *TerminalRenderer) PrependLines(newbuf *Buffer, lines ...Line) {
+// the whole screen may not produce any visible effects. This is because
+// once the terminal writes the prepended lines, they will get overwritten
+// by the next frame.
+func (s *TerminalRenderer) PrependString(newbuf *Buffer, str string) {
+	s.prependStringLines(newbuf, strings.Split(str, "\n")...)
+}
+
+func (s *TerminalRenderer) prependStringLines(newbuf *Buffer, lines ...string) {
 	if newbuf == nil || len(lines) == 0 {
 		return
 	}
@@ -344,20 +348,24 @@ func (s *TerminalRenderer) PrependLines(newbuf *Buffer, lines ...Line) {
 	s.moveCursor(newbuf, 0, 0, false)
 	s.buf.WriteString(ansi.InsertLine(len(lines)))
 	for _, line := range lines {
-		s.buf.WriteString(line.Render() + "\r\n")
+		s.buf.WriteString(line + "\r\n")
 	}
 }
 
-// PrependStyledString is a helper function to prepend a styled string to the
-// terminal screen. It is a convenience function that creates a new
-// [StyledString] and calls [TerminalRenderer.PrependLines] with the buffer
-// lines of the [StyledString].
-func (s *TerminalRenderer) PrependStyledString(newbuf *Buffer, method ansi.Method, str string) {
-	if newbuf == nil || len(str) == 0 {
-		return
+// PrependLines adds lines of cells to the top of the terminal screen. The
+// added lines are unmanaged and will not be cleared or updated by the
+// renderer.
+//
+// Using this when the terminal is using the alternate screen or when occupying
+// the whole screen may not produce any visible effects. This is because once
+// the terminal writes the prepended lines, they will get overwritten by the
+// next frame.
+func (s *TerminalRenderer) PrependLines(newbuf *Buffer, lines ...Line) {
+	strLines := make([]string, len(lines))
+	for i, line := range lines {
+		strLines[i] = line.Render()
 	}
-	ss := NewStyledString(method, str)
-	s.PrependLines(newbuf, ss.Buffer.Lines...)
+	s.prependStringLines(newbuf, strLines...)
 }
 
 // populateDiff populates the diff between the two buffers. This is used to
