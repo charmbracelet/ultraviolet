@@ -335,6 +335,17 @@ func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
 	return err
 }
 
+// RequestMode requests the current state of the given modes from the terminal.
+// This is typically used to check if a specific mode is recognized, enabled,
+// or disabled on the terminal.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
+func (t *Terminal) RequestMode(mode ansi.Mode) error {
+	_, err := t.WriteString(ansi.RequestMode(mode))
+	return err
+}
+
 // MouseMode represents the mouse mode for the terminal. It is used to enable or
 // disable mouse support on the terminal.
 //
