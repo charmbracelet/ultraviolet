@@ -306,6 +306,7 @@ func (t *Terminal) Flush() error {
 
 // EnableMode enables the given modes on the terminal. This is typically used
 // to enable mouse support, bracketed paste mode, and other terminal features.
+//
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
@@ -322,6 +323,7 @@ func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
 // DisableMode disables the given modes on the terminal. This is typically
 // used to disable mouse support, bracketed paste mode, and other terminal
 // features.
+//
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
@@ -792,6 +794,9 @@ func (t *Terminal) NewStyledString(str string) *StyledString {
 // of the screen. The added lines are not managed by the terminal and will not
 // be cleared or updated by the [Terminal].
 //
+// This will truncate each line to the terminal width, so if the string is
+// longer than the terminal width, it will be truncated to fit.
+//
 // Using this when the terminal is using the alternate screen or when occupying
 // the whole screen may not produce any visible effects. This is because once
 // the terminal writes the prepended lines, they will get overwritten by the
@@ -829,6 +834,9 @@ func (t *Terminal) PrependString(str string) error {
 // PrependLines adds lines of cells to the top of the terminal screen. The
 // added line is unmanaged and will not be cleared or updated by the
 // [Terminal].
+//
+// This will truncate each line to the terminal width, so if the string is
+// longer than the terminal width, it will be truncated to fit.
 //
 // Using this when the terminal is using the alternate screen or when occupying
 // the whole screen may not produce any visible effects. This is because once
