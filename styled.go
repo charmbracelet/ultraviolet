@@ -2,6 +2,7 @@ package tv
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"strings"
 
@@ -19,39 +20,53 @@ type StyledString struct {
 	// The width method used to calculate the width of each unicode character
 	// and grapheme cluster.
 	Method ansi.Method
-	// The buffer that contains the decomposed string.
-	Buffer *Buffer
+	// Text is the original string that was used to create the styled string.
+	Text string
+	// Wrap determines whether the styled string should wrap to the next line.
+	Wrap bool
+	// Tail is the string that will be appended to the end of the line when the
+	// string is truncated i.e. when [StyledString.Wrap] is false.
+	Tail string
 }
 
 // NewStyledString creates a new [StyledString] for the given method and styled
 // string. The method is used to calculate the width of each line.
 func NewStyledString(method ansi.Method, str string) *StyledString {
+	ss := new(StyledString)
+	ss.Method = method
+	ss.Text = str
+	return ss
+}
+
+// Display renders the styled string to the given buffer at the specified area.
+func (s *StyledString) Display(buf *Buffer, area Rectangle) error {
+	if buf == nil {
+		return fmt.Errorf("buffer cannot be nil")
+	}
+	// Clear the area before drawing.
+	buf.FillArea(nil, area)
+	str := s.Text
 	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
 	// output.
 	str = strings.ReplaceAll(str, "\r\n", "\n")
 	str = strings.ReplaceAll(str, "\n", "\r\n")
+	printString(buf, s.Method, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
+	return nil
+}
 
-	ss := new(StyledString)
-	ss.Method = method
-
+// Bounds returns the bounds of the styled string. This is the rectangle
+// that contains the entire styled string, including all lines and cells.
+func (s *StyledString) Bounds() Rectangle {
 	var w, h int
-	lines := strings.Split(str, "\n")
+	lines := strings.Split(s.Text, "\n")
 	h = len(lines)
 	for _, l := range lines {
-		width := method.StringWidth(l)
+		width := s.Method.StringWidth(l)
 		if width > w {
 			w = width
 		}
 	}
-
-	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
-	// output.
-	str = strings.ReplaceAll(str, "\r\n", "\n")
-	str = strings.ReplaceAll(str, "\n", "\r\n")
-
-	ss.Buffer = NewBuffer(w, h)
-	printString(ss.Buffer, method, 0, 0, ss.Buffer.Bounds(), str, false, "")
-	return ss
+	return Rect(0, 0, w, h)
 }
 
 func newWcCell(s string, style *Style, link *Link) Cell {
