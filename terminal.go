@@ -240,6 +240,16 @@ func (t *Terminal) ClearScreen() {
 // Display displays the given frame on the terminal screen. It returns an
 // error if the display fails.
 func (t *Terminal) Display(f *Frame) error {
+	if f.Buffer == nil {
+		panic("frame buffer cannot be nil")
+	}
+	if f.Viewport == nil {
+		f.Viewport = FullViewport{}
+	}
+	if f.Area.Empty() {
+		f.Area = f.Buffer.Bounds()
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
