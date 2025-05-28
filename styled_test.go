@@ -366,7 +366,7 @@ func TestStyledString(t *testing.T) {
 			ss := NewStyledString(tc.method, tc.input)
 			area := ss.Bounds()
 			buf := NewBuffer(area.Dx(), area.Dy())
-			if err := ss.Display(buf, area); err != nil {
+			if err := ss.RenderComponent(buf, area); err != nil {
 				t.Fatalf("case %d: failed to render styled string: %v", i+1, err)
 			}
 			if ss.Method != tc.method {

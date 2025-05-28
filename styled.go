@@ -38,8 +38,9 @@ func NewStyledString(method ansi.Method, str string) *StyledString {
 	return ss
 }
 
-// Display renders the styled string to the given buffer at the specified area.
-func (s *StyledString) Display(buf *Buffer, area Rectangle) error {
+// RenderComponent renders the styled string to the given buffer at the
+// specified area.
+func (s *StyledString) RenderComponent(buf *Buffer, area Rectangle) error {
 	if buf == nil {
 		return fmt.Errorf("buffer cannot be nil")
 	}
