@@ -385,13 +385,7 @@ func main() {
 	defer t.ExitAltScreen()
 
 	// Enable mouse events.
-	modes := []ansi.Mode{
-		ansi.ButtonEventMouseMode,
-		ansi.SgrExtMouseMode,
-	}
-
-	os.Stdout.WriteString(ansi.SetMode(modes...))         //nolint:errcheck
-	defer os.Stdout.WriteString(ansi.ResetMode(modes...)) //nolint:errcheck
+	t.EnableMouse()
 
 	// Display the program.
 	dialogWidth := lipgloss.Width(dialogUI) + dialogBoxStyle.GetHorizontalFrameSize()
@@ -401,12 +395,12 @@ func main() {
 	f := &tv.Frame{
 		Buffer:   tv.NewBuffer(physicalWidth, physicalHeight),
 		Viewport: tv.FullViewport{},
-		Area:     tv.Rect(0, 0, physicalWidth, physicalHeight),
 	}
+	area := f.Viewport.ComputeArea(physicalWidth, physicalHeight)
 	display := func() {
 		f.Buffer.Clear()
 		mainSs := styledstring.New(ansi.WcWidth, mainDoc)
-		f.RenderComponent(mainSs, f.Area) //nolint:errcheck
+		f.RenderComponent(mainSs, area) //nolint:errcheck
 		boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
 		box := t.NewStyledString(dialogBoxStyle.Render(dialogUI))
 		f.RenderComponent(box, boxArea) //nolint:errcheck
@@ -427,11 +421,12 @@ func main() {
 	display()
 
 	for ev := range t.Events(ctx) {
+		log.Printf("event: %T", ev)
 		switch ev := ev.(type) {
 		case tv.WindowSizeEvent:
-			area := tv.Rect(0, 0, ev.Width, ev.Height)
-			f.Area = area
-			f.Buffer.Resize(ev.Width, ev.Height)
+			area = f.Viewport.ComputeArea(ev.Width, ev.Height)
+			log.Printf("area: %v", area)
+			f.Resize(ev.Width, ev.Height)
 			t.Resize(ev.Width, ev.Height)
 		case tv.MouseClickEvent:
 			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2

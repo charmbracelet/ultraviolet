@@ -50,8 +50,7 @@ func main() {
 
 	f := &tv.Frame{
 		Buffer:   tv.NewBuffer(width, height),
-		Viewport: tv.FullViewport{},
-		Area:     tv.Rect(0, 0, width, height),
+		Viewport: tv.FixedViewport(tv.Rect(10, 10, 40, 20)),
 	}
 
 	// This will block until we close the events
@@ -59,10 +58,10 @@ func main() {
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
 		case tv.WindowSizeEvent:
+			t.ClearScreen()
 			width, height = ev.Width, ev.Height
 			t.Resize(ev.Width, ev.Height)
-			f.Area = tv.Rect(0, 0, ev.Width, ev.Height)
-			f.Buffer.Resize(ev.Width, ev.Height)
+			f.Resize(ev.Width, ev.Height)
 		case tv.KeyPressEvent:
 			if ev.MatchStrings("q", "ctrl+c") {
 				cancel() // This will stop the loop
@@ -70,19 +69,25 @@ func main() {
 		}
 
 		// Display the frame with the styled string
-		f.Buffer.Clear()
+		// We want the component to occupy the given area which is the
+		// entire screen because we're using the alternate screen buffer.
+		f.Buffer.Fill(&tv.Cell{
+			Rune:  ' ',
+			Width: 1,
+			Style: tv.Style{Bg: ansi.Red},
+		})
 		// We will use the StyledString component to simplify displaying
 		// text on the screen.
 		// Using [ansi.WcWidth] will ensure that the text is
 		// displayed correctly on the screen using traditional
 		// terminal width calculations.
 		ss := styledstring.New(ansi.WcWidth, "Hello, World!")
-		// We want the component to occupy the given area which is the
-		// entire screen because we're using the alternate screen buffer.
-		area := f.Area
-		area.Min.X = (area.Max.X / 2) - 6
-		area.Min.Y = (area.Max.Y / 2) - 1
-		f.RenderComponent(ss, area)
+		carea := f.Viewport.ComputeArea(width, height)
+		carea.Min.X = (carea.Max.X / 2) - 6
+		carea.Min.Y = (carea.Max.Y / 2) - 1
+		carea.Max.X = carea.Min.X + 12
+		carea.Max.Y = carea.Min.Y + 1
+		f.RenderComponent(ss, carea)
 		if err := t.Display(f); err != nil {
 			log.Fatal(err)
 		}
@@ -91,4 +96,12 @@ func main() {
 	if err := t.Shutdown(ctx); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func init() {
+	f, err := os.OpenFile("tv.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Fatalf("failed to open log file: %v", err)
+	}
+	log.SetOutput(f)
 }
