@@ -32,18 +32,25 @@ type Frame struct {
 	// The viewport of the program. Use [Frame.ComputeArea] to compute the area
 	// of the frame based on the size of the screen.
 	Viewport Viewport
-	// The whole area of the screen.
-	Area Rectangle
 }
 
-// ComputeArea is a helper function that computes the area of the frame based
-// on the viewport.
-func (f *Frame) ComputeArea() Rectangle {
-	return f.Viewport.ComputeArea(Size{Width: f.Area.Dx(), Height: f.Area.Dy()})
+// Resize resizes the frame to the given width and height based on the viewport.
+func (f *Frame) Resize(width, height int) {
+	switch v := f.Viewport.(type) {
+	case nil, FullViewport, FixedViewport:
+		f.Buffer.Resize(width, height)
+	case InlineViewport:
+		area := v.ComputeArea(width, height)
+		f.Buffer.Resize(area.Dx(), area.Dy())
+	}
 }
 
 // RenderComponent renders the given component on the frame.
 func (f *Frame) RenderComponent(w Component, area Rectangle) error {
+	if fvp, ok := f.Viewport.(FixedViewport); ok {
+		// If the viewport is fixed, we need to ensure the area is within bounds.
+		area = area.Intersect(Rectangle(fvp))
+	}
 	if err := w.Display(f.Buffer, area); err != nil {
 		return err
 	}

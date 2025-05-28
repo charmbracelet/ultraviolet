@@ -5,7 +5,7 @@ package tv
 type Viewport interface {
 	// ComputeArea calculates the area of the viewport based on the given
 	// window size.
-	ComputeArea(size Size) Rectangle
+	ComputeArea(width, height int) Rectangle
 }
 
 // FullViewport represents a viewport that covers the entire terminal screen.
@@ -13,8 +13,8 @@ type FullViewport struct{}
 
 // ComputeArea calculates the area of the full viewport based on the given
 // window size.
-func (v FullViewport) ComputeArea(size Size) Rectangle {
-	return Rect(0, 0, size.Width, size.Height)
+func (v FullViewport) ComputeArea(width, height int) Rectangle {
+	return Rect(0, 0, width, height)
 }
 
 // InlineViewport represents a viewport that is inline with the terminal screen.
@@ -22,6 +22,14 @@ type InlineViewport int
 
 // ComputeArea calculates the area of the inline viewport based on the given
 // window size.
-func (v InlineViewport) ComputeArea(size Size) Rectangle {
-	return Rect(0, 0, size.Width, max(0, int(v)))
+func (v InlineViewport) ComputeArea(width, _ int) Rectangle {
+	return Rect(0, 0, width, max(0, int(v)))
+}
+
+// FixedViewport represents a viewport with fixed dimensions.
+type FixedViewport Rectangle
+
+// ComputeArea returns the fixed rectangle as the area of the viewport.
+func (v FixedViewport) ComputeArea(width, height int) Rectangle {
+	return Rect(0, 0, width, height).Bounds().Intersect(Rectangle(v))
 }

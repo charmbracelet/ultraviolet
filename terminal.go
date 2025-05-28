@@ -49,7 +49,6 @@ type Terminal struct {
 	termtype     string            // The $TERM type.
 	environ      Environ           // The environment variables.
 	buf          *Buffer           // Reference to the last buffer used.
-	vp           Viewport          // Reference to the last viewport used.
 	scr          *TerminalRenderer // The actual screen to be drawn to.
 	size         Size              // The last known size of the terminal.
 	profile      colorprofile.Profile
@@ -240,47 +239,37 @@ func (t *Terminal) ClearScreen() {
 // Display displays the given frame on the terminal screen. It returns an
 // error if the display fails.
 func (t *Terminal) Display(f *Frame) error {
+	if f == nil {
+		return fmt.Errorf("cannot display nil frame")
+	}
 	if f.Buffer == nil {
-		panic("frame buffer cannot be nil")
-	}
-	if f.Viewport == nil {
-		f.Viewport = FullViewport{}
-	}
-	if f.Area.Empty() {
-		f.Area = f.Buffer.Bounds()
+		return fmt.Errorf("cannot display frame with nil buffer")
 	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if f == nil {
-		f = &Frame{}
-	}
-
 	// Cache the last buffer used.
 	buf := f.Buffer
-	if buf == nil {
-		area := f.ComputeArea()
-		buf = NewBuffer(area.Dx(), area.Dy())
-	}
-
-	vp := f.Viewport
-	if vp == nil {
-		vp = FullViewport{}
-	}
-
 	t.buf = buf
 
 	// Are we using the alternate screen?
-	if vp != t.vp {
-		switch vp.(type) {
-		case FullViewport:
-			t.scr.SetRelativeCursor(false)
-		case InlineViewport:
-			t.scr.SetRelativeCursor(true)
+	switch vp := f.Viewport.(type) {
+	case nil, FullViewport:
+		t.scr.SetRelativeCursor(false)
+	case FixedViewport:
+		// Make sure we clear areas outside the viewport.
+		area := vp.ComputeArea(t.size.Width, t.size.Height)
+		for _, a := range []Rectangle{
+			{Min: Pos(0, 0), Max: Pos(t.size.Width, area.Min.Y)},             // top
+			{Min: Pos(area.Max.X, 0), Max: Pos(t.size.Width, t.size.Height)}, // right
+			{Min: Pos(0, area.Max.Y), Max: Pos(t.size.Width, t.size.Height)}, // bottom
+			{Min: Pos(0, 0), Max: Pos(area.Min.X, t.size.Height)},            // left
+		} {
+			buf.ClearArea(a)
 		}
-
-		t.vp = vp
+	case InlineViewport:
+		t.scr.SetRelativeCursor(true)
 	}
 
 	if t.cursorHidden != t.scr.CursorHidden() {
