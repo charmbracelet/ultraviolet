@@ -11,7 +11,6 @@ func TestStyledString(t *testing.T) {
 	cases := []struct {
 		name           string
 		input          string
-		method         ansi.Method
 		expected       *Buffer
 		expectedWidth  int
 		expectedHeight int
@@ -363,14 +362,11 @@ func TestStyledString(t *testing.T) {
 
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ss := NewStyledString(tc.method, tc.input)
+			ss := NewStyledString(tc.input)
 			area := ss.Bounds()
 			buf := NewBuffer(area.Dx(), area.Dy())
 			if err := ss.RenderComponent(buf, area); err != nil {
 				t.Fatalf("case %d: failed to render styled string: %v", i+1, err)
-			}
-			if ss.Method != tc.method {
-				t.Errorf("case %d expected method %v, got %v", i+1, tc.method, ss.Method)
 			}
 			if buf.Width() != tc.expectedWidth {
 				t.Errorf("case %d expected width %d, got %d", i+1, tc.expectedWidth, buf.Width())

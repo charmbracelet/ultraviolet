@@ -52,11 +52,10 @@ type Terminal struct {
 	scr          *TerminalRenderer // The actual screen to be drawn to.
 	size         Size              // The last known size of the terminal.
 	profile      colorprofile.Profile
-	method       ansi.Method // The width method used to calculate the width of each unicode character
-	modes        ansi.Modes  // Keep track of terminal modes.
-	useTabs      bool        // Whether to use hard tabs or not.
-	useBspace    bool        // Whether to use backspace or not.
-	cursorHidden bool        // The current cursor visibility state.
+	modes        ansi.Modes // Keep track of terminal modes.
+	useTabs      bool       // Whether to use hard tabs or not.
+	useBspace    bool       // Whether to use backspace or not.
+	cursorHidden bool       // The current cursor visibility state.
 
 	// Terminal input stream.
 	rd           *TerminalReader
@@ -132,30 +131,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	}
 
 	return t
-}
-
-// SetMethod sets the width method used to calculate the width of each
-// unicode character in the terminal.
-//
-// By default, this is set to [ansi.WcWidth] which provides the most
-// backwards-compatible behavior for calculating the width of unicode
-// characters in the terminal but not necessarily the most accurate and can
-// lead to unexpected results in some cases.
-//
-// To use the actual Unicode mono-width calculation, use [ansi.GraphemeWidth]
-// instead. You can use [Terminal.EnableMode] with
-// [ansi.GraphemeClusteringMode] to try to enable grapheme clustering support
-// in the terminal. Then use [Terminal.RequestMode] and listen for the
-// [ModeReportEvent] to check if grapheme clustering is actually supported by
-// the terminal.
-func (t *Terminal) SetMethod(method ansi.Method) {
-	t.method = method
-}
-
-// Method returns the currently used width method used to calculate the width
-// of each unicode character in the terminal.
-func (t *Terminal) Method() ansi.Method {
-	return t.method
 }
 
 // SetLogger sets the debug logger for the terminal. This is used to log debug
@@ -781,7 +756,7 @@ func (t *Terminal) Err() error {
 // with the string. It uses the [Terminal]'s [ansi.Method] to calculate the
 // width of the string and returns a new [StyledString] with the given string.
 func (t *Terminal) NewStyledString(str string) *StyledString {
-	return NewStyledString(t.method, str)
+	return NewStyledString(str)
 }
 
 // PrependString adds the given string to the top of the terminal screen. The
@@ -807,8 +782,8 @@ func (t *Terminal) PrependString(str string) error {
 	var sb strings.Builder
 	lines := strings.Split(str, "\n")
 	for i, line := range lines {
-		if t.method.StringWidth(line) > t.size.Width {
-			sb.WriteString(t.method.Truncate(line, t.size.Width, ""))
+		if ansi.StringWidth(line) > t.size.Width {
+			sb.WriteString(ansi.Truncate(line, t.size.Width, ""))
 		} else {
 			sb.WriteString(line)
 		}

@@ -17,9 +17,6 @@ import (
 // A StyledString supports reading [ansi.SGR] and [ansi.Hyperlink] escape
 // codes.
 type StyledString struct {
-	// The width method used to calculate the width of each unicode character
-	// and grapheme cluster.
-	Method ansi.Method
 	// Text is the original string that was used to create the styled string.
 	Text string
 	// Wrap determines whether the styled string should wrap to the next line.
@@ -31,9 +28,8 @@ type StyledString struct {
 
 // NewStyledString creates a new [StyledString] for the given method and styled
 // string. The method is used to calculate the width of each line.
-func NewStyledString(method ansi.Method, str string) *StyledString {
+func NewStyledString(str string) *StyledString {
 	ss := new(StyledString)
-	ss.Method = method
 	ss.Text = str
 	return ss
 }
@@ -51,7 +47,7 @@ func (s *StyledString) RenderComponent(buf *Buffer, area Rectangle) error {
 	// output.
 	str = strings.ReplaceAll(str, "\r\n", "\n")
 	str = strings.ReplaceAll(str, "\n", "\r\n")
-	printString(buf, s.Method, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
+	printString(buf, ansi.GraphemeWidth, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
 	return nil
 }
 
@@ -62,7 +58,7 @@ func (s *StyledString) Bounds() Rectangle {
 	lines := strings.Split(s.Text, "\n")
 	h = len(lines)
 	for _, l := range lines {
-		width := s.Method.StringWidth(l)
+		width := ansi.StringWidth(l)
 		if width > w {
 			w = width
 		}
