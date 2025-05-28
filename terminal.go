@@ -805,11 +805,6 @@ func (t *Terminal) NewStyledString(str string) *StyledString {
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) PrependString(str string) error {
-	buf := t.buf
-	if buf == nil {
-		buf = NewBuffer(t.size.Width, t.size.Height)
-	}
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -817,8 +812,8 @@ func (t *Terminal) PrependString(str string) error {
 	var sb strings.Builder
 	lines := strings.Split(str, "\n")
 	for i, line := range lines {
-		if t.method.StringWidth(line) > buf.Width() {
-			sb.WriteString(t.method.Truncate(line, buf.Width(), ""))
+		if t.method.StringWidth(line) > t.size.Width {
+			sb.WriteString(t.method.Truncate(line, t.size.Width, ""))
 		} else {
 			sb.WriteString(line)
 		}
@@ -827,7 +822,7 @@ func (t *Terminal) PrependString(str string) error {
 		}
 	}
 
-	t.scr.PrependString(buf, sb.String())
+	t.scr.PrependString(sb.String())
 	return nil
 }
 
@@ -843,25 +838,20 @@ func (t *Terminal) PrependString(str string) error {
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
 func (t *Terminal) PrependLines(lines ...Line) error {
-	buf := t.buf
-	if buf == nil {
-		buf = NewBuffer(t.size.Width, t.size.Height)
-	}
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	truncatedLines := make([]Line, 0, len(lines))
 	for _, l := range lines {
 		// We truncate the line to the terminal width.
-		if len(l) > buf.Width() {
-			truncatedLines = append(truncatedLines, l[:buf.Width()])
+		if len(l) > t.size.Width {
+			truncatedLines = append(truncatedLines, l[:t.size.Width])
 		} else {
 			truncatedLines = append(truncatedLines, l)
 		}
 	}
 
-	t.scr.PrependLines(buf, truncatedLines...)
+	t.scr.PrependLines(truncatedLines...)
 	return nil
 }
 

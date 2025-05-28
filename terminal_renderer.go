@@ -323,12 +323,12 @@ func (s *TerminalRenderer) HideCursor() {
 // the whole screen may not produce any visible effects. This is because
 // once the terminal writes the prepended lines, they will get overwritten
 // by the next frame.
-func (s *TerminalRenderer) PrependString(newbuf *Buffer, str string) {
-	s.prependStringLines(newbuf, strings.Split(str, "\n")...)
+func (s *TerminalRenderer) PrependString(str string) {
+	s.prependStringLines(strings.Split(str, "\n")...)
 }
 
-func (s *TerminalRenderer) prependStringLines(newbuf *Buffer, lines ...string) {
-	if newbuf == nil || len(lines) == 0 {
+func (s *TerminalRenderer) prependStringLines(lines ...string) {
+	if len(lines) == 0 {
 		return
 	}
 
@@ -338,14 +338,14 @@ func (s *TerminalRenderer) prependStringLines(newbuf *Buffer, lines ...string) {
 	// We need to scroll the screen up by the number of lines in the queue.
 	// We can't use [ansi.SU] because we want the cursor to move down until
 	// it reaches the bottom of the screen.
-	s.move(newbuf, 0, newbuf.Height()-1)
+	s.move(s.curbuf, 0, s.curbuf.Height()-1)
 	s.buf.WriteString(strings.Repeat("\n", len(lines)))
 	s.cur.Y += len(lines)
 	// XXX: Now go to the top of the screen, insert new lines, and write
 	// the queued strings. It is important to use [Screen.moveCursor]
 	// instead of [Screen.move] because we don't want to perform any checks
 	// on the cursor position.
-	s.moveCursor(newbuf, 0, 0, false)
+	s.moveCursor(s.curbuf, 0, 0, false)
 	s.buf.WriteString(ansi.InsertLine(len(lines)))
 	for _, line := range lines {
 		s.buf.WriteString(line + "\r\n")
@@ -360,12 +360,12 @@ func (s *TerminalRenderer) prependStringLines(newbuf *Buffer, lines ...string) {
 // the whole screen may not produce any visible effects. This is because once
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
-func (s *TerminalRenderer) PrependLines(newbuf *Buffer, lines ...Line) {
+func (s *TerminalRenderer) PrependLines(lines ...Line) {
 	strLines := make([]string, len(lines))
 	for i, line := range lines {
 		strLines[i] = line.Render()
 	}
-	s.prependStringLines(newbuf, strLines...)
+	s.prependStringLines(strLines...)
 }
 
 // populateDiff populates the diff between the two buffers. This is used to
