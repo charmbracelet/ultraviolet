@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"strings"
-	"sync"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -132,8 +131,6 @@ type TerminalRenderer struct {
 	buf              *bytes.Buffer // buffer for writing to the screen
 	curbuf           *Buffer       // the current buffer
 	tabs             *TabStops
-	touch            map[int]lineData // the lines that have changed
-	touchmu          sync.RWMutex
 	oldhash, newhash []uint64     // the old and new hash values for each line
 	hashtab          []hashmap    // the hashmap table
 	oldnum           []int        // old indices from previous hash
@@ -172,7 +169,6 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
 	s.scrollHeight = 0
-	s.touch = make(map[int]lineData)
 	s.oldhash, s.newhash = nil, nil
 	return
 }
@@ -368,45 +364,6 @@ func (s *TerminalRenderer) PrependLines(lines ...Line) {
 	s.prependStringLines(strLines...)
 }
 
-// populateDiff populates the diff between the two buffers. This is used to
-// determine which cells have changed and need to be redrawn.
-func (s *TerminalRenderer) populateDiff(newbuf *Buffer) {
-	var wg sync.WaitGroup
-	for y := 0; y < newbuf.Height(); y++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			var chg lineData
-			s.touchmu.RLock()
-			_, ok := s.touch[y]
-			s.touchmu.RUnlock()
-			for x := 0; x < newbuf.Width(); x++ {
-				var oldc *Cell
-				if s.curbuf != nil {
-					oldc = s.curbuf.CellAt(x, y)
-				}
-				newc := newbuf.CellAt(x, y)
-				if !cellEqual(oldc, newc) {
-					if !ok {
-						chg = lineData{firstCell: x, lastCell: x + newc.Width}
-						ok = true
-					} else {
-						chg.firstCell = min(chg.firstCell, x)
-						chg.lastCell = max(chg.lastCell, x+newc.Width)
-					}
-				}
-			}
-
-			if ok {
-				s.touchmu.Lock()
-				s.touch[y] = chg
-				s.touchmu.Unlock()
-			}
-		}()
-	}
-	wg.Wait()
-}
-
 // moveCursor moves the cursor to the specified position.
 func (s *TerminalRenderer) moveCursor(newbuf *Buffer, x, y int, overwrite bool) {
 	if !s.flags.Contains(tAltScreen) && s.flags.Contains(tRelativeCursor) &&
@@ -491,11 +448,8 @@ func cellEqual(a, b *Cell) bool {
 	if a == b {
 		return true
 	}
-	if a == nil {
-		a = &BlankCell
-	}
-	if b == nil {
-		b = &BlankCell
+	if a == nil || b == nil {
+		return false
 	}
 	return a.Equal(b)
 }
@@ -762,7 +716,7 @@ func (s *TerminalRenderer) insertCells(newbuf *Buffer, line Line, count int) {
 	}
 
 	for i := 0; count > 0; i++ {
-		s.putAttrCell(newbuf, &line[i])
+		s.putAttrCell(newbuf, line.At(i))
 		count--
 	}
 
@@ -1132,10 +1086,13 @@ func (s *TerminalRenderer) Flush() (err error) {
 }
 
 // Touched returns the number of lines that have been touched or changed.
-func (s *TerminalRenderer) Touched() int {
-	s.touchmu.RLock()
-	defer s.touchmu.RUnlock()
-	return len(s.touch)
+func (s *TerminalRenderer) Touched(buf *Buffer) (n int) {
+	for _, ch := range buf.Touched {
+		if ch != nil {
+			n++
+		}
+	}
+	return
 }
 
 // Redraw forces a full redraw of the screen. It's equivalent to calling
@@ -1148,6 +1105,12 @@ func (s *TerminalRenderer) Redraw(newbuf *Buffer) {
 // Render renders changes of the screen to the internal buffer. Call
 // [terminalWriter.Flush] to flush pending changes to the screen.
 func (s *TerminalRenderer) Render(newbuf *Buffer) {
+	// Do we need to render anything?
+	touchedLines := s.Touched(newbuf)
+	if !s.clear && touchedLines == 0 {
+		return
+	}
+
 	// Do we have a buffer to compare to?
 	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
 		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
@@ -1155,13 +1118,6 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
 		s.oldhash, s.newhash = nil, nil
-	}
-
-	// Do we need to render anything?
-	s.populateDiff(newbuf)
-	touchedLines := s.Touched()
-	if !s.clear && touchedLines == 0 {
-		return
 	}
 
 	// TODO: Investigate whether this is necessary. Theoretically, terminals
@@ -1193,7 +1149,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	if s.clear {
 		s.clearUpdate(newbuf)
 		s.clear = false
-	} else if s.Touched() > 0 {
+	} else if touchedLines > 0 {
 		if s.flags.Contains(tAltScreen) {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
@@ -1212,10 +1168,8 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
-			s.touchmu.RLock()
-			_, ok := s.touch[i]
-			s.touchmu.RUnlock()
-			if ok {
+			ch := newbuf.Touched[i]
+			if ch != nil {
 				s.transformLine(newbuf, i)
 				changedLines++
 			}
@@ -1229,9 +1183,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	}
 
 	// Sync windows and screen
-	s.touchmu.Lock()
-	s.touch = map[int]lineData{}
-	s.touchmu.Unlock()
+	newbuf.Touched = make([]*lineData, newbuf.Height())
 
 	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
 		// Resize the old buffer to match the new buffer.

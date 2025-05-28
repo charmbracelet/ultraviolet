@@ -24,10 +24,8 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
-			s.touchmu.RLock()
-			_, ok := s.touch[i]
-			s.touchmu.RUnlock()
-			if ok {
+			ch := newbuf.Touched[i]
+			if ch != nil {
 				s.oldhash[i] = hash(s.curbuf.Line(i))
 				s.newhash[i] = hash(newbuf.Line(i))
 			}

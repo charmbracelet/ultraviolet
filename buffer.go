@@ -193,7 +193,8 @@ func renderLine(buf interface {
 
 // Buffer represents a cell buffer that contains the contents of a screen.
 type Buffer struct {
-	Lines []Line
+	Lines   []Line
+	Touched []*lineData
 }
 
 // NewBuffer creates a new buffer with the given width and height.
@@ -201,6 +202,13 @@ type Buffer struct {
 func NewBuffer(width int, height int) *Buffer {
 	b := new(Buffer)
 	b.Lines = make([]Line, height)
+	for i := range b.Lines {
+		b.Lines[i] = make(Line, width)
+		for j := range b.Lines[i] {
+			b.Lines[i][j] = BlankCell
+		}
+	}
+	b.Touched = make([]*lineData, height)
 	b.Resize(width, height)
 	return b
 }
@@ -254,7 +262,32 @@ func (b *Buffer) SetCell(x, y int, c *Cell) {
 		return
 	}
 
+	if !cellEqual(b.CellAt(x, y), c) {
+		width := 1
+		if c != nil && c.Width > 0 {
+			width = c.Width
+		}
+		for i := 0; i < width; i++ {
+			b.Touch(x+i, y)
+		}
+	}
 	b.Lines[y].Set(x, c)
+}
+
+// Touch marks the cell at the given x, y position as touched.
+func (b *Buffer) Touch(x, y int) {
+	if y < 0 || y >= len(b.Lines) {
+		return
+	}
+
+	ch := b.Touched[y]
+	if ch == nil {
+		ch = &lineData{firstCell: x, lastCell: x + 1}
+	} else {
+		ch.firstCell = min(ch.firstCell, x)
+		ch.lastCell = max(ch.lastCell, x+1)
+	}
+	b.Touched[y] = ch
 }
 
 // Height implements Screen.
@@ -310,8 +343,10 @@ func (b *Buffer) Resize(width int, height int) {
 			}
 			b.Lines = append(b.Lines, line)
 		}
+		b.Touched = append(b.Touched, make([]*lineData, height-len(b.Lines))...)
 	} else if height < len(b.Lines) {
 		b.Lines = b.Lines[:height]
+		b.Touched = b.Touched[:height]
 	}
 }
 

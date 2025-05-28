@@ -173,24 +173,22 @@ func (s *TerminalRenderer) scrollBuffer(b *Buffer, n, top, bot int, blank *Cell)
 		}
 	}
 
-	s.touchLine(b.Width(), b.Height(), top, bot-top+1, true)
+	s.touchLine(b, top, bot-top+1, true)
 }
 
 // touchLine marks the line as touched.
-func (s *TerminalRenderer) touchLine(width, height, y, n int, changed bool) {
+func (s *TerminalRenderer) touchLine(newbuf *Buffer, y, n int, changed bool) {
+	height := newbuf.Height()
 	if n < 0 || y < 0 || y >= height {
 		return // Nothing to touch
 	}
 
+	width := newbuf.Width()
 	for i := y; i < y+n && i < height; i++ {
 		if changed {
-			s.touchmu.Lock()
-			s.touch[i] = lineData{firstCell: 0, lastCell: width - 1}
-			s.touchmu.Unlock()
+			newbuf.Touched[i] = &lineData{firstCell: 0, lastCell: width - 1}
 		} else {
-			s.touchmu.Lock()
-			delete(s.touch, i)
-			s.touchmu.Unlock()
+			newbuf.Touched[i] = nil
 		}
 	}
 }
