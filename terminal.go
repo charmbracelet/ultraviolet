@@ -275,13 +275,9 @@ func (t *Terminal) Display(f *Frame) error {
 	if vp != t.vp {
 		switch vp.(type) {
 		case FullViewport:
-			if !t.scr.AltScreen() {
-				t.enterAltScreen(true) //nolint:errcheck
-			}
+			t.scr.SetRelativeCursor(false)
 		case InlineViewport:
-			if t.scr.AltScreen() {
-				t.exitAltScreen(true) //nolint:errcheck
-			}
+			t.scr.SetRelativeCursor(true)
 		}
 
 		t.vp = vp
