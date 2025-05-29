@@ -384,3 +384,14 @@ func TestStyledString(t *testing.T) {
 		})
 	}
 }
+
+func newWcCell(s string, style *Style, link *Link) Cell {
+	c := NewCell(ansi.WcWidth, s)
+	if style != nil {
+		c.Style = *style
+	}
+	if link != nil {
+		c.Link = *link
+	}
+	return *c
+}
