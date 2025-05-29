@@ -9,14 +9,8 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-var (
-	// EmptyCell is a cell with a single space, width of 1, and no style or link.
-	EmptyCell = Cell{Content: " ", Width: 1}
-
-	// ZeroCell is just an empty cell used for comparisons and as a placeholder
-	// for wide cells.
-	ZeroCell = Cell{}
-)
+// EmptyCell is a cell with a single space, width of 1, and no style or link.
+var EmptyCell = Cell{Content: " ", Width: 1}
 
 // Cell represents a single cell in the terminal screen.
 type Cell struct {
