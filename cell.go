@@ -2,6 +2,7 @@ package tv
 
 import (
 	"image/color"
+	"unicode"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -72,16 +73,21 @@ func (c *Cell) IsZero() bool {
 
 // Reset resets the cell to the default state zero value.
 func (c *Cell) Reset() {
-	c.Content = ""
-	c.Width = 0
-	c.Style.Reset()
-	c.Link.Reset()
+	*c = Cell{}
 }
 
-// Clear returns whether the cell consists of only attributes that don't
-// affect appearance of a space character.
-func (c *Cell) Clear() bool {
-	return c.Content == " " && c.Width == 1 && c.Style.Clear() && c.Link.IsZero()
+// IsBlank returns whether the cell represents a blank cell consisting of a
+// space character.
+func (c *Cell) IsBlank() bool {
+	if c.Width <= 0 {
+		return false
+	}
+	for _, r := range c.Content {
+		if !unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return c.Style.IsBlank() && c.Link.IsZero()
 }
 
 // Clone returns a copy of the cell.
@@ -91,12 +97,11 @@ func (c *Cell) Clone() (n *Cell) {
 	return
 }
 
-// Blank makes the cell a blank cell by setting the rune to a space, comb to
-// nil, and the width to 1.
-func (c *Cell) Blank() *Cell {
+// Empty makes the cell an empty cell by setting its content to a single space
+// and width to 1.
+func (c *Cell) Empty() {
 	c.Content = " "
 	c.Width = 1
-	return c
 }
 
 // Link represents a hyperlink in the terminal screen.
@@ -112,8 +117,7 @@ func (h *Link) String() string {
 
 // Reset resets the hyperlink to the default state zero value.
 func (h *Link) Reset() {
-	h.URL = ""
-	h.Params = ""
+	*h = Link{}
 }
 
 // Equal returns whether the hyperlink is equal to the other hyperlink.
@@ -469,13 +473,8 @@ func colorEqual(c, o ansi.Color) bool {
 }
 
 // Reset resets the style to default.
-func (s *Style) Reset() *Style {
-	s.Fg = nil
-	s.Bg = nil
-	s.Ul = nil
-	s.Attrs = ResetAttr
-	s.UlStyle = NoUnderline
-	return s
+func (s *Style) Reset() {
+	*s = Style{}
 }
 
 // IsZero returns true if the style is empty.
@@ -483,9 +482,9 @@ func (s *Style) IsZero() bool {
 	return *s == Style{}
 }
 
-// Clear returns whether the style consists of only attributes that don't
+// IsBlank returns whether the style consists of only attributes that don't
 // affect appearance of a space character.
-func (s *Style) Clear() bool {
+func (s *Style) IsBlank() bool {
 	return s.UlStyle == NoUnderline &&
 		s.Attrs&^(BoldAttr|FaintAttr|ItalicAttr|SlowBlinkAttr|RapidBlinkAttr) == 0 &&
 		s.Fg == nil &&

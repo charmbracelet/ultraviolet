@@ -575,7 +575,7 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 		ech := ansi.EraseCharacter(count)
 		cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
 		rep := ansi.RepeatPreviousCharacter(count)
-		if s.caps.Contains(capECH) && count > len(ech)+len(cup) && cell0.Clear() {
+		if s.caps.Contains(capECH) && count > len(ech)+len(cup) && cell0.IsBlank() {
 			s.updatePen(&cell0)
 			s.buf.WriteString(ech) //nolint:errcheck
 
@@ -760,7 +760,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 
 		// It might be cheaper to clear leading spaces with [ansi.EL] 1 i.e.
 		// [ansi.EraseLineLeft].
-		if blank == nil || blank.Clear() {
+		if blank == nil || blank.IsBlank() {
 			var oFirstCell, nFirstCell int
 			for oFirstCell = 0; oFirstCell < s.curbuf.Width(); oFirstCell++ {
 				if !cellEqual(oldLine.At(oFirstCell), blank) {
@@ -816,7 +816,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 		}
 
 		blank = newLine.At(newbuf.Width() - 1)
-		if blank != nil && !blank.Clear() {
+		if blank != nil && !blank.IsBlank() {
 			// Find the last differing cell
 			nLastCell = newbuf.Width() - 1
 			for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), oldLine.At(nLastCell)) {
@@ -975,7 +975,7 @@ func (s *TerminalRenderer) clearBottom(newbuf *Buffer, total int) (top int) {
 	top = total
 	last := min(s.curbuf.Width(), newbuf.Width())
 	blank := s.clearBlank()
-	canClearWithBlank := blank == nil || blank.Clear()
+	canClearWithBlank := blank == nil || blank.IsBlank()
 
 	if canClearWithBlank {
 		var row int

@@ -46,7 +46,7 @@ func (l Line) Set(x int, c *Cell) {
 			// Writing to the first wide cell
 			for j := 0; j < pw && x+j < lineWidth; j++ {
 				l[x+j] = *prev
-				l[x+j].Blank()
+				l[x+j].Empty()
 			}
 		} else if pw == 0 {
 			// Writing to wide cell placeholders
@@ -55,7 +55,7 @@ func (l Line) Set(x int, c *Cell) {
 					if ww := wide.Width; ww > 1 && j < ww {
 						for k := 0; k < ww; k++ {
 							l[x-j+k] = *wide
-							l[x-j+k].Blank()
+							l[x-j+k].Empty()
 						}
 						break
 					}
@@ -76,7 +76,7 @@ func (l Line) Set(x int, c *Cell) {
 		// If the cell is too wide, we write blanks with the same style.
 		for i := 0; i < cw && x+i < lineWidth; i++ {
 			l[x+i] = *c
-			l[x+i].Blank()
+			l[x+i].Empty()
 		}
 		return
 	}
