@@ -1173,13 +1173,6 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		}
 	}
 
-	// Ensure we have scrolled the screen to the bottom when we're not using
-	// alt screen mode.
-	if !s.flags.Contains(tAltScreen) && touchedLines > 0 && s.scrollHeight < newHeight-1 {
-		s.scrollHeight = newHeight - 1
-		s.move(newbuf, 0, newHeight-1)
-	}
-
 	// Sync windows and screen
 	newbuf.Touched = make([]*lineData, newbuf.Height())
 
