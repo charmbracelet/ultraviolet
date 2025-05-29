@@ -66,7 +66,7 @@ func (l Line) Set(x int, c *Cell) {
 
 	if c == nil {
 		// Nil cells are treated as blank empty cells.
-		l[x] = BlankCell
+		l[x] = EmptyCell
 		return
 	}
 
@@ -169,7 +169,7 @@ func renderLine(buf io.StringWriter, l Line) {
 
 			// We only write the cell content if it's not empty. If it is, we
 			// append it to the pending line and width to be evaluated later.
-			if cell.Equal(&BlankCell) {
+			if cell.Equal(&EmptyCell) {
 				pendingLine += cell.String()
 				pendingWidth += cell.Width
 			} else {
@@ -200,7 +200,7 @@ func NewBuffer(width int, height int) *Buffer {
 	for i := range b.Lines {
 		b.Lines[i] = make(Line, width)
 		for j := range b.Lines[i] {
-			b.Lines[i][j] = BlankCell
+			b.Lines[i][j] = EmptyCell
 		}
 	}
 	b.Touched = make([]*lineData, height)
@@ -319,7 +319,7 @@ func (b *Buffer) Resize(width int, height int) {
 	if bwid := b.Width(); width > bwid {
 		line := make(Line, width-bwid)
 		for i := range line {
-			line[i] = BlankCell
+			line[i] = EmptyCell
 		}
 		for i := range b.Lines {
 			b.Lines[i] = append(b.Lines[i], line...)
@@ -334,7 +334,7 @@ func (b *Buffer) Resize(width int, height int) {
 		for i := len(b.Lines); i < height; i++ {
 			line := make(Line, width)
 			for j := range line {
-				line[j] = BlankCell
+				line[j] = EmptyCell
 			}
 			b.Lines = append(b.Lines, line)
 		}

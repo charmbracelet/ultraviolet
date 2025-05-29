@@ -5,11 +5,13 @@ import (
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mattn/go-runewidth"
+	"github.com/rivo/uniseg"
 )
 
 var (
 	// EmptyCell is a cell with a single space, width of 1, and no style or link.
-	BlankCell = Cell{Rune: ' ', Width: 1}
+	EmptyCell = Cell{Content: " ", Width: 1}
 
 	// ZeroCell is just an empty cell used for comparisons and as a placeholder
 	// for wide cells.
@@ -18,6 +20,11 @@ var (
 
 // Cell represents a single cell in the terminal screen.
 type Cell struct {
+	// Content is the [Cell]'s content, which consists of a single grapheme
+	// cluster. Most of the time, this will be a single rune as well, but it
+	// can also be a combination of runes that form a grapheme cluster.
+	Content string
+
 	// The style of the cell. Nil style means no style. Zero value prints a
 	// reset sequence.
 	Style Style
@@ -25,103 +32,41 @@ type Cell struct {
 	// Link is the hyperlink of the cell.
 	Link Link
 
-	// Comb is the combining runes of the cell. This is nil if the cell is a
-	// single rune or if it's a zero width cell that is part of a wider cell.
-	Comb []rune
-
 	// Width is the mono-spaced width of the grapheme cluster.
 	Width int
-
-	// Rune is the main rune of the cell. This is zero if the cell is part of a
-	// wider cell.
-	Rune rune
 }
 
-// NewCell creates a new cell with the given width, rune, and combining runes.
-func NewCell(width int, r rune, comb ...rune) Cell {
-	return Cell{
-		Width: width,
-		Rune:  r,
-		Comb:  comb,
+// NewCell creates a new cell from the given string. It will only use the first
+// grapheme in the string and ignore the rest. The width of the cell is
+// determined using the given width method.
+func NewCell(method ansi.Method, s string) *Cell {
+	if len(s) == 0 {
+		return &Cell{}
 	}
-}
-
-// NewCellString creates a new cell from the given grapheme. The width of the
-// cell is determined using the given width method.
-func NewCellString(method ansi.Method, grapheme string) Cell {
-	if len(grapheme) == 0 {
-		return Cell{}
+	if s == " " {
+		return EmptyCell.Clone()
 	}
-	width := method.StringWidth(grapheme)
-	if width == 0 {
-		return Cell{}
+	gr, _, width, _ := uniseg.FirstGraphemeClusterInString(s, -1)
+	if method == ansi.WcWidth {
+		width = runewidth.StringWidth(gr)
 	}
-	c := Cell{
-		Width: width,
-	}
-	for i, r := range grapheme {
-		if i == 0 {
-			c.Rune = r
-		} else {
-			c.Comb = append(c.Comb, r)
-		}
-	}
-	return c
-}
-
-// SetString sets the string content of the cell.
-func (c *Cell) SetString(s string) {
-	for i, r := range s {
-		if i == 0 {
-			c.Rune = r
-			continue
-		}
-		c.Comb = append(c.Comb, r)
-	}
-}
-
-// AppendString appends a string to the cell.
-func (c *Cell) AppendString(s string) {
-	for i, r := range s {
-		if i == 0 && c.Rune == 0 {
-			c.Rune = r
-			continue
-		}
-		c.Comb = append(c.Comb, r)
-	}
-}
-
-// Append appends runes to the cell without changing the width. This is useful
-// when we want to use the cell to store escape sequences or other runes that
-// don't affect the width of the cell.
-func (c *Cell) Append(r ...rune) {
-	for i, r := range r {
-		if i == 0 && c.Rune == 0 {
-			c.Rune = r
-			continue
-		}
-		c.Comb = append(c.Comb, r)
+	return &Cell{
+		Content: gr,
+		Width:   width,
 	}
 }
 
 // String returns the string content of the cell excluding any styles, links,
 // and escape sequences.
 func (c *Cell) String() string {
-	if c.Rune == 0 {
-		return ""
-	}
-	if len(c.Comb) == 0 {
-		return string(c.Rune)
-	}
-	return string(append([]rune{c.Rune}, c.Comb...))
+	return c.Content
 }
 
 // Equal returns whether the cell is equal to the other cell.
 func (c *Cell) Equal(o *Cell) bool {
 	return o != nil &&
 		c.Width == o.Width &&
-		c.Rune == o.Rune &&
-		runesEqual(c.Comb, o.Comb) &&
+		c.Content == o.Content &&
 		c.Style.Equal(&o.Style) &&
 		c.Link.Equal(&o.Link)
 }
@@ -130,14 +75,12 @@ func (c *Cell) Equal(o *Cell) bool {
 // with a width of 0, a rune of 0, and no combining runes.
 func (c *Cell) Empty() bool {
 	return c.Width == 0 &&
-		c.Rune == 0 &&
-		len(c.Comb) == 0
+		len(c.Content) == 0
 }
 
 // Reset resets the cell to the default state zero value.
 func (c *Cell) Reset() {
-	c.Rune = 0
-	c.Comb = nil
+	c.Content = ""
 	c.Width = 0
 	c.Style.Reset()
 	c.Link.Reset()
@@ -146,7 +89,7 @@ func (c *Cell) Reset() {
 // Clear returns whether the cell consists of only attributes that don't
 // affect appearance of a space character.
 func (c *Cell) Clear() bool {
-	return c.Rune == ' ' && len(c.Comb) == 0 && c.Width == 1 && c.Style.Clear() && c.Link.Empty()
+	return c.Content == " " && c.Width == 1 && c.Style.Clear() && c.Link.Empty()
 }
 
 // Clone returns a copy of the cell.
@@ -159,8 +102,7 @@ func (c *Cell) Clone() (n *Cell) {
 // Blank makes the cell a blank cell by setting the rune to a space, comb to
 // nil, and the width to 1.
 func (c *Cell) Blank() *Cell {
-	c.Rune = ' '
-	c.Comb = nil
+	c.Content = " "
 	c.Width = 1
 	return c
 }

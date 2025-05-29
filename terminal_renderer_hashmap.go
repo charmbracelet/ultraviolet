@@ -3,7 +3,8 @@ package tv
 // hash returns the hash value of a [Line].
 func hash(l Line) (h uint64) {
 	for _, c := range l {
-		h += (h << 5) + uint64(c.Rune)
+		r, _ := utf8.DecodeRuneInString(c.Content)
+		h += (h << 5) + uint64(r)
 	}
 	return
 }

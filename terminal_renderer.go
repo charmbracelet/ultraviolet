@@ -394,7 +394,7 @@ func (s *TerminalRenderer) move(newbuf *Buffer, x, y int) {
 	// cursor position, thus, we need to reset the styles before moving the
 	// cursor.
 	blank := s.clearBlank()
-	resetPen := y != s.cur.Y && !blank.Equal(&BlankCell)
+	resetPen := y != s.cur.Y && !blank.Equal(&EmptyCell)
 	if resetPen {
 		s.updatePen(nil)
 	}
@@ -443,7 +443,7 @@ func (s *TerminalRenderer) move(newbuf *Buffer, x, y int) {
 }
 
 // cellEqual returns whether the two cells are equal. A nil cell is considered
-// a [BlankCell].
+// a [EmptyCell].
 func cellEqual(a, b *Cell) bool {
 	if a == b {
 		return true
@@ -499,10 +499,7 @@ func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
 	}
 
 	s.updatePen(cell)
-	s.buf.WriteRune(cell.Rune) //nolint:errcheck
-	for _, c := range cell.Comb {
-		s.buf.WriteRune(c) //nolint:errcheck
-	}
+	s.buf.WriteString(cell.Content) //nolint:errcheck
 
 	s.cur.X += cell.Width
 	if s.cur.X >= newbuf.Width() {
@@ -527,7 +524,7 @@ func (s *TerminalRenderer) putCellLR(newbuf *Buffer, cell *Cell) {
 // updatePen updates the cursor pen styles.
 func (s *TerminalRenderer) updatePen(cell *Cell) {
 	if cell == nil {
-		cell = &BlankCell
+		cell = &EmptyCell
 	}
 
 	if s.profile != 0 {
@@ -589,7 +586,7 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 				return true // cursor in the middle
 			}
 		} else if s.caps.Contains(capREP) && count > len(rep) &&
-			(len(cell0.Comb) == 0 && cell0.Rune >= ansi.US && cell0.Rune < ansi.DEL) {
+			(len(cell0.Content) == 1 && cell0.Content[0] >= ansi.US && cell0.Content[0] < ansi.DEL) {
 			// We only support ASCII characters. Most terminals will handle
 			// non-ASCII characters correctly, but some might not, ahem xterm.
 			//
@@ -695,7 +692,7 @@ func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) {
 
 // clearBlank returns a blank cell based on the current cursor background color.
 func (s *TerminalRenderer) clearBlank() *Cell {
-	c := BlankCell
+	c := EmptyCell
 	if !s.cur.Style.Empty() || !s.cur.Link.Empty() {
 		c.Style = s.cur.Style
 		c.Link = s.cur.Link

@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
-	"github.com/rivo/uniseg"
 )
 
 // StyledString is a string that can be decomposed into a series of styled
@@ -66,49 +64,6 @@ func (s *StyledString) Bounds() Rectangle {
 	return Rect(0, 0, w, h)
 }
 
-func newWcCell(s string, style *Style, link *Link) Cell {
-	var c Cell
-	for i, r := range s {
-		if i == 0 {
-			c.Rune = r
-			// We only care about the first rune's width
-			c.Width = runewidth.RuneWidth(r)
-		} else {
-			if runewidth.RuneWidth(r) > 0 {
-				break
-			}
-			c.Comb = append(c.Comb, r)
-		}
-	}
-	if style != nil {
-		c.Style = *style
-	}
-	if link != nil {
-		c.Link = *link
-	}
-	return c
-}
-
-func newGCell(s string, style *Style, link *Link) Cell {
-	var c Cell
-	g, _, w, _ := uniseg.FirstGraphemeClusterInString(s, -1)
-	c.Width = w
-	for i, r := range g {
-		if i == 0 {
-			c.Rune = r
-		} else {
-			c.Comb = append(c.Comb, r)
-		}
-	}
-	if style != nil {
-		c.Style = *style
-	}
-	if link != nil {
-		c.Link = *link
-	}
-	return c
-}
-
 // printString draws a string starting at the given position.
 func printString[T []byte | string](
 	s *Buffer,
@@ -121,11 +76,7 @@ func printString[T []byte | string](
 
 	var tailc Cell
 	if truncate && len(tail) > 0 {
-		if m == ansi.WcWidth {
-			tailc = newWcCell(tail, nil, nil)
-		} else {
-			tailc = newGCell(tail, nil, nil)
-		}
+		tailc = *NewCell(m, tail)
 	}
 
 	decoder := ansi.DecodeSequenceWc[T]
@@ -142,7 +93,7 @@ func printString[T []byte | string](
 		switch width {
 		case 1, 2, 3, 4: // wide cells can go up to 4 cells wide
 			cell.Width = width
-			cell.SetString(string(seq))
+			cell.Content = string(seq)
 
 			if !truncate && x+cell.Width > bounds.Max.X && y+1 < bounds.Max.Y {
 				// Wrap the string to the width of the window
@@ -186,7 +137,7 @@ func printString[T []byte | string](
 			case ansi.Equal(seq, T("\r")):
 				x = bounds.Min.X
 			default:
-				cell.Append([]rune(string(seq))...)
+				cell.Content += string(seq)
 			}
 		}
 
