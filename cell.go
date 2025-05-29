@@ -186,6 +186,11 @@ type Style struct {
 	Attrs   StyleAttrs
 }
 
+// NewStyle is a convenience function to create a new [Style].
+func NewStyle() *Style {
+	return &Style{}
+}
+
 // Foreground returns a new style with the foreground color set to the given color.
 func (s *Style) Foreground(c color.Color) *Style {
 	s.Fg = c
