@@ -104,7 +104,7 @@ func (l Line) At(x int) *Cell {
 // are removed.
 func (l Line) String() (s string) {
 	for _, c := range l {
-		if c.Empty() {
+		if c.IsZero() {
 			continue
 		} else {
 			s += c.String()
@@ -143,7 +143,7 @@ func renderLine(buf io.StringWriter, l Line) {
 			// Convert the cell's style and link to the given color profile.
 			cellStyle := cell.Style
 			cellLink := cell.Link
-			if cellStyle.Empty() && !pen.Empty() {
+			if cellStyle.IsZero() && !pen.IsZero() {
 				writePending()
 				buf.WriteString(ansi.ResetStyle) //nolint:errcheck
 				pen.Reset()
@@ -181,7 +181,7 @@ func renderLine(buf io.StringWriter, l Line) {
 	if link.URL != "" {
 		buf.WriteString(ansi.ResetHyperlink()) //nolint:errcheck
 	}
-	if !pen.Empty() {
+	if !pen.IsZero() {
 		buf.WriteString(ansi.ResetStyle) //nolint:errcheck
 	}
 }

@@ -65,11 +65,9 @@ func (c *Cell) Equal(o *Cell) bool {
 		c.Link.Equal(&o.Link)
 }
 
-// Empty returns whether the cell is an empty cell. An empty cell is a cell
-// with a width of 0, a rune of 0, and no combining runes.
-func (c *Cell) Empty() bool {
-	return c.Width == 0 &&
-		len(c.Content) == 0
+// IsZero returns whether the cell is an empty cell.
+func (c *Cell) IsZero() bool {
+	return *c == Cell{}
 }
 
 // Reset resets the cell to the default state zero value.
@@ -83,7 +81,7 @@ func (c *Cell) Reset() {
 // Clear returns whether the cell consists of only attributes that don't
 // affect appearance of a space character.
 func (c *Cell) Clear() bool {
-	return c.Content == " " && c.Width == 1 && c.Style.Clear() && c.Link.Empty()
+	return c.Content == " " && c.Width == 1 && c.Style.Clear() && c.Link.IsZero()
 }
 
 // Clone returns a copy of the cell.
@@ -123,9 +121,9 @@ func (h *Link) Equal(o *Link) bool {
 	return o != nil && h.URL == o.URL && h.Params == o.Params
 }
 
-// Empty returns whether the hyperlink is empty.
-func (h *Link) Empty() bool {
-	return h.URL == "" && h.Params == ""
+// IsZero returns whether the hyperlink is empty.
+func (h *Link) IsZero() bool {
+	return *h == Link{}
 }
 
 // StyleAttrs is a bitmask for text attributes that can change the look of text.
@@ -305,7 +303,7 @@ func (s *Style) Equal(o *Style) bool {
 
 // Sequence returns the ANSI sequence that sets the style.
 func (s *Style) Sequence() string {
-	if s.Empty() {
+	if s.IsZero() {
 		return ansi.ResetStyle
 	}
 
@@ -367,7 +365,7 @@ func (s *Style) Sequence() string {
 // DiffSequence returns the ANSI sequence that sets the style as a diff from
 // another style.
 func (s *Style) DiffSequence(o Style) string {
-	if o.Empty() {
+	if o.IsZero() {
 		return s.Sequence()
 	}
 
@@ -480,9 +478,9 @@ func (s *Style) Reset() *Style {
 	return s
 }
 
-// Empty returns true if the style is empty.
-func (s *Style) Empty() bool {
-	return s.Fg == nil && s.Bg == nil && s.Ul == nil && s.Attrs == ResetAttr && s.UlStyle == NoUnderline
+// IsZero returns true if the style is empty.
+func (s *Style) IsZero() bool {
+	return *s == Style{}
 }
 
 // Clear returns whether the style consists of only attributes that don't

@@ -479,7 +479,7 @@ func (s *TerminalRenderer) wrapCursor() {
 }
 
 func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
-	if cell != nil && cell.Empty() {
+	if cell != nil && cell.IsZero() {
 		// XXX: Zero width cells are special and should not be written to the
 		// screen no matter what other attributes they have.
 		// Zero width cells are used for wide characters that are split into
@@ -511,7 +511,7 @@ func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
 func (s *TerminalRenderer) putCellLR(newbuf *Buffer, cell *Cell) {
 	// Optimize for the lower right corner cell.
 	curX := s.cur.X
-	if cell == nil || !cell.Empty() {
+	if cell == nil || !cell.IsZero() {
 		s.buf.WriteString(ansi.ResetAutoWrapMode) //nolint:errcheck
 		s.putAttrCell(newbuf, cell)
 		// Writing to lower-right corner cell should not wrap.
@@ -535,7 +535,7 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 
 	if !cell.Style.Equal(&s.cur.Style) {
 		seq := cell.Style.DiffSequence(s.cur.Style)
-		if cell.Style.Empty() && len(seq) > len(ansi.ResetStyle) {
+		if cell.Style.IsZero() && len(seq) > len(ansi.ResetStyle) {
 			seq = ansi.ResetStyle
 		}
 		s.buf.WriteString(seq) //nolint:errcheck
@@ -632,7 +632,7 @@ func (s *TerminalRenderer) putRange(newbuf *Buffer, oldLine, newLine Line, y, st
 		var j, same int
 		for j, same = start, 0; j <= end; j++ {
 			oldCell, newCell := oldLine.At(j), newLine.At(j)
-			if same == 0 && oldCell != nil && oldCell.Empty() {
+			if same == 0 && oldCell != nil && oldCell.IsZero() {
 				continue
 			}
 			if cellEqual(oldCell, newCell) {
@@ -693,7 +693,7 @@ func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) {
 // clearBlank returns a blank cell based on the current cursor background color.
 func (s *TerminalRenderer) clearBlank() *Cell {
 	c := EmptyCell
-	if !s.cur.Style.Empty() || !s.cur.Link.Empty() {
+	if !s.cur.Style.IsZero() || !s.cur.Link.IsZero() {
 		c.Style = s.cur.Style
 		c.Link = s.cur.Link
 	}
@@ -894,7 +894,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 				if n != 0 {
 					for n > 0 {
 						wide := newLine.At(n + 1)
-						if wide == nil || !wide.Empty() {
+						if wide == nil || !wide.IsZero() {
 							break
 						}
 						n--
@@ -902,7 +902,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 					}
 				} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
 					next := newLine.At(n + 1)
-					for next != nil && next.Empty() {
+					for next != nil && next.IsZero() {
 						n++
 						oLastCell++
 					}

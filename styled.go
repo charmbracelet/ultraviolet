@@ -147,7 +147,7 @@ func printString[T []byte | string](
 	}
 
 	// Make sure to set the last cell if it's not empty.
-	if !cell.Empty() {
+	if !cell.IsZero() {
 		s.SetCell(x, y, &cell) //nolint:errcheck
 		cell.Reset()
 	}
