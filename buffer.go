@@ -118,15 +118,11 @@ func (l Line) String() (s string) {
 // styles.
 func (l Line) Render() string {
 	var buf strings.Builder
-	return renderLine(&buf, l)
+	renderLine(&buf, l)
+	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces
 }
 
-func renderLine(buf interface {
-	io.Writer
-	io.StringWriter
-	String() string
-}, l Line,
-) string {
+func renderLine(buf io.StringWriter, l Line) {
 	var pen Style
 	var link Link
 	var pendingLine string
@@ -188,7 +184,6 @@ func renderLine(buf interface {
 	if !pen.Empty() {
 		buf.WriteString(ansi.ResetStyle) //nolint:errcheck
 	}
-	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces
 }
 
 // Buffer represents a cell buffer that contains the contents of a screen.
@@ -230,12 +225,12 @@ func (b *Buffer) String() string {
 func (b *Buffer) Render() string {
 	var buf strings.Builder
 	for i, l := range b.Lines {
-		buf.WriteString(renderLine(&buf, l))
+		renderLine(&buf, l)
 		if i < len(b.Lines)-1 {
 			buf.WriteString("\r\n") //nolint:errcheck
 		}
 	}
-	return buf.String()
+	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces
 }
 
 // Line returns a pointer to the line at the given y position.
