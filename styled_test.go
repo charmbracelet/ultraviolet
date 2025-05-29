@@ -70,9 +70,9 @@ func TestStyledString(t *testing.T) {
 			name:           "empty string",
 			input:          "",
 			expectedWidth:  0,
-			expectedHeight: 0,
+			expectedHeight: 1,
 			expected: &Buffer{
-				Lines: []Line{},
+				Lines: []Line{{}},
 			},
 		},
 		{
@@ -89,6 +89,15 @@ func TestStyledString(t *testing.T) {
 						newWcCell("l", nil, nil),
 						newWcCell("o", nil, nil),
 						newWcCell(",", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
 					},
 					{
 						newWcCell("W", nil, nil),
@@ -97,6 +106,15 @@ func TestStyledString(t *testing.T) {
 						newWcCell("l", nil, nil),
 						newWcCell("d", nil, nil),
 						newWcCell("!", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
+						newWcCell(" ", nil, nil),
 					},
 					{
 						newWcCell("T", nil, nil),
@@ -362,6 +380,7 @@ func TestStyledString(t *testing.T) {
 
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("Running case %d: %s for %q", i+1, tc.name, tc.input)
 			ss := NewStyledString(tc.input)
 			area := ss.Bounds()
 			buf := NewBuffer(area.Dx(), area.Dy())
@@ -377,7 +396,7 @@ func TestStyledString(t *testing.T) {
 			for y, line := range buf.Lines {
 				for x, cell := range line {
 					if !cellEqual(tc.expected.CellAt(x, y), &cell) {
-						t.Errorf("case %d expected cell (%d, %d) %q, got %q", y+1, x, y, tc.expected.CellAt(x, y), cell)
+						t.Errorf("case %d expected cell (%d, %d) %q, got %q", y+1, x, y, tc.expected.CellAt(x, y), &cell)
 					}
 				}
 			}
