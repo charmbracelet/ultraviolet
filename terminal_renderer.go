@@ -1178,8 +1178,9 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 	// Ensure we have scrolled the screen to the bottom when we're not using
 	// alt screen mode.
-	if !s.flags.Contains(tAltScreen) && s.scrollHeight < newbuf.Height()-1 {
-		s.move(newbuf, 0, newbuf.Height()-1)
+	if !s.flags.Contains(tAltScreen) && touchedLines > 0 && s.scrollHeight < newHeight-1 {
+		s.scrollHeight = newHeight - 1
+		s.move(newbuf, 0, newHeight-1)
 	}
 
 	// Sync windows and screen
@@ -1278,11 +1279,13 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 			if cud := ansi.CursorDown(n); yseq == "" || len(cud) < len(yseq) {
 				yseq = cud
 			}
-			shouldScroll := !s.flags.Contains(tAltScreen) && fy+n >= s.scrollHeight
-			if lf := strings.Repeat("\n", n); shouldScroll || (fy+n < height && len(lf) < len(yseq)) {
-				// TODO: Ensure we're not unintentionally scrolling the screen down.
+			shouldScroll := !s.flags.Contains(tAltScreen) && ty > s.scrollHeight
+			if shouldScroll && ty == s.scrollHeight && ty < height {
+				n = min(n, height-1-ty)
+			}
+			if lf := strings.Repeat("\n", n); shouldScroll || (ty < height && len(lf) < len(yseq)) {
 				yseq = lf
-				s.scrollHeight = max(s.scrollHeight, fy+n)
+				s.scrollHeight = max(s.scrollHeight, ty)
 				if s.flags.Contains(tMapNewline) {
 					fx = 0
 				}
