@@ -493,18 +493,6 @@ func (s *Style) Clear() bool {
 		s.Ul == nil
 }
 
-func runesEqual(a, b []rune) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, r := range a {
-		if r != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // Convert converts a style to respect the given color profile.
 func ConvertStyle(s Style, p colorprofile.Profile) Style {
 	switch p {
