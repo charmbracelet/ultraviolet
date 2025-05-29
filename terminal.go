@@ -286,7 +286,7 @@ func (t *Terminal) EnableMode(modes ...ansi.Mode) error {
 	for _, m := range modes {
 		t.modes[m] = ansi.ModeSet
 	}
-	_, err := t.WriteString(ansi.SetMode(modes...))
+	_, err := t.writeString(ansi.SetMode(modes...))
 	return err
 }
 
@@ -303,7 +303,7 @@ func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
 	for _, m := range modes {
 		t.modes[m] = ansi.ModeReset
 	}
-	_, err := t.WriteString(ansi.ResetMode(modes...))
+	_, err := t.writeString(ansi.ResetMode(modes...))
 	return err
 }
 
@@ -314,7 +314,7 @@ func (t *Terminal) DisableMode(modes ...ansi.Mode) error {
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) RequestMode(mode ansi.Mode) error {
-	_, err := t.WriteString(ansi.RequestMode(mode))
+	_, err := t.writeString(ansi.RequestMode(mode))
 	return err
 }
 
@@ -509,7 +509,7 @@ func (t *Terminal) hideCursor() error {
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) SetTitle(title string) error {
-	_, err := t.WriteString(ansi.SetWindowTitle(title))
+	_, err := t.writeString(ansi.SetWindowTitle(title))
 	return err
 }
 
@@ -825,19 +825,10 @@ func (t *Terminal) PrependLines(lines ...Line) error {
 	return nil
 }
 
-// Write writes the given data to the underlying screen buffer. It implements
-// the [io.Writer] interface. Data written won't be flushed to the terminal
-// until [Terminal.Flush] is called.
-func (t *Terminal) Write(p []byte) (n int, err error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.scr.Write(p)
-}
-
-// WriteString writes the given string to the underlying screen buffer. It
+// writeString writes the given string to the underlying screen buffer. It
 // implements the [io.StringWriter] interface. Data written won't be flushed to
 // the terminal until [Terminal.Flush] is called.
-func (t *Terminal) WriteString(s string) (n int, err error) {
+func (t *Terminal) writeString(s string) (n int, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.scr.WriteString(s)
