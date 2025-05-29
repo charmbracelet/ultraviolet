@@ -44,6 +44,11 @@ func (ts *TabStops) Resize(width int) {
 	ts.width = width
 }
 
+// Width returns the width of the screen that the tab stops are set for.
+func (ts *TabStops) Width() int {
+	return ts.width
+}
+
 // IsStop returns true if the given column is a tab stop.
 func (ts TabStops) IsStop(col int) bool {
 	mask := ts.mask(col)
