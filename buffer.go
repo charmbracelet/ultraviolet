@@ -188,7 +188,10 @@ func renderLine(buf io.StringWriter, l Line) {
 
 // Buffer represents a cell buffer that contains the contents of a screen.
 type Buffer struct {
-	Lines   []Line
+	// Lines is a slice of lines that make up the cells of the buffer.
+	Lines []Line
+	// Touched represents the lines that have been modified or touched. It is
+	// used to track which lines need to be redrawn.
 	Touched []*lineData
 }
 
@@ -262,25 +265,32 @@ func (b *Buffer) SetCell(x, y int, c *Cell) {
 		if c != nil && c.Width > 0 {
 			width = c.Width
 		}
-		for i := 0; i < width; i++ {
-			b.Touch(x+i, y)
-		}
+		b.TouchLine(x, y, width)
 	}
 	b.Lines[y].Set(x, c)
 }
 
 // Touch marks the cell at the given x, y position as touched.
 func (b *Buffer) Touch(x, y int) {
+	b.TouchLine(x, y, 1)
+}
+
+// TouchLine marks a line n times starting at the given x position as touched.
+func (b *Buffer) TouchLine(x, y, n int) {
 	if y < 0 || y >= len(b.Lines) {
 		return
 	}
 
+	if y >= len(b.Touched) {
+		b.Touched = append(b.Touched, make([]*lineData, y-len(b.Touched)+1)...)
+	}
+
 	ch := b.Touched[y]
 	if ch == nil {
-		ch = &lineData{firstCell: x, lastCell: x + 1}
+		ch = &lineData{firstCell: x, lastCell: x + n}
 	} else {
 		ch.firstCell = min(ch.firstCell, x)
-		ch.lastCell = max(ch.lastCell, x+1)
+		ch.lastCell = max(ch.lastCell, x+n)
 	}
 	b.Touched[y] = ch
 }
@@ -311,20 +321,21 @@ func (b *Buffer) Bounds() Rectangle {
 
 // Resize resizes the buffer to the given width and height.
 func (b *Buffer) Resize(width int, height int) {
-	if width == 0 || height == 0 {
-		b.Lines = nil
+	curWidth, curHeight := b.Width(), b.Height()
+	if curWidth == width && curHeight == height {
+		// No need to resize if the dimensions are the same.
 		return
 	}
 
-	if bwid := b.Width(); width > bwid {
-		line := make(Line, width-bwid)
+	if width > curWidth {
+		line := make(Line, width-curWidth)
 		for i := range line {
 			line[i] = EmptyCell
 		}
 		for i := range b.Lines {
 			b.Lines[i] = append(b.Lines[i], line...)
 		}
-	} else if width < bwid {
+	} else if width < curWidth {
 		for i := range b.Lines {
 			b.Lines[i] = b.Lines[i][:width]
 		}
@@ -338,10 +349,8 @@ func (b *Buffer) Resize(width int, height int) {
 			}
 			b.Lines = append(b.Lines, line)
 		}
-		b.Touched = append(b.Touched, make([]*lineData, height-len(b.Lines))...)
 	} else if height < len(b.Lines) {
 		b.Lines = b.Lines[:height]
-		b.Touched = b.Touched[:height]
 	}
 }
 
