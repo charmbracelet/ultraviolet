@@ -22,31 +22,67 @@ type Screen interface {
 	// empty cell with a space character and a width of 1.
 	SetCell(x, y int, c *Cell)
 
-	// Method returns the width method used by the screen.
+	// WidthMethod returns the width method used by the screen.
 	WidthMethod() WidthMethod
 }
 
 // Clear clears the screen with empty cells. This is equivalent to filling the
 // screen with empty cells.
+//
+// If the screen implements a [Clear] method, it will be called instead of
+// filling the screen with empty cells.
 func Clear(scr Screen) {
+	if c, ok := scr.(interface {
+		Clear()
+	}); ok {
+		c.Clear()
+		return
+	}
 	Fill(scr, nil)
 }
 
 // ClearArea clears the given area of the screen with empty cells. This is
 // equivalent to filling the area with empty cells.
+//
+// If the screen implements a [ClearArea] method, it will be called instead of
+// filling the area with empty cells.
 func ClearArea(scr Screen, area Rectangle) {
+	if c, ok := scr.(interface {
+		ClearArea(area Rectangle)
+	}); ok {
+		c.ClearArea(area)
+		return
+	}
 	FillArea(scr, nil, area)
 }
 
 // Fill fills the screen with the given cell. If the cell is nil, it fills the
 // screen with empty cells.
+//
+// If the screen implements a [Fill] method, it will be called instead of
+// filling the screen with empty cells.
 func Fill(scr Screen, cell *Cell) {
+	if f, ok := scr.(interface {
+		Fill(cell *Cell)
+	}); ok {
+		f.Fill(cell)
+		return
+	}
 	FillArea(scr, cell, scr.Size().Bounds())
 }
 
 // FillArea fills the given area of the screen with the given cell. If the cell
 // is nil, it fills the area with empty cells.
+//
+// If the screen implements a [FillArea] method, it will be called instead of
+// filling the area with empty cells.
 func FillArea(scr Screen, cell *Cell, area Rectangle) {
+	if f, ok := scr.(interface {
+		FillArea(cell *Cell, area Rectangle)
+	}); ok {
+		f.FillArea(cell, area)
+		return
+	}
 	for y := area.Min.Y; y < area.Max.Y; y++ {
 		for x := area.Min.X; x < area.Max.X; x++ {
 			scr.SetCell(x, y, cell)
@@ -58,7 +94,15 @@ func FillArea(scr Screen, cell *Cell, area Rectangle) {
 // with the same size as the area. The new buffer will contain the same cells
 // as the area in the screen.
 // Use [Buffer.Draw] to draw the cloned buffer to a screen again.
+//
+// If the screen implements a [CloneArea] method, it will be called instead of
+// cloning the area manually.
 func CloneArea(scr Screen, area Rectangle) *Buffer {
+	if c, ok := scr.(interface {
+		CloneArea(area Rectangle) *Buffer
+	}); ok {
+		return c.CloneArea(area)
+	}
 	buf := NewBuffer(area.Dx(), area.Dy())
 	for y := area.Min.Y; y < area.Max.Y; y++ {
 		for x := area.Min.X; x < area.Max.X; x++ {
@@ -75,7 +119,15 @@ func CloneArea(scr Screen, area Rectangle) *Buffer {
 // Clone creates a new [Buffer] clone of the given screen. The new buffer will
 // have the same size as the screen and will contain the same cells.
 // Use [Buffer.Draw] to draw the cloned buffer to a screen again.
+//
+// If the screen implements a [Clone] method, it will be called instead of
+// cloning the entire screen manually.
 func Clone(scr Screen) *Buffer {
+	if c, ok := scr.(interface {
+		Clone() *Buffer
+	}); ok {
+		return c.Clone()
+	}
 	return CloneArea(scr, scr.Size().Bounds())
 }
 

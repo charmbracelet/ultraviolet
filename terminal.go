@@ -220,6 +220,46 @@ func (t *Terminal) CellAt(x int, y int) *Cell {
 
 var _ Screen = (*Terminal)(nil)
 
+// Clear fills the terminal screen with empty cells, and clears the
+// terminal screen.
+//
+// This is different from [Terminal.Erase], which only fills the screen
+// buffer with empty cells without erasing the terminal screen first.
+func (t *Terminal) Clear() {
+	t.buf.Clear()
+}
+
+// ClearArea fills the given area of the terminal screen with empty cells.
+func (t *Terminal) ClearArea(area Rectangle) {
+	t.buf.ClearArea(area)
+}
+
+// Fill fills the terminal screen with the given cell. If the cell is nil, it
+// fills the screen with empty cells.
+func (t *Terminal) Fill(c *Cell) {
+	t.buf.Fill(c)
+}
+
+// FillArea fills the given area of the terminal screen with the given cell.
+// If the cell is nil, it fills the area with empty cells.
+func (t *Terminal) FillArea(c *Cell, area Rectangle) {
+	t.buf.FillArea(c, area)
+}
+
+// Clone returns a copy of the terminal screen buffer. This is useful for
+// creating a snapshot of the current terminal state without modifying the
+// original buffer.
+func (t *Terminal) Clone() *Buffer {
+	return t.buf.Clone()
+}
+
+// CloneArea clones the given area of the terminal screen and returns a new
+// buffer with the same size as the area. The new buffer will contain the
+// same cells as the area in the terminal screen.
+func (t *Terminal) CloneArea(area Rectangle) *Buffer {
+	return t.buf.CloneArea(area)
+}
+
 // Position returns the last known position of the cursor in the terminal.
 func (t *Terminal) Position() (int, int) {
 	return t.scr.Position()
