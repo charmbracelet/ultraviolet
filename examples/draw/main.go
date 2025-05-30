@@ -7,8 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/tv"
-	"github.com/charmbracelet/tv/component/styledstring"
+	"github.com/charmbracelet/uv"
+	"github.com/charmbracelet/uv/component/styledstring"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )

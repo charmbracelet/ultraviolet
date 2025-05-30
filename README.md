@@ -1,6 +1,6 @@
-# TV
+# Ultra Violet
 
-TV, or TeleVision, is a Golang library for building cell-based user interfaces
+UV, or Ultra Violet, is a Golang library for building cell-based user interfaces
 and programs. It is specifically designed for terminal applications but can
 also be used for other types of applications.
 
@@ -142,8 +142,8 @@ import (
   "log"
   "os"
 
-  "github.com/charmbracelet/tv"
-  "github.com/charmbracelet/tv/widget/styledstring"
+  "github.com/charmbracelet/uv"
+  "github.com/charmbracelet/uv/widget/styledstring"
   "github.com/charmbracelet/x/ansi"
 )
 

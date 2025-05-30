@@ -1,4 +1,4 @@
-module github.com/charmbracelet/tv
+module github.com/charmbracelet/uv
 
 go 1.24.2
 

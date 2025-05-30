@@ -6,7 +6,7 @@ import (
 	"log"
 	"math/rand"
 
-	"github.com/charmbracelet/tv"
+	"github.com/charmbracelet/uv"
 	"github.com/charmbracelet/x/ansi"
 )
 

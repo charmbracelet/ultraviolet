@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss/v2"
-	"github.com/charmbracelet/tv"
-	"github.com/charmbracelet/tv/component/styledstring"
+	"github.com/charmbracelet/uv"
+	"github.com/charmbracelet/uv/component/styledstring"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/rivo/uniseg"
 )

@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/charmbracelet/tv"
+	"github.com/charmbracelet/uv"
 )
 
 func setupColors(width, height int) [][]color.Color {

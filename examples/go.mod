@@ -2,11 +2,11 @@ module examples
 
 go 1.24.2
 
-replace github.com/charmbracelet/tv => ../
+replace github.com/charmbracelet/uv => ../
 
 require (
 	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta1
-	github.com/charmbracelet/tv v0.0.0-00010101000000-000000000000
+	github.com/charmbracelet/uv v0.0.0-00010101000000-000000000000
 	github.com/charmbracelet/x/ansi v0.9.2
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250509021451-13796e822d86
 	github.com/charmbracelet/x/mosaic v0.0.0-20250509021451-13796e822d86

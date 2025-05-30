@@ -1,7 +1,7 @@
 package styledstring
 
 import (
-	"github.com/charmbracelet/tv"
+	"github.com/charmbracelet/uv"
 )
 
 // StyledString is a styled string component that can be rendered to a screen.
