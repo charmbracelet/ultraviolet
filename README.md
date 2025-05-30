@@ -6,17 +6,17 @@ also be used for other types of applications.
 
 ## Tutorial
 
-What does a TV consist of? A TV consists of a screen that displays content, has
-some sort of input sources that can be used to interact with the screen, and is
-meant to display content or programs on the screen.
+What does UV consist of? A UV application consists of a screen that displays
+content, has some sort of input sources that can be used to interact with the
+screen, and is meant to display content or programs on the screen.
 
-First, we need to create a screen that will display our program. TV comes with a
-`Terminal` screen that is used to display content on a terminal.
+First, we need to create a screen that will display our program. UV comes with
+a `Terminal` screen that is used to display content on a terminal.
 
 ```go
-t := tv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
+t := uv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
 // Or simply use...
-// t := tv.DefaultTerminal()
+// t := uv.DefaultTerminal()
 ```
 
 A terminal screen has a few properties that are unique to it. For example, a
@@ -37,15 +37,22 @@ if err := t.MakeRaw(); err != nil {
   log.Fatal(err)
 }
 
+// Enter the alternate screen buffer. This will
+// only take affect once we flush or display
+// our program on the terminal screen.
+t.EnterAltScreen()
+
+// My program
+// ...
+
+// Make sure we leave the alternate screen buffer
+// when we are done with our program.
+t.LeaveAltScreen()
+
 // Make sure we restore the terminal to its original state
 // before we exit. We don't care about errors here, but you
 // can handle them if you want.
-defer t.Restore() //nolint:errcheck
-
-t.EnterAltScreen()
-// Make sure we leave the alternate screen buffer
-// when we are done with our program.
-defer t.LeaveAltScreen()
+_ = t.Restore() //nolint:errcheck
 ```
 
 Now that we have our screen set to raw mode and in the alternate screen buffer,
@@ -59,8 +66,7 @@ content. Internally, this will also call `t.Start()` to start the terminal
 screen.
 
 ```go
-p := tv.NewProgram(t)
-if err := p.Start(); err != nil {
+if err := t.Start(); err != nil {
   log.Fatalf("failed to start program: %v", err)
 }
 ```
@@ -70,22 +76,24 @@ holds the buffer we're displaying. The final cursor position we want our cursor
 to be at, and the viewport area we are working with to display our content.
 
 ```go
-p.Display(func(f *tv.Frame) error {
-  // We will use the StyledString widget to simplify
-  // displaying text on the screen.
-  // Using [ansi.WcWidth] will ensure that the text is
-  // displayed correctly on the screen using traditional
-  // terminal width calculations.
-  ss := styledstring.New(ansi.WcWidth, "Hello, World!")
-  // We want the widget to occupy the given area which
-  // is the entire screen because we're using the alternate
-  // screen buffer.
-  return f.RenderWidget(ss, f.Area)
-})
+for i, r := range "Hello, World!" {
+  // We iterate over the string to display each character
+  // in a separate cell. Ideally, we want each cell
+  // to have exactly one grapheme. In this case, since
+  // we're using a simple ASCII string, we know that
+  // each character is a single grapheme with a width of 1.
+  var c uv.Cell
+  c.Content = string(r)
+  c.Width = 1
+  t.SetCell(i, 0, &c)
+}
+// Now we simply render the changes and flush them
+// to the terminal screen.
+_ = p.Display()
 ```
 
-Like TVs, different models have different ways to receive input. Some models
-have a remote control, while others have a touch screen. A terminal can receive
+Different screen models have different ways to receive input. Some models have
+a remote control, while others have a touch screen. A terminal can receive
 input from various peripherals usually through control codes and escape
 sequences. Our terminal has a `t.Events(ctx)` method that returns a channel
 which will receive events from different terminal input sources.
@@ -99,18 +107,26 @@ defer cancel()
 for ev := range t.Events(ctx) {
   switch ev := ev.(type) {
   case tv.WindowSizeEvent:
-    // We want to change our program size.
-    // Internally, this will also resize our terminal.
-    p.Resize(ev.Width, ev.Height)
-    // We can also use p.AutoResize() which will
-    // query our terminal screen for its size and
-    // resize our program to fit the terminal.
-    // But, we already have the size from the event
-    // so we can use it directly to save a few cycles.
-    //p.AutoResize()
+    // Our terminal screen is resizable. This is important
+    // as we want to inform our terminal screen with the
+    // size we'd like to display our program in.
+    // When we're using the full terminal window size,
+    // we can assume that the terminal screen will
+    // also have the same size as our program.
+    // However, with inline programs, usually we want
+    // the height to be the height of our program.
+    // So if our inline program takes 10 lines, we
+    // want to resize the terminal screen to 10 lines
+    // high.
+    width, height := ev.Width, ev.Height
+    if !altscreen {
+      height = 10
+    }
+    t.Resize(width, height)
   case tv.KeyPressEvent:
     if ev.MatchStrings("q", "ctrl+c") {
-      cancel() // This will stop the loop
+      // This will stop the input loop and cancel the context.
+      cancel()
     }
   }
 }
@@ -119,13 +135,12 @@ for ev := range t.Events(ctx) {
 Now that we've handled displaying our program and receiving input from the
 terminal, we need to handle the program's lifecycle. We need to make sure that
 we restore the terminal to its original state when we exit the program. A
-program can be stopped gracefully using the `p.Shutdown(ctx)` method.
-Internally, this will also call `t.Shutdown(ctx)` to stop the terminal screen.
+terminal program can be stopped gracefully using the `t.Shutdown(ctx)` method.
 
 ```go
 // We need to make sure we stop the program gracefully
 // after we exit the input loop.
-if err := p.Shutdown(ctx); err != nil {
+if err := t.Shutdown(ctx); err != nil {
   log.Fatal(err)
 }
 ```
@@ -148,64 +163,45 @@ import (
 )
 
 func main() {
-  // Create a new terminal screen
   t := tv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
-  // Or simply use...
-  // t := tv.DefaultTerminal()
-
-  // Make sure we restore the terminal to its original state
-  // before we exit. We don't care about errors here, but you
-  // can handle them if you want.
-  defer t.Restore() //nolint:errcheck
-
-  // Enter the alternate screen buffer
   t.EnterAltScreen()
-  // Make sure we leave the alternate screen buffer
-  // when we are done with our program.
-  defer t.LeaveAltScreen()
 
-  // Create a new program
-  p := tv.NewProgram(t)
-  // Start the program
-  if err := p.Start(); err != nil {
+  if err := t.Start(); err != nil {
     log.Fatalf("failed to start program: %v", err)
   }
 
-  // We want to be able to stop the terminal input loop
-  // whenever we call cancel().
   ctx, cancel := context.WithCancel(context.Background())
   defer cancel()
 
-  // This will block until we close the events
-  // channel or cancel the context.
+  altScreen := true
   for ev := range t.Events(ctx) {
     switch ev := ev.(type) {
     case tv.WindowSizeEvent:
-      p.Resize(ev.Width, ev.Height)
+      width, height := ev.Width, ev.Height
+      if !altscreen {
+        height = 10
+      }
+      t.Resize(width, height)
     case tv.KeyPressEvent:
       if ev.MatchStrings("q", "ctrl+c") {
-        cancel() // This will stop the loop
+        cancel()
       }
     }
 
-    // Display the frame with the styled string
-    if err := p.Display(func(f *tv.Frame) error {
-      // We will use the StyledString widget to simplify
-      // displaying text on the screen.
-      // Using [ansi.WcWidth] will ensure that the text is
-      // displayed correctly on the screen using traditional
-      // terminal width calculations.
-      ss := styledstring.New(ansi.WcWidth, "Hello, World!")
-      // We want the widget to occupy the given area which
-      // is the entire screen because we're using the alternate
-      // screen buffer.
-      return f.RenderWidget(ss, f.Area)
-    }); err != nil {
+    for i, r := range "Hello, World!" {
+      var c uv.Cell
+      c.Content = string(r)
+      c.Width = 1
+      t.SetCell(i, 0, &c)
+    }
+    if err := p.Display(); err != nil {
       log.Fatal(err)
     }
   }
 
-  if err := p.Shutdown(ctx); err != nil {
+  t.LeaveAltScreen()
+  _ = t.Restore() //nolint:errcheck
+  if err := t.Shutdown(ctx); err != nil {
     log.Fatal(err)
   }
 }
