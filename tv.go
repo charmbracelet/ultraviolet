@@ -54,6 +54,31 @@ func FillArea(scr Screen, cell *Cell, area Rectangle) {
 	}
 }
 
+// CloneArea clones the given area of the screen and returns a new buffer
+// with the same size as the area. The new buffer will contain the same cells
+// as the area in the screen.
+// Use [Buffer.Draw] to draw the cloned buffer to a screen again.
+func CloneArea(scr Screen, area Rectangle) *Buffer {
+	buf := NewBuffer(area.Dx(), area.Dy())
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
+			cell := scr.CellAt(x, y)
+			if cell == nil || cell.IsZero() {
+				continue
+			}
+			buf.SetCell(x-area.Min.X, y-area.Min.Y, cell.Clone())
+		}
+	}
+	return buf
+}
+
+// Clone creates a new [Buffer] clone of the given screen. The new buffer will
+// have the same size as the screen and will contain the same cells.
+// Use [Buffer.Draw] to draw the cloned buffer to a screen again.
+func Clone(scr Screen) *Buffer {
+	return CloneArea(scr, scr.Size().Bounds())
+}
+
 // CursorShape represents a terminal cursor shape.
 type CursorShape int
 

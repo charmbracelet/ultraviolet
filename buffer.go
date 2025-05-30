@@ -404,3 +404,27 @@ func (b *Buffer) CloneArea(rect Rectangle) *Buffer {
 func (b *Buffer) Clone() *Buffer {
 	return b.CloneArea(b.Bounds())
 }
+
+// Draw draws the buffer to the given screen at the specified area.
+// It implements the [Component] interface.
+func (b *Buffer) Draw(scr Screen, area Rectangle) {
+	if area.Empty() {
+		return
+	}
+
+	// Ensure the area is within the bounds of the screen.
+	bounds := scr.Size().Bounds()
+	if !area.In(bounds) {
+		return
+	}
+
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
+			c := b.CellAt(x-area.Min.X, y-area.Min.Y)
+			if c == nil || c.IsZero() {
+				continue
+			}
+			scr.SetCell(x, y, c)
+		}
+	}
+}
