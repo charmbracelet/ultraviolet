@@ -1,4 +1,4 @@
-package tv
+package uv
 
 // DefaultTabInterval is the default tab interval.
 const DefaultTabInterval = 8

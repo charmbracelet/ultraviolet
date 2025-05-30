@@ -5,11 +5,11 @@ import (
 )
 
 // StyledString is a styled string component that can be rendered to a screen.
-type StyledString struct{ *tv.StyledString }
+type StyledString struct{ *uv.StyledString }
 
 // New creates a new [StyledString].
 func New(str string) StyledString {
-	return StyledString{tv.NewStyledString(str)}
+	return StyledString{uv.NewStyledString(str)}
 }
 
-var _ tv.Component = StyledString{}
+var _ uv.Component = StyledString{}

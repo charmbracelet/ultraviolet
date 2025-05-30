@@ -1,4 +1,4 @@
-package tv
+package uv
 
 // Component represents a drawable component on a [Screen].
 type Component interface {

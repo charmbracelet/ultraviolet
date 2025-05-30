@@ -1,7 +1,7 @@
 //go:build !windows
 // +build !windows
 
-package tv
+package uv
 
 // ReadEvents reads input events from the terminal. It returns a slice of
 // events. The events are parsed from the input buffer and translated into

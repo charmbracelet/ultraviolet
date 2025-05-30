@@ -1,4 +1,4 @@
-package tv
+package uv
 
 import "github.com/charmbracelet/x/ansi"
 

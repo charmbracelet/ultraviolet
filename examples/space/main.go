@@ -47,7 +47,7 @@ func clamp(value, min, max float64) float64 {
 type tickEvent struct{}
 
 func main() {
-	t := tv.DefaultTerminal()
+	t := uv.DefaultTerminal()
 	if err := t.MakeRaw(); err != nil {
 		log.Fatalf("failed to make terminal raw: %v", err)
 	}
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	var err error
-	var area tv.Rectangle
+	var area uv.Rectangle
 	area.Max.X, area.Max.Y, err = t.GetSize()
 	if err != nil {
 		log.Fatalf("failed to get terminal size: %v", err)
@@ -82,14 +82,14 @@ func main() {
 LOOP:
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
-		case tv.KeyPressEvent:
+		case uv.KeyPressEvent:
 			switch ev.String() {
 			case "q", "ctrl+c":
 				cancel()
 				break LOOP
 			}
 
-		case tv.WindowSizeEvent:
+		case uv.WindowSizeEvent:
 			area.Max.X = ev.Width
 			area.Max.Y = ev.Height
 			if width, height := area.Dx(), area.Dy(); width != lastWidth || height != lastHeight {
@@ -106,11 +106,11 @@ LOOP:
 
 			frameCount++
 			fpsFrameCount++
-			tv.Clear(t)
+			uv.Clear(t)
 
 			// Title
-			tv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).
-				Draw(t, tv.Rect(0, 0, area.Dx(), 1))
+			uv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).
+				Draw(t, uv.Rect(0, 0, area.Dx(), 1))
 
 			// Color display
 			width, height := area.Dx(), area.Dy() // Reserve one line for the title
@@ -119,11 +119,11 @@ LOOP:
 					xi := (x + frameCount) % width
 					fg := colors[y*2][xi]
 					bg := colors[y*2+1][xi]
-					st := tv.Style{
+					st := uv.Style{
 						Fg: fg,
 						Bg: bg,
 					}
-					t.SetCell(x, y, &tv.Cell{
+					t.SetCell(x, y, &uv.Cell{
 						Content: "▀",
 						Style:   st,
 						Width:   1,

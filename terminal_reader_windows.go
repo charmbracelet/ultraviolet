@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package tv
+package uv
 
 import (
 	"errors"

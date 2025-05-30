@@ -12,9 +12,9 @@ import (
 
 func main() {
 	// Create a new terminal screen
-	t := tv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
+	t := uv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
 	// Or simply use...
-	// t := tv.DefaultTerminal()
+	// t := uv.DefaultTerminal()
 
 	// Set the terminal to raw mode.
 	if err := t.MakeRaw(); err != nil {
@@ -43,16 +43,16 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fixed := tv.Rect(10, 10, 40, 20)
+	fixed := uv.Rect(10, 10, 40, 20)
 
 	// This will block until we close the events
 	// channel or cancel the context.
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
-		case tv.WindowSizeEvent:
+		case uv.WindowSizeEvent:
 			t.Resize(ev.Width, ev.Height)
 			t.Clear()
-		case tv.KeyPressEvent:
+		case uv.KeyPressEvent:
 			if ev.MatchStrings("q", "ctrl+c") {
 				cancel() // This will stop the loop
 			}
@@ -61,9 +61,9 @@ func main() {
 		// Display the frame with the styled string
 		// We want the component to occupy the given area which is the
 		// entire screen because we're using the alternate screen buffer.
-		tv.FillArea(t, &tv.Cell{
+		uv.FillArea(t, &uv.Cell{
 			Content: " ",
-			Style:   tv.Style{Bg: ansi.Red},
+			Style:   uv.Style{Bg: ansi.Red},
 		}, fixed)
 		// We will use the StyledString component to simplify displaying
 		// text on the screen.
@@ -85,7 +85,7 @@ func main() {
 }
 
 func init() {
-	f, err := os.OpenFile("tv.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile("uv.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open log file: %v", err)
 	}

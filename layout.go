@@ -1,4 +1,4 @@
-package tv
+package uv
 
 // Direction represents a direction in a coordinate system.
 type Direction uint8

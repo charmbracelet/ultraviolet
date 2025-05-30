@@ -13,7 +13,7 @@ import (
 func main() {
 	// Create a new default terminal that uses [os.Stdin] and [os.Stdout] for
 	// I/O.
-	t := tv.DefaultTerminal()
+	t := uv.DefaultTerminal()
 
 	// Set the terminal title to "Hello World".
 	t.SetTitle("Hello World")
@@ -41,21 +41,21 @@ func main() {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
-	var st tv.Style
+	var st uv.Style
 	st.Background(ansi.Red).Foreground(ansi.Black)
 	display := func() {
 		// This is the program display. It takes a function that receives a
-		// [tv.Frame]. The frame contains the last displayed buffer, cursor
+		// [uv.Frame]. The frame contains the last displayed buffer, cursor
 		// position, and the viewport area the program is operating on.
-		// Under the hood, the program will call [tv.Screen.Display] to display the
+		// Under the hood, the program will call [uv.Screen.Display] to display the
 		// frame on the screen and the implementation will depend on the screen
 		// type and how it handles displaying frames.
 		const hw = "Hello, World!"
-		bg := tv.EmptyCell
+		bg := uv.EmptyCell
 		bg.Style = st
-		tv.Fill(t, &bg)
+		uv.Fill(t, &bg)
 		for i, r := range hw {
-			t.SetCell(i, 0, &tv.Cell{
+			t.SetCell(i, 0, &uv.Cell{
 				Content: string(r),
 				Style:   st,
 				Width:   1,
@@ -64,13 +64,13 @@ func main() {
 		t.Display()
 	}
 
-	// Now input is separate from the program. Just like a TV screen displaying
-	// a channel, the channel airs the program to the TV screen. The program is
+	// Now input is separate from the program. Just like a uv.screen displaying
+	// a channel, the channel airs the program to the uv.screen. The program is
 	// not aware of the input source.
-	// Here, our [tv.Screen] is a terminal and is capable of receiving input
+	// Here, our [uv.Screen] is a terminal and is capable of receiving input
 	// events. These events can come from different sources, such as a
 	// keyboard, mouse, window resize, etc. Each input source implements the
-	// [tv.InputReceiver] interface, which is responsible for receiving input
+	// [uv.InputReceiver] interface, which is responsible for receiving input
 	// events and sending them to a receiver channel.
 	//
 	//  ```go
@@ -95,11 +95,11 @@ func main() {
 	for ev := range t.Events(ctx) {
 		// Handle events here
 		switch ev := ev.(type) {
-		case tv.KeyPressEvent:
+		case uv.KeyPressEvent:
 			if ev.MatchStrings("q", "ctrl+c") {
 				cancel()
 			}
-		case tv.WindowSizeEvent:
+		case uv.WindowSizeEvent:
 			t.Resize(ev.Width, frameHeight)
 			t.Clear()
 		}

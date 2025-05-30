@@ -22,7 +22,7 @@ func init() {
 }
 
 func main() {
-	t := tv.DefaultTerminal()
+	t := uv.DefaultTerminal()
 	t.SetTitle("Draw Example")
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
@@ -70,15 +70,15 @@ Press any key to continue...`
 	helpArea := helpComp.Bounds()
 	helpW, helpH := helpArea.Dx(), helpArea.Dy()
 
-	var prevHelpBuf *tv.Buffer
+	var prevHelpBuf *uv.Buffer
 	showingHelp := true
 	displayHelp := func(show bool) {
 		midX, midY := width/2, height/2
 		x, y := midX-helpW/2, midY-helpH/2
-		midArea := tv.Rect(x, y, helpW, helpH)
+		midArea := uv.Rect(x, y, helpW, helpH)
 		if show {
 			// Save the area under the help to restore it later.
-			prevHelpBuf = tv.CloneArea(t, midArea)
+			prevHelpBuf = uv.CloneArea(t, midArea)
 			helpComp.Draw(t, midArea)
 		} else if prevHelpBuf != nil {
 			// Restore saved area under the help.
@@ -88,7 +88,7 @@ Press any key to continue...`
 	}
 
 	clearScreen := func() {
-		tv.Clear(t)
+		uv.Clear(t)
 		t.Display()
 	}
 
@@ -96,9 +96,9 @@ Press any key to continue...`
 	displayHelp(showingHelp)
 
 	const defaultChar = "█"
-	pen := tv.EmptyCell
+	pen := uv.EmptyCell
 	pen.Content = defaultChar
-	draw := func(ev tv.MouseEvent) {
+	draw := func(ev uv.MouseEvent) {
 		m := ev.Mouse()
 		cur := t.CellAt(m.X, m.Y)
 		if cur == nil {
@@ -108,7 +108,7 @@ Press any key to continue...`
 
 		if cur.IsZero() && pen.Width == 1 {
 			// Find the previous wide cell.
-			var wide *tv.Cell
+			var wide *uv.Cell
 			var wideX, wideY int
 			for i := 1; i < 5 && m.X-i >= 0; i++ {
 				wide = t.CellAt(m.X-i, m.Y)
@@ -153,7 +153,7 @@ Press any key to continue...`
 
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
-		case tv.WindowSizeEvent:
+		case uv.WindowSizeEvent:
 			if showingHelp {
 				displayHelp(false)
 			}
@@ -163,7 +163,7 @@ Press any key to continue...`
 			if showingHelp {
 				displayHelp(showingHelp)
 			}
-		case tv.KeyPressEvent:
+		case uv.KeyPressEvent:
 			if showingHelp {
 				showingHelp = false
 				displayHelp(showingHelp)
@@ -194,13 +194,13 @@ Press any key to continue...`
 				pen.Content = text
 				pen.Width = runewidth.RuneWidth(r)
 			}
-		case tv.MouseClickEvent:
+		case uv.MouseClickEvent:
 			if showingHelp {
 				break
 			}
 			draw(ev)
-		case tv.MouseMotionEvent:
-			if showingHelp || ev.Button == tv.MouseNone {
+		case uv.MouseMotionEvent:
+			if showingHelp || ev.Button == uv.MouseNone {
 				break
 			}
 			draw(ev)

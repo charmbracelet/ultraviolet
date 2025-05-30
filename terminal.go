@@ -1,4 +1,4 @@
-package tv
+package uv
 
 import (
 	"bytes"
@@ -126,14 +126,14 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.once = sync.Once{}
 
 	// Handle debugging I/O.
-	debug, ok := os.LookupEnv("TV_DEBUG")
+	debug, ok := os.LookupEnv("UV_DEBUG")
 	if ok && len(debug) > 0 {
 		f, err := os.OpenFile(debug, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
 		if err != nil {
 			panic("failed to open debug file: " + err.Error())
 		}
 
-		logger := log.New(f, "tv: ", log.LstdFlags|log.Lshortfile)
+		logger := log.New(f, "uv: ", log.LstdFlags|log.Lshortfile)
 		t.SetLogger(logger)
 	}
 

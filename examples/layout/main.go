@@ -365,7 +365,7 @@ func main() {
 		doc.WriteString(statusBarStyle.Width(width).Render(bar))
 	}
 
-	t := tv.DefaultTerminal()
+	t := uv.DefaultTerminal()
 	if err := t.Start(); err != nil {
 		log.Fatalf("starting program: %v", err)
 	}
@@ -393,11 +393,11 @@ func main() {
 	mainDoc := docStyle.Render(doc.String())
 
 	display := func() {
-		tv.Clear(t)
+		uv.Clear(t)
 		mainSs := styledstring.New(mainDoc)
 		mainSs.Draw(t, t.Size().Bounds()) //nolint:errcheck
-		boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
-		box := tv.NewStyledString(dialogBoxStyle.Render(dialogUI))
+		boxArea := uv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
+		box := uv.NewStyledString(dialogBoxStyle.Render(dialogUI))
 		box.Draw(t, boxArea) //nolint:errcheck
 		t.Display()
 	}
@@ -418,13 +418,13 @@ func main() {
 	for ev := range t.Events(ctx) {
 		log.Printf("event: %T", ev)
 		switch ev := ev.(type) {
-		case tv.WindowSizeEvent:
+		case uv.WindowSizeEvent:
 			physicalWidth, _ = ev.Width, ev.Height
 			t.Resize(ev.Width, ev.Height)
 			t.Clear()
-		case tv.MouseClickEvent:
+		case uv.MouseClickEvent:
 			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
-		case tv.KeyPressEvent:
+		case uv.KeyPressEvent:
 			switch {
 			case ev.MatchStrings("ctrl+c", "q"):
 				cancel() // This will exit the loop.

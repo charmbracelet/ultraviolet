@@ -1,4 +1,4 @@
-package tv
+package uv
 
 // WidthMethod determines how many columns a grapheme occupies on the screen.
 type WidthMethod interface {
