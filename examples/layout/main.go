@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss/v2"
 	"github.com/charmbracelet/tv"
 	"github.com/charmbracelet/tv/component/styledstring"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/rivo/uniseg"
 )
@@ -371,7 +370,7 @@ func main() {
 		log.Fatalf("starting program: %v", err)
 	}
 
-	physicalWidth, physicalHeight, err := t.GetSize()
+	physicalWidth, _, err := t.GetSize()
 	if err != nil {
 		log.Fatalf("getting size: %v", err)
 	}
@@ -392,19 +391,15 @@ func main() {
 	dialogHeight := lipgloss.Height(dialogUI) + dialogBoxStyle.GetVerticalFrameSize()
 	dialogX, dialogY := physicalWidth/2-dialogWidth/2-docStyle.GetVerticalFrameSize()-1, 12
 	mainDoc := docStyle.Render(doc.String())
-	f := &tv.Frame{
-		Buffer:   tv.NewBuffer(physicalWidth, physicalHeight),
-		Viewport: tv.FullViewport{},
-	}
-	area := f.Viewport.ComputeArea(physicalWidth, physicalHeight)
+
 	display := func() {
-		f.Buffer.Clear()
-		mainSs := styledstring.New(ansi.WcWidth, mainDoc)
-		f.RenderComponent(mainSs, area) //nolint:errcheck
+		tv.Clear(t)
+		mainSs := styledstring.New(mainDoc)
+		mainSs.Draw(t, t.Size().Bounds()) //nolint:errcheck
 		boxArea := tv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
-		box := t.NewStyledString(dialogBoxStyle.Render(dialogUI))
-		f.RenderComponent(box, boxArea) //nolint:errcheck
-		t.Display(f)
+		box := tv.NewStyledString(dialogBoxStyle.Render(dialogUI))
+		box.Draw(t, boxArea) //nolint:errcheck
+		t.Display()
 	}
 
 	// Set terminal to raw mode to read input events.
@@ -424,10 +419,9 @@ func main() {
 		log.Printf("event: %T", ev)
 		switch ev := ev.(type) {
 		case tv.WindowSizeEvent:
-			area = f.Viewport.ComputeArea(ev.Width, ev.Height)
-			log.Printf("area: %v", area)
-			f.Resize(ev.Width, ev.Height)
+			physicalWidth, _ = ev.Width, ev.Height
 			t.Resize(ev.Width, ev.Height)
+			t.Clear()
 		case tv.MouseClickEvent:
 			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
 		case tv.KeyPressEvent:

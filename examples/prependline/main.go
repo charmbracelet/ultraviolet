@@ -24,16 +24,13 @@ func main() {
 		log.Fatalf("failed to make terminal raw: %v", err)
 	}
 
-	w, h, err := t.GetSize()
+	w, _, err := t.GetSize()
 	if err != nil {
 		log.Fatalf("failed to get terminal size: %v", err)
 	}
 
-	f := &tv.Frame{
-		Buffer:   tv.NewBuffer(w, 1),
-		Viewport: tv.InlineViewport(1),
-		Area:     tv.Rect(0, 0, w, h),
-	}
+	frameHeight := 1
+	t.Resize(w, frameHeight)
 
 	// We want to display the program in alternate screen mode.
 	// t.EnterAltScreen()
@@ -54,17 +51,17 @@ func main() {
 		// frame on the screen and the implementation will depend on the screen
 		// type and how it handles displaying frames.
 		const hw = "Hello, World!"
-		bg := tv.BlankCell
+		bg := tv.EmptyCell
 		bg.Style = st
-		f.Buffer.Fill(&bg)
+		tv.Fill(t, &bg)
 		for i, r := range hw {
-			f.Buffer.SetCell(i, 0, &tv.Cell{
-				Rune:  r,
-				Style: st,
-				Width: 1,
+			t.SetCell(i, 0, &tv.Cell{
+				Content: string(r),
+				Style:   st,
+				Width:   1,
 			})
 		}
-		t.Display(f)
+		t.Display()
 	}
 
 	// Now input is separate from the program. Just like a TV screen displaying
@@ -103,10 +100,8 @@ func main() {
 				cancel()
 			}
 		case tv.WindowSizeEvent:
-			f.Area = tv.Rect(0, 0, ev.Width, ev.Height)
-			f.Buffer.Resize(ev.Width, f.ComputeArea().Dy())
-			// Resize the program to fit the new window size.
-			t.Resize(ev.Width, ev.Height)
+			t.Resize(ev.Width, frameHeight)
+			t.Clear()
 		}
 
 		t.PrependString(fmt.Sprintf("%T %v", ev, ev))

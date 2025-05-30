@@ -63,11 +63,6 @@ func main() {
 		log.Fatalf("failed to get terminal size: %v", err)
 	}
 
-	frame := &tv.Frame{
-		Buffer:   tv.NewBuffer(area.Dx(), area.Dy()),
-		Viewport: tv.FullViewport{},
-	}
-
 	t.EnterAltScreen()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -101,9 +96,8 @@ LOOP:
 				colors = setupColors(width, height)
 				lastWidth = width
 				lastHeight = height
-				frame.Resize(width, height)
 				t.Resize(area.Dx(), area.Dy())
-				t.ClearScreen()
+				t.Clear()
 			}
 		case tickEvent:
 			if len(colors) == 0 {
@@ -112,11 +106,11 @@ LOOP:
 
 			frameCount++
 			fpsFrameCount++
-			frame.Buffer.Clear()
+			tv.Clear(t)
 
 			// Title
 			tv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).
-				RenderComponent(frame.Buffer, tv.Rect(0, 0, area.Dx(), 1))
+				Draw(t, tv.Rect(0, 0, area.Dx(), 1))
 
 			// Color display
 			width, height := area.Dx(), area.Dy() // Reserve one line for the title
@@ -129,15 +123,15 @@ LOOP:
 						Fg: fg,
 						Bg: bg,
 					}
-					frame.Buffer.SetCell(x, y, &tv.Cell{
-						Rune:  '▀',
-						Style: st,
-						Width: 1,
+					t.SetCell(x, y, &tv.Cell{
+						Content: "▀",
+						Style:   st,
+						Width:   1,
 					})
 				}
 			}
 
-			t.Display(frame)
+			t.Display()
 			elapsed = time.Since(now)
 			if elapsed > time.Second && fpsFrameCount > 2 {
 				fps = float64(fpsFrameCount) / elapsed.Seconds()

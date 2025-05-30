@@ -66,65 +66,53 @@ Press ctrl+h for this help message.
 
 Press any key to continue...`
 
-	method := ansi.WcWidth
-	helpComp := styledstring.New(method, help)
+	helpComp := styledstring.New(help)
 	helpArea := helpComp.Bounds()
 	helpW, helpH := helpArea.Dx(), helpArea.Dy()
 
 	var prevHelpBuf *tv.Buffer
 	showingHelp := true
-	f := &tv.Frame{
-		Buffer:   tv.NewBuffer(width, height),
-		Viewport: tv.FullViewport{},
-		Area:     tv.Rect(0, 0, width, height),
-	}
 	displayHelp := func(show bool) {
-		midX, midY := f.Area.Max.X/2, f.Area.Max.Y/2
+		midX, midY := width/2, height/2
 		x, y := midX-helpW/2, midY-helpH/2
 		midArea := tv.Rect(x, y, helpW, helpH)
 		if show {
 			// Save the area under the help to restore it later.
-			prevHelpBuf = f.Buffer.CloneArea(midArea)
-			f.RenderComponent(helpComp, midArea)
+			prevHelpBuf = tv.CloneArea(t, midArea)
+			helpComp.Draw(t, midArea)
 		} else if prevHelpBuf != nil {
 			// Restore saved area under the help.
-			for y := 0; y < prevHelpBuf.Height(); y++ {
-				for x := 0; x < prevHelpBuf.Width(); x++ {
-					c := prevHelpBuf.CellAt(x, y)
-					f.Buffer.SetCell(x+midArea.Min.X, y+midArea.Min.Y, c)
-				}
-			}
+			prevHelpBuf.Draw(t, midArea)
 		}
-		t.Display(f)
+		t.Display()
 	}
 
 	clearScreen := func() {
-		f.Buffer.Clear()
-		t.Display(f)
+		tv.Clear(t)
+		t.Display()
 	}
 
 	// Display first frame.
 	displayHelp(showingHelp)
 
-	var st tv.Style
-	const defaultChar = '█'
-	pen := tv.BlankCell
-	pen.Rune = defaultChar
+	const defaultChar = "█"
+	pen := tv.EmptyCell
+	pen.Content = defaultChar
 	draw := func(ev tv.MouseEvent) {
 		m := ev.Mouse()
-		cur := f.Buffer.CellAt(m.X, m.Y)
+		cur := t.CellAt(m.X, m.Y)
 		if cur == nil {
 			// Position out of bounds.
 			return
 		}
 
-		if cur.Empty() && pen.Width == 1 {
+		if cur.IsZero() && pen.Width == 1 {
 			// Find the previous wide cell.
 			var wide *tv.Cell
 			var wideX, wideY int
 			for i := 1; i < 5 && m.X-i >= 0; i++ {
-				wide = f.Buffer.CellAt(m.X-i, m.Y)
-				if wide != nil && !wide.Empty() && wide.Width > 1 {
+				wide = t.CellAt(m.X-i, m.Y)
+				if wide != nil && !wide.IsZero() && wide.Width > 1 {
 					wideX, wideY = m.X-i, m.Y
 					break
 				}
@@ -133,20 +121,20 @@ Press any key to continue...`
 			if wide != nil {
 				// Found a wide cell, make all cells blank.
 				wc := *wide
-				wc.Blank()
-				f.Buffer.SetCell(wideX, wideY, &wc)
+				wc.Empty()
+				t.SetCell(wideX, wideY, &wc)
 			}
 		}
 
 		// Can we fit the cell?
 		fit := true
 		if w := pen.Width; w > 1 {
-			if cur.Empty() || cur.Width > 1 {
+			if cur.IsZero() || cur.Width > 1 {
 				fit = false
 			} else {
 				for i := 1; i < w; i++ {
-					cur = f.Buffer.CellAt(m.X+i, m.Y)
-					if cur == nil || cur.Empty() || cur.Width > 1 {
+					cur = t.CellAt(m.X+i, m.Y)
+					if cur == nil || cur.IsZero() || cur.Width > 1 {
 						// Position out of bounds or not empty.
 						fit = false
 						break
@@ -159,8 +147,8 @@ Press any key to continue...`
 			return
 		}
 
-		f.Buffer.SetCell(m.X, m.Y, &pen)
-		t.Display(f)
+		t.SetCell(m.X, m.Y, &pen)
+		t.Display()
 	}
 
 	for ev := range t.Events(ctx) {
@@ -170,9 +158,8 @@ Press any key to continue...`
 				displayHelp(false)
 			}
 			width, height = ev.Width, ev.Height
-			f.Area = tv.Rect(0, 0, ev.Width, ev.Height)
 			t.Resize(ev.Width, ev.Height)
-			t.ClearScreen()
+			t.Clear()
 			if showingHelp {
 				displayHelp(showingHelp)
 			}
@@ -186,8 +173,8 @@ Press any key to continue...`
 			case ev.MatchStrings("ctrl+c"):
 				cancel()
 			case ev.MatchString("alt+esc"):
-				st = tv.Style{}
-				pen.Rune = defaultChar
+				pen.Style.Reset()
+				pen.Content = defaultChar
 				fallthrough
 			case ev.MatchString("esc"):
 				clearScreen()
@@ -201,10 +188,10 @@ Press any key to continue...`
 				}
 				r, rw := utf8.DecodeRuneInString(text)
 				if rw == 1 && unicode.IsDigit(r) {
-					st.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
+					pen.Style.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
 					break
 				}
-				pen.Rune = r
+				pen.Content = text
 				pen.Width = runewidth.RuneWidth(r)
 			}
 		case tv.MouseClickEvent:
