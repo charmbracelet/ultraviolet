@@ -365,6 +365,9 @@ func (s *TerminalRenderer) PrependLines(lines ...Line) {
 }
 
 // moveCursor moves the cursor to the specified position.
+//
+// It is safe to call this function with a nil [Buffer], in that case, it won't
+// be using any optimizations that depend on the buffer.
 func (s *TerminalRenderer) moveCursor(newbuf *Buffer, x, y int, overwrite bool) {
 	if !s.flags.Contains(tAltScreen) && s.flags.Contains(tRelativeCursor) &&
 		s.cur.X == -1 && s.cur.Y == -1 {
@@ -377,11 +380,18 @@ func (s *TerminalRenderer) moveCursor(newbuf *Buffer, x, y int, overwrite bool) 
 	s.cur.X, s.cur.Y = x, y
 }
 
+// move moves the cursor to the specified position in the buffer.
+//
+// It is safe to call this function with a nil [Buffer], in that case, it won't
+// be using any optimizations that depend on the buffer.
 func (s *TerminalRenderer) move(newbuf *Buffer, x, y int) {
 	// XXX: Make sure we use the max height and width of the buffer in case
 	// we're in the middle of a resize operation.
-	width := max(newbuf.Width(), s.curbuf.Width())
-	height := max(newbuf.Height(), s.curbuf.Height())
+	width, height := s.curbuf.Width(), s.curbuf.Height()
+	if newbuf != nil {
+		width = max(newbuf.Width(), width)
+		height = max(newbuf.Height(), height)
+	}
 
 	if width > 0 && x >= width {
 		// Handle autowrap
@@ -1084,6 +1094,9 @@ func (s *TerminalRenderer) Flush() (err error) {
 
 // Touched returns the number of lines that have been touched or changed.
 func (s *TerminalRenderer) Touched(buf *Buffer) (n int) {
+	if buf.Touched == nil {
+		return buf.Height()
+	}
 	for _, ch := range buf.Touched {
 		if ch != nil {
 			n++
@@ -1108,12 +1121,15 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		return
 	}
 
+	newWidth, newHeight := newbuf.Width(), newbuf.Height()
+	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
+
 	// Do we have a buffer to compare to?
 	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
-		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
+		s.curbuf = NewBuffer(newWidth, newHeight)
 	}
 
-	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
+	if curWidth != newWidth || curHeight != newHeight {
 		s.oldhash, s.newhash = nil, nil
 	}
 
@@ -1135,12 +1151,12 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	// don't use the full screen height and the current buffer size might be
 	// larger than the new buffer size.
 	partialClear := !s.flags.Contains(tAltScreen) && s.cur.X != -1 && s.cur.Y != -1 &&
-		s.curbuf.Width() == newbuf.Width() &&
-		s.curbuf.Height() > 0 &&
-		s.curbuf.Height() > newbuf.Height()
+		curWidth == newWidth &&
+		curHeight > 0 &&
+		curHeight > newHeight
 
 	if !s.clear && partialClear {
-		s.clearBelow(newbuf, nil, newbuf.Height()-1)
+		s.clearBelow(newbuf, nil, newHeight-1)
 	}
 
 	if s.clear {
@@ -1158,15 +1174,14 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		var i int
 
 		if s.flags.Contains(tAltScreen) {
-			nonEmpty = min(s.curbuf.Height(), newbuf.Height())
+			nonEmpty = min(curHeight, newHeight)
 		} else {
-			nonEmpty = newbuf.Height()
+			nonEmpty = newHeight
 		}
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
-		for i = 0; i < nonEmpty; i++ {
-			ch := newbuf.Touched[i]
-			if ch != nil {
+		for i = 0; i < nonEmpty && i < newHeight; i++ {
+			if newbuf.Touched == nil || i >= len(newbuf.Touched) || newbuf.Touched[i] != nil {
 				s.transformLine(newbuf, i)
 				changedLines++
 			}
@@ -1174,14 +1189,13 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	}
 
 	// Sync windows and screen
-	newbuf.Touched = make([]*lineData, newbuf.Height())
+	newbuf.Touched = make([]*lineData, newHeight)
 
-	if s.curbuf.Width() != newbuf.Width() || s.curbuf.Height() != newbuf.Height() {
+	if curWidth != newWidth || curHeight != newHeight {
 		// Resize the old buffer to match the new buffer.
-		_, oldh := s.curbuf.Width(), s.curbuf.Height()
-		s.curbuf.Resize(newbuf.Width(), newbuf.Height())
+		s.curbuf.Resize(newWidth, newHeight)
 		// Sync new lines to old lines
-		for i := oldh - 1; i < newbuf.Height(); i++ {
+		for i := curHeight - 1; i < newHeight; i++ {
 			copy(s.curbuf.Line(i), newbuf.Line(i))
 		}
 	}
@@ -1197,7 +1211,9 @@ func (s *TerminalRenderer) Clear() {
 // Resize updates the terminal screen tab stops. This is used to calculate
 // terminal tab stops for hard tab optimizations.
 func (s *TerminalRenderer) Resize(width, _ int) {
-	s.tabs.Resize(width)
+	if s.tabs != nil {
+		s.tabs.Resize(width)
+	}
 	s.scrollHeight = 0
 }
 
@@ -1230,8 +1246,8 @@ func (s *TerminalRenderer) Write(b []byte) (int, error) {
 // MoveTo calculates and writes the shortest sequence to move the cursor to the
 // given position. It uses the current cursor position and the new position to
 // calculate the shortest amount of sequences to move the cursor.
-func (s *TerminalRenderer) MoveTo(newbuf *Buffer, x, y int) {
-	s.move(newbuf, x, y)
+func (s *TerminalRenderer) MoveTo(x, y int) {
+	s.move(nil, x, y)
 }
 
 // notLocal returns whether the coordinates are not considered local movement
@@ -1252,10 +1268,18 @@ func notLocal(cols, fx, fy, tx, ty int) bool {
 // [ansi.VPA], [ansi.HPA].
 // When overwrite is true, this will try to optimize the sequence by using the
 // screen cells values to move the cursor instead of using escape sequences.
+//
+// It is safe to call this function with a nil [Buffer]. In that case, it won't
+// use any optimizations that require the new buffer such as overwrite.
 func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int, overwrite, useTabs, useBackspace bool) string {
 	var seq strings.Builder
+	height := -1
+	if newbuf == nil {
+		overwrite = false // We can't overwrite the current buffer.
+	} else {
+		height = newbuf.Height()
+	}
 
-	width, height := newbuf.Width(), newbuf.Height()
 	if ty != fy {
 		var yseq string
 		if s.caps.Contains(capVPA) && !s.flags.Contains(tRelativeCursor) {
@@ -1273,7 +1297,8 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 			if shouldScroll && ty == s.scrollHeight && ty < height {
 				n = min(n, height-1-ty)
 			}
-			if lf := strings.Repeat("\n", n); shouldScroll || (ty < height && len(lf) < len(yseq)) {
+			if lf := strings.Repeat("\n", n); shouldScroll ||
+				((ty < height || height == -1) && len(lf) < len(yseq)) {
 				yseq = lf
 				s.scrollHeight = max(s.scrollHeight, ty)
 				if s.flags.Contains(tMapNewline) {
@@ -1307,7 +1332,7 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 				var col int
 				for col = fx; s.tabs.Next(col) <= tx; col = s.tabs.Next(col) {
 					tabs++
-					if col == s.tabs.Next(col) || col >= width-1 {
+					if col == s.tabs.Next(col) || col >= s.tabs.Width()-1 {
 						break
 					}
 				}
@@ -1405,13 +1430,27 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 // to the specified position.
 // When overwrite is true, this will try to optimize the sequence by using the
 // screen cells values to move the cursor instead of using escape sequences.
+//
+// It is safe to call this function with a nil [Buffer]. In that case, it won't
+// use any optimizations that require the new buffer such as overwrite.
 func moveCursor(s *TerminalRenderer, newbuf *Buffer, x, y int, overwrite bool) (seq string) {
 	fx, fy := s.cur.X, s.cur.Y
 
 	if !s.flags.Contains(tRelativeCursor) {
+		width := -1 // Use -1 to indicate that we don't know the width of the screen.
+		if s.tabs != nil {
+			width = s.tabs.Width()
+		}
+		if newbuf != nil && width == -1 {
+			// Even though this might not be accurate, we can use the new
+			// buffer width as a fallback. Technically, if the new buffer
+			// didn't have the width of the terminal, this would give us a
+			// wrong result from [notLocal].
+			width = newbuf.Width()
+		}
 		// Method #0: Use [ansi.CUP] if the distance is long.
 		seq = ansi.CursorPosition(x+1, y+1)
-		if fx == -1 || fy == -1 || notLocal(newbuf.Width(), fx, fy, x, y) {
+		if fx == -1 || fy == -1 || width == -1 || notLocal(width, fx, fy, x, y) {
 			return
 		}
 	}

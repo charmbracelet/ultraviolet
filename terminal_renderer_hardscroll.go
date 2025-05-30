@@ -179,7 +179,7 @@ func (s *TerminalRenderer) scrollBuffer(b *Buffer, n, top, bot int, blank *Cell)
 // touchLine marks the line as touched.
 func (s *TerminalRenderer) touchLine(newbuf *Buffer, y, n int, changed bool) {
 	height := newbuf.Height()
-	if n < 0 || y < 0 || y >= height {
+	if n < 0 || y < 0 || y >= height || newbuf.Touched == nil {
 		return // Nothing to touch
 	}
 

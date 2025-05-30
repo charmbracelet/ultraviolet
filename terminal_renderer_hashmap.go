@@ -1,5 +1,7 @@
 package tv
 
+import "unicode/utf8"
+
 // hash returns the hash value of a [Line].
 func hash(l Line) (h uint64) {
 	for _, c := range l {
@@ -25,8 +27,7 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
-			ch := newbuf.Touched[i]
-			if ch != nil {
+			if newbuf.Touched == nil || newbuf.Touched[i] != nil {
 				s.oldhash[i] = hash(s.curbuf.Line(i))
 				s.newhash[i] = hash(newbuf.Line(i))
 			}
