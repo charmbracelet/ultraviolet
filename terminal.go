@@ -133,7 +133,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 		logger := log.New(f, "uv: ", log.LstdFlags|log.Lshortfile)
 		t.SetLogger(logger)
 	}
-
 	return t
 }
 
@@ -694,6 +693,12 @@ func (t *Terminal) Start() error {
 	t.size.Width, t.size.Height, err = t.GetSize()
 	if err != nil {
 		return err
+	}
+
+	if t.buf.Width() == 0 && t.buf.Height() == 0 {
+		// If the buffer is not initialized, set it to the terminal size.
+		t.buf.Resize(t.size.Width, t.size.Height)
+		t.scr.Clear()
 	}
 
 	// We need to call [Terminal.optimizeMovements] before creating the screen
