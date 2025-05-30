@@ -383,7 +383,7 @@ func TestStyledString(t *testing.T) {
 			t.Logf("Running case %d: %s for %q", i+1, tc.name, tc.input)
 			ss := NewStyledString(tc.input)
 			area := ss.Bounds()
-			buf := screenBuffer{NewBuffer(area.Dx(), area.Dy())}
+			buf := NewScreenBuffer(area.Dx(), area.Dy())
 			ss.Draw(buf, area)
 			if buf.Width() != tc.expectedWidth {
 				t.Errorf("case %d expected width %d, got %d", i+1, tc.expectedWidth, buf.Width())

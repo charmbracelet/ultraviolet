@@ -428,3 +428,30 @@ func (b *Buffer) Draw(scr Screen, area Rectangle) {
 		}
 	}
 }
+
+// ScreenBuffer is a buffer that can be used as a [Screen].
+type ScreenBuffer struct {
+	*Buffer
+	Method ansi.Method
+}
+
+var _ Screen = ScreenBuffer{}
+
+// NewScreenBuffer creates a new ScreenBuffer with the given width and height.
+func NewScreenBuffer(width, height int) ScreenBuffer {
+	return ScreenBuffer{
+		Buffer: NewBuffer(width, height),
+		Method: ansi.WcWidth,
+	}
+}
+
+// Size returns the size of the screen buffer.
+func (s ScreenBuffer) Size() Size {
+	return Size{Width: s.Buffer.Width(), Height: s.Buffer.Height()}
+}
+
+// WidthMethod returns the width method used by the screen.
+// It defaults to [ansi.WcWidth].
+func (s ScreenBuffer) WidthMethod() WidthMethod {
+	return s.Method
+}
