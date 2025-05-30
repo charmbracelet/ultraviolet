@@ -111,11 +111,8 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	}
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
-	// We need to call [Terminal.optimizeMovements] before creating the screen
-	// to populate [Terminal.useBspace] and [Terminal.useTabs].
-	t.optimizeMovements()
+	t.scr = NewTerminalRenderer(t.out, t.environ)
 	t.buf = NewBuffer(0, 0)
-	t.scr = t.newScreen()
 	t.method = ansi.WcWidth // Default width method.
 	t.SetColorProfile(colorprofile.Detect(out, env))
 	t.rd = NewTerminalReader(t.in, t.termtype)
@@ -242,21 +239,21 @@ func (t *Terminal) MoveTo(x, y int) {
 	t.scr.MoveTo(x, y)
 }
 
-func (t *Terminal) newScreen() *TerminalRenderer {
-	s := NewTerminalRenderer(t.out, t.environ)
-	s.SetColorProfile(t.profile)
-	s.SetTabStops(t.size.Width)
-	s.SetBackspace(t.useBspace)
-	s.SetRelativeCursor(true) // Initial state is relative cursor movements.
+func (t *Terminal) configureRenderer() {
+	t.scr.SetColorProfile(t.profile)
+	if t.useTabs {
+		t.scr.SetTabStops(t.size.Width)
+	}
+	t.scr.SetBackspace(t.useBspace)
+	t.scr.SetRelativeCursor(true) // Initial state is relative cursor movements.
 	if t.scr != nil {
 		if t.scr.AltScreen() {
-			s.EnterAltScreen()
+			t.scr.EnterAltScreen()
 		} else {
-			s.ExitAltScreen()
+			t.scr.ExitAltScreen()
 		}
 	}
-	s.SetLogger(t.logger)
-	return s
+	t.scr.SetLogger(t.logger)
 }
 
 // Clear fills the screen buffer with empty cells, and wipe the terminal
@@ -652,6 +649,18 @@ func (t *Terminal) Start() error {
 		t.winchTty = t.outTty
 	}
 
+	// Get the initial terminal size.
+	var err error
+	t.size.Width, t.size.Height, err = t.GetSize()
+	if err != nil {
+		return err
+	}
+
+	// We need to call [Terminal.optimizeMovements] before creating the screen
+	// to populate [Terminal.useBspace] and [Terminal.useTabs].
+	t.optimizeMovements()
+	t.configureRenderer()
+
 	if t.modes.Get(ansi.AltScreenSaveCursorMode).IsSet() {
 		t.enterAltScreen(false) //nolint:errcheck
 	}
@@ -817,7 +826,8 @@ func (t *Terminal) close(reset bool) (rErr error) {
 		}
 		if reset {
 			// Reset screen.
-			t.scr = t.newScreen()
+			t.scr = NewTerminalRenderer(t.out, t.environ)
+			t.configureRenderer()
 		}
 	}()
 

@@ -60,7 +60,8 @@ func (t *Terminal) getSize() (w, h int, err error) {
 }
 
 func (t *Terminal) optimizeMovements() {
-	// TODO: check if we can optimize cursor movements on Windows.
+	t.useBspace = true
+	t.useTabs = true
 }
 
 func (t *Terminal) setMouse(enable bool) (err error) {
