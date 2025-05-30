@@ -1,20 +1,24 @@
 package tv
 
-import (
-	"image/color"
-)
+// WidthMethod determines how many columns a grapheme occupies on the screen.
+type WidthMethod interface {
+	StringWidth(s string) int
+}
 
 // Screen represents a screen that can be drawn to.
 type Screen interface {
-	// GetSize returns the size of the screen. It errors if the size cannot be
-	// determined.
-	GetSize() (width, height int, err error)
+	// Size returns the size of the screen. It returns -1 for width and height
+	// if the screen is not initialized or has no size.
+	Size() Size
 
 	// CellAt returns the cell at the given position.
 	CellAt(x, y int) *Cell
 
-	// ColorModel returns the color model of the screen.
-	ColorModel() color.Model
+	// SetCell sets the cell at the given position.
+	SetCell(x, y int, c *Cell)
+
+	// Method returns the width method used by the screen.
+	Method() WidthMethod
 }
 
 // Displayer is an interface that can display a frame.
