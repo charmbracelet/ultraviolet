@@ -758,6 +758,10 @@ func (t *Terminal) Start() error {
 // It will also disable any modes that were enabled by the terminal, such as
 // exiting the alternate screen buffer, showing the cursor, and resetting
 // terminal modes.
+//
+// Most of the time, you don't need to call this manually, as it is called
+// automatically when the terminal is shutdown or closed using [Terminal.Close]
+// or [Terminal.Shutdown].
 func (t *Terminal) Restore() error {
 	if t.inTtyState != nil {
 		if err := term.Restore(t.inTty.Fd(), t.inTtyState); err != nil {

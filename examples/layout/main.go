@@ -407,8 +407,6 @@ func main() {
 		log.Fatalf("making raw: %v", err)
 	}
 
-	defer t.Restore() //nolint:errcheck
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
