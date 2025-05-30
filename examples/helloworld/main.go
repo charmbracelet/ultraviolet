@@ -51,7 +51,7 @@ func main() {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
 			t.Resize(ev.Width, ev.Height)
-			t.Clear()
+			t.Erase()
 		case uv.KeyPressEvent:
 			if ev.MatchStrings("q", "ctrl+c") {
 				cancel() // This will stop the loop

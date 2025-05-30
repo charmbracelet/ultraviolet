@@ -159,7 +159,7 @@ Press any key to continue...`
 			}
 			width, height = ev.Width, ev.Height
 			t.Resize(ev.Width, ev.Height)
-			t.Clear()
+			t.Erase()
 			if showingHelp {
 				displayHelp(showingHelp)
 			}

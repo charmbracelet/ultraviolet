@@ -421,7 +421,7 @@ func main() {
 		case uv.WindowSizeEvent:
 			physicalWidth, _ = ev.Width, ev.Height
 			t.Resize(ev.Width, ev.Height)
-			t.Clear()
+			t.Erase()
 		case uv.MouseClickEvent:
 			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
 		case uv.KeyPressEvent:

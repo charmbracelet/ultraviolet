@@ -97,7 +97,7 @@ LOOP:
 				lastWidth = width
 				lastHeight = height
 				t.Resize(area.Dx(), area.Dy())
-				t.Clear()
+				t.Erase()
 			}
 		case tickEvent:
 			if len(colors) == 0 {

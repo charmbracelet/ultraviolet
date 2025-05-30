@@ -256,13 +256,13 @@ func (t *Terminal) configureRenderer() {
 	t.scr.SetLogger(t.logger)
 }
 
-// Clear fills the screen buffer with empty cells, and wipe the terminal
+// Erase fills the screen buffer with empty cells, and wipe the terminal
 // screen. This is different from [Clear], which only fills the terminal with
 // empty cells.
 //
 // This won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
-func (t *Terminal) Clear() {
+func (t *Terminal) Erase() {
 	t.scr.Clear()
 	Clear(t)
 }

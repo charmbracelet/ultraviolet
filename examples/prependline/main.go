@@ -101,7 +101,7 @@ func main() {
 			}
 		case uv.WindowSizeEvent:
 			t.Resize(ev.Width, frameHeight)
-			t.Clear()
+			t.Erase()
 		}
 
 		t.PrependString(fmt.Sprintf("%T %v", ev, ev))
