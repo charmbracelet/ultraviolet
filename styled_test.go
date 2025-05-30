@@ -383,10 +383,8 @@ func TestStyledString(t *testing.T) {
 			t.Logf("Running case %d: %s for %q", i+1, tc.name, tc.input)
 			ss := NewStyledString(tc.input)
 			area := ss.Bounds()
-			buf := NewBuffer(area.Dx(), area.Dy())
-			if err := ss.RenderComponent(buf, area); err != nil {
-				t.Fatalf("case %d: failed to render styled string: %v", i+1, err)
-			}
+			buf := screenBuffer{NewBuffer(area.Dx(), area.Dy())}
+			ss.Draw(buf, area)
 			if buf.Width() != tc.expectedWidth {
 				t.Errorf("case %d expected width %d, got %d", i+1, tc.expectedWidth, buf.Width())
 			}

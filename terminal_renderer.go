@@ -1070,6 +1070,11 @@ func (s *TerminalRenderer) logf(format string, args ...any) {
 	s.logger.Printf(format, args...)
 }
 
+// Buffered returns the number of bytes buffered for the next flush.
+func (s *TerminalRenderer) Buffered() int {
+	return s.buf.Len()
+}
+
 // Flush flushes the buffer to the screen.
 func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer

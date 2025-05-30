@@ -2,7 +2,6 @@ package tv
 
 import (
 	"bytes"
-	"fmt"
 	"image/color"
 	"strings"
 
@@ -24,6 +23,8 @@ type StyledString struct {
 	Tail string
 }
 
+var _ Component = (*StyledString)(nil)
+
 // NewStyledString creates a new [StyledString] for the given method and styled
 // string. The method is used to calculate the width of each line.
 func NewStyledString(str string) *StyledString {
@@ -32,21 +33,17 @@ func NewStyledString(str string) *StyledString {
 	return ss
 }
 
-// RenderComponent renders the styled string to the given buffer at the
+// Draw renders the styled string to the given buffer at the
 // specified area.
-func (s *StyledString) RenderComponent(buf *Buffer, area Rectangle) error {
-	if buf == nil {
-		return fmt.Errorf("buffer cannot be nil")
-	}
+func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	// Clear the area before drawing.
-	buf.FillArea(nil, area)
+	FillArea(buf, nil, area)
 	str := s.Text
 	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
 	// output.
 	str = strings.ReplaceAll(str, "\r\n", "\n")
 	str = strings.ReplaceAll(str, "\n", "\r\n")
 	printString(buf, ansi.GraphemeWidth, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
-	return nil
 }
 
 // Bounds returns the bounds of the styled string. This is the rectangle
@@ -66,7 +63,7 @@ func (s *StyledString) Bounds() Rectangle {
 
 // printString draws a string starting at the given position.
 func printString[T []byte | string](
-	s *Buffer,
+	s Screen,
 	m ansi.Method,
 	x, y int,
 	bounds Rectangle, str T,
