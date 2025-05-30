@@ -106,7 +106,7 @@ defer cancel()
 
 for ev := range t.Events(ctx) {
   switch ev := ev.(type) {
-  case tv.WindowSizeEvent:
+  case uv.WindowSizeEvent:
     // Our terminal screen is resizable. This is important
     // as we want to inform our terminal screen with the
     // size we'd like to display our program in.
@@ -123,7 +123,7 @@ for ev := range t.Events(ctx) {
       height = 10
     }
     t.Resize(width, height)
-  case tv.KeyPressEvent:
+  case uv.KeyPressEvent:
     if ev.MatchStrings("q", "ctrl+c") {
       // This will stop the input loop and cancel the context.
       cancel()
@@ -150,60 +150,54 @@ a frame with "Hello, World!" in it. The program will exit when we press
 <kbd>ctrl+c</kbd> or <kbd>q</kbd>.
 
 ```go
-package main
-
-import (
-  "context"
-  "log"
-  "os"
-
-  "github.com/charmbracelet/uv"
-  "github.com/charmbracelet/uv/widget/styledstring"
-  "github.com/charmbracelet/x/ansi"
-)
-
 func main() {
-  t := tv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
-  t.EnterAltScreen()
+	t := uv.NewTerminal(os.Stdin, os.Stdout, os.Environ())
 
-  if err := t.Start(); err != nil {
-    log.Fatalf("failed to start program: %v", err)
-  }
+	if err := t.MakeRaw(); err != nil {
+		log.Fatalf("failed to make terminal raw: %v", err)
+	}
 
-  ctx, cancel := context.WithCancel(context.Background())
-  defer cancel()
+	if err := t.Start(); err != nil {
+		log.Fatalf("failed to start program: %v", err)
+	}
 
-  altScreen := true
-  for ev := range t.Events(ctx) {
-    switch ev := ev.(type) {
-    case tv.WindowSizeEvent:
-      width, height := ev.Width, ev.Height
-      if !altscreen {
-        height = 10
-      }
-      t.Resize(width, height)
-    case tv.KeyPressEvent:
-      if ev.MatchStrings("q", "ctrl+c") {
-        cancel()
-      }
-    }
+	t.EnterAltScreen()
 
-    for i, r := range "Hello, World!" {
-      var c uv.Cell
-      c.Content = string(r)
-      c.Width = 1
-      t.SetCell(i, 0, &c)
-    }
-    if err := p.Display(); err != nil {
-      log.Fatal(err)
-    }
-  }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-  t.LeaveAltScreen()
-  _ = t.Restore() //nolint:errcheck
-  if err := t.Shutdown(ctx); err != nil {
-    log.Fatal(err)
-  }
+	altscreen := true
+	for ev := range t.Events(ctx) {
+		switch ev := ev.(type) {
+		case uv.WindowSizeEvent:
+			width, height := ev.Width, ev.Height
+			if !altscreen {
+				height = 10
+			}
+			t.Erase()
+			t.Resize(width, height)
+		case uv.KeyPressEvent:
+			if ev.MatchStrings("q", "ctrl+c") {
+				cancel()
+			}
+		}
+
+		for i, r := range "Hello, World!" {
+			var c uv.Cell
+			c.Content = string(r)
+			c.Width = 1
+			t.SetCell(i, 0, &c)
+		}
+		if err := t.Display(); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	t.ExitAltScreen()
+	_ = t.Restore() //nolint:errcheck
+	if err := t.Shutdown(ctx); err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 
