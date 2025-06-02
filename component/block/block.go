@@ -42,6 +42,8 @@ func (b Block) Draw(scr uv.Screen, area uv.Rectangle) {
 			if c != nil {
 				if c.Style.IsZero() {
 					c.Style = b.Style
+				} else {
+					c.Style = c.Style.Merge(b.Style)
 				}
 				if c.Link.IsZero() {
 					c.Link = b.Link
