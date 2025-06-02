@@ -23,7 +23,7 @@ type StyledString struct {
 	Tail string
 }
 
-var _ Component = (*StyledString)(nil)
+var _ Drawable = (*StyledString)(nil)
 
 // NewStyledString creates a new [StyledString] for the given method and styled
 // string. The method is used to calculate the width of each line.

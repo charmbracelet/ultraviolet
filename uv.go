@@ -1,5 +1,11 @@
 package uv
 
+// Drawable represents a drawable component on a [Screen].
+type Drawable interface {
+	// Draw renders the component on the screen for the given area.
+	Draw(scr Screen, area Rectangle)
+}
+
 // WidthMethod determines how many columns a grapheme occupies on the screen.
 type WidthMethod interface {
 	StringWidth(s string) int

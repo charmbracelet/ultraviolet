@@ -12,4 +12,4 @@ func New(str string) StyledString {
 	return StyledString{uv.NewStyledString(str)}
 }
 
-var _ uv.Component = StyledString{}
+var _ uv.Drawable = StyledString{}

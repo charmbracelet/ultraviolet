@@ -406,7 +406,7 @@ func (b *Buffer) Clone() *Buffer {
 }
 
 // Draw draws the buffer to the given screen at the specified area.
-// It implements the [Component] interface.
+// It implements the [Drawable] interface.
 func (b *Buffer) Draw(scr Screen, area Rectangle) {
 	if area.Empty() {
 		return
