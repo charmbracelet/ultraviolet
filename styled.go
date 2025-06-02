@@ -118,7 +118,7 @@ func printString[T []byte | string](
 
 			// String is too long for the line, truncate it.
 			// Make sure we reset the cell for the next iteration.
-			cell.Reset()
+			cell = Cell{}
 		default:
 			// Valid sequences always have a non-zero Cmd.
 			// TODO: Handle cursor movement and other sequences
@@ -146,7 +146,7 @@ func printString[T []byte | string](
 	// Make sure to set the last cell if it's not empty.
 	if !cell.IsZero() {
 		s.SetCell(x, y, &cell) //nolint:errcheck
-		cell.Reset()
+		cell = Cell{}
 	}
 }
 
@@ -154,7 +154,7 @@ func printString[T []byte | string](
 // list of parameters into pen.
 func ReadStyle(params ansi.Params, pen *Style) {
 	if len(params) == 0 {
-		pen.Reset()
+		*pen = Style{}
 		return
 	}
 
@@ -162,13 +162,13 @@ func ReadStyle(params ansi.Params, pen *Style) {
 		param, hasMore, _ := params.Param(i, 0)
 		switch param {
 		case 0: // Reset
-			pen.Reset()
+			*pen = Style{}
 		case 1: // Bold
-			pen.Bold(true)
+			*pen = pen.Bold(true)
 		case 2: // Dim/Faint
-			pen.Faint(true)
+			*pen = pen.Faint(true)
 		case 3: // Italic
-			pen.Italic(true)
+			*pen = pen.Italic(true)
 		case 4: // Underline
 			nextParam, _, ok := params.Param(i+1, 0)
 			if hasMore && ok { // Only accept subparameters i.e. separated by ":"
@@ -177,82 +177,82 @@ func ReadStyle(params ansi.Params, pen *Style) {
 					i++
 					switch nextParam {
 					case 0: // No Underline
-						pen.UnderlineStyle(NoUnderline)
+						*pen = pen.UnderlineStyle(NoUnderline)
 					case 1: // Single Underline
-						pen.UnderlineStyle(SingleUnderline)
+						*pen = pen.UnderlineStyle(SingleUnderline)
 					case 2: // Double Underline
-						pen.UnderlineStyle(DoubleUnderline)
+						*pen = pen.UnderlineStyle(DoubleUnderline)
 					case 3: // Curly Underline
-						pen.UnderlineStyle(CurlyUnderline)
+						*pen = pen.UnderlineStyle(CurlyUnderline)
 					case 4: // Dotted Underline
-						pen.UnderlineStyle(DottedUnderline)
+						*pen = pen.UnderlineStyle(DottedUnderline)
 					case 5: // Dashed Underline
-						pen.UnderlineStyle(DashedUnderline)
+						*pen = pen.UnderlineStyle(DashedUnderline)
 					}
 				}
 			} else {
 				// Single Underline
-				pen.UnderlineStyle(SingleUnderline)
+				*pen = pen.UnderlineStyle(SingleUnderline)
 			}
 		case 5: // Slow Blink
-			pen.SlowBlink(true)
+			*pen = pen.SlowBlink(true)
 		case 6: // Rapid Blink
-			pen.RapidBlink(true)
+			*pen = pen.RapidBlink(true)
 		case 7: // Reverse
-			pen.Reverse(true)
+			*pen = pen.Reverse(true)
 		case 8: // Conceal
-			pen.Conceal(true)
+			*pen = pen.Conceal(true)
 		case 9: // Crossed-out/Strikethrough
-			pen.Strikethrough(true)
+			*pen = pen.Strikethrough(true)
 		case 22: // Normal Intensity (not bold or faint)
-			pen.Bold(false).Faint(false)
+			*pen = pen.Bold(false).Faint(false)
 		case 23: // Not italic, not Fraktur
-			pen.Italic(false)
+			*pen = pen.Italic(false)
 		case 24: // Not underlined
-			pen.UnderlineStyle(NoUnderline)
+			*pen = pen.UnderlineStyle(NoUnderline)
 		case 25: // Blink off
-			pen.SlowBlink(false).RapidBlink(false)
+			*pen = pen.SlowBlink(false).RapidBlink(false)
 		case 27: // Positive (not reverse)
-			pen.Reverse(false)
+			*pen = pen.Reverse(false)
 		case 28: // Reveal
-			pen.Conceal(false)
+			*pen = pen.Conceal(false)
 		case 29: // Not crossed out
-			pen.Strikethrough(false)
+			*pen = pen.Strikethrough(false)
 		case 30, 31, 32, 33, 34, 35, 36, 37: // Set foreground
-			pen.Foreground(ansi.Black + ansi.BasicColor(param-30)) //nolint:gosec
+			*pen = pen.Foreground(ansi.Black + ansi.BasicColor(param-30)) //nolint:gosec
 		case 38: // Set foreground 256 or truecolor
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				pen.Foreground(c)
+				*pen = pen.Foreground(c)
 				i += n - 1
 			}
 		case 39: // Default foreground
-			pen.Foreground(nil)
+			*pen = pen.Foreground(nil)
 		case 40, 41, 42, 43, 44, 45, 46, 47: // Set background
-			pen.Background(ansi.Black + ansi.BasicColor(param-40)) //nolint:gosec
+			*pen = pen.Background(ansi.Black + ansi.BasicColor(param-40)) //nolint:gosec
 		case 48: // Set background 256 or truecolor
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				pen.Background(c)
+				*pen = pen.Background(c)
 				i += n - 1
 			}
 		case 49: // Default Background
-			pen.Background(nil)
+			*pen = pen.Background(nil)
 		case 58: // Set underline color
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				pen.Underline(c)
+				*pen = pen.Underline(c)
 				i += n - 1
 			}
 		case 59: // Default underline color
-			pen.Underline(nil)
+			*pen = pen.Underline(nil)
 		case 90, 91, 92, 93, 94, 95, 96, 97: // Set bright foreground
-			pen.Foreground(ansi.BrightBlack + ansi.BasicColor(param-90)) //nolint:gosec
+			*pen = pen.Foreground(ansi.BrightBlack + ansi.BasicColor(param-90)) //nolint:gosec
 		case 100, 101, 102, 103, 104, 105, 106, 107: // Set bright background
-			pen.Background(ansi.BrightBlack + ansi.BasicColor(param-100)) //nolint:gosec
+			*pen = pen.Background(ansi.BrightBlack + ansi.BasicColor(param-100)) //nolint:gosec
 		}
 	}
 }
