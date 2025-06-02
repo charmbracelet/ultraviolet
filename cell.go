@@ -2,12 +2,11 @@ package uv
 
 import (
 	"image/color"
+	"strings"
 	"unicode"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
-	"github.com/rivo/uniseg"
 )
 
 // EmptyCell is a cell with a single space, width of 1, and no style or link.
@@ -31,23 +30,19 @@ type Cell struct {
 	Width int
 }
 
-// NewCell creates a new cell from the given string. It will only use the first
-// grapheme in the string and ignore the rest. The width of the cell is
-// determined using the given width method.
-func NewCell(method ansi.Method, s string) *Cell {
-	if len(s) == 0 {
+// NewCell creates a new cell from the given string grapheme. It will only use
+// the first grapheme in the string and ignore the rest. The width of the cell
+// is determined using the given width method.
+func NewCell(method WidthMethod, gr string) *Cell {
+	if len(gr) == 0 {
 		return &Cell{}
 	}
-	if s == " " {
+	if gr == " " {
 		return EmptyCell.Clone()
-	}
-	gr, _, width, _ := uniseg.FirstGraphemeClusterInString(s, -1)
-	if method == ansi.WcWidth {
-		width = runewidth.StringWidth(gr)
 	}
 	return &Cell{
 		Content: gr,
-		Width:   width,
+		Width:   method.StringWidth(gr),
 	}
 }
 
@@ -97,6 +92,14 @@ func (c *Cell) Clone() (n *Cell) {
 func (c *Cell) Empty() {
 	c.Content = " "
 	c.Width = 1
+}
+
+// NewLink creates a new hyperlink with the given URL and parameters.
+func NewLink(url string, params ...string) Link {
+	return Link{
+		URL:    url,
+		Params: strings.Join(params, ":"),
+	}
 }
 
 // Link represents a hyperlink in the terminal screen.
