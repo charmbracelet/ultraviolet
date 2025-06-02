@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/cancelreader"
 )
 
@@ -396,7 +397,10 @@ const (
 // [Terminal.Flush] call.
 func (t *Terminal) SetForegroundColor(c color.Color) {
 	t.setFg = c
-	t.scr.WriteString(ansi.SetForegroundColor(c)) //nolint:errcheck
+	col, ok := colorful.MakeColor(c)
+	if ok {
+		t.scr.WriteString(ansi.SetForegroundColor(col.Hex())) //nolint:errcheck
+	}
 }
 
 // RequestForegroundColor requests the current foreground color of the terminal.
@@ -423,7 +427,10 @@ func (t *Terminal) ResetForegroundColor() {
 // [Terminal.Flush] call.
 func (t *Terminal) SetBackgroundColor(c color.Color) {
 	t.setBg = c
-	t.scr.WriteString(ansi.SetBackgroundColor(c)) //nolint:errcheck
+	col, ok := colorful.MakeColor(c)
+	if ok {
+		t.scr.WriteString(ansi.SetBackgroundColor(col.Hex())) //nolint:errcheck
+	}
 }
 
 // RequestBackgroundColor requests the current background color of the terminal.
@@ -450,7 +457,10 @@ func (t *Terminal) ResetBackgroundColor() {
 // [Terminal.Flush] call.
 func (t *Terminal) SetCursorColor(c color.Color) {
 	t.setCc = c
-	t.scr.WriteString(ansi.SetCursorColor(c)) //nolint:errcheck
+	col, ok := colorful.MakeColor(c)
+	if ok {
+		t.scr.WriteString(ansi.SetCursorColor(col.Hex())) //nolint:errcheck
+	}
 }
 
 // RequestCursorColor requests the current cursor color of the terminal.
@@ -726,14 +736,20 @@ func (t *Terminal) Start() error {
 		}
 	}
 	// Restore fg, bg, cursor colors, and cursor shape.
-	if t.setFg != nil {
-		t.scr.WriteString(ansi.SetForegroundColor(t.setFg)) //nolint:errcheck
-	}
-	if t.setBg != nil {
-		t.scr.WriteString(ansi.SetBackgroundColor(t.setBg)) //nolint:errcheck
-	}
-	if t.setCc != nil {
-		t.scr.WriteString(ansi.SetCursorColor(t.setCc)) //nolint:errcheck
+	for _, c := range []struct {
+		setter func(string) string
+		colorp *color.Color
+	}{
+		{ansi.SetForegroundColor, &t.setFg},
+		{ansi.SetBackgroundColor, &t.setBg},
+		{ansi.SetCursorColor, &t.setCc},
+	} {
+		if c.colorp != nil {
+			col, ok := colorful.MakeColor(*c.colorp)
+			if ok {
+				t.scr.WriteString(c.setter(col.Hex())) //nolint:errcheck
+			}
+		}
 	}
 	if t.curStyle > 1 {
 		t.scr.WriteString(ansi.SetCursorStyle(t.curStyle)) //nolint:errcheck
