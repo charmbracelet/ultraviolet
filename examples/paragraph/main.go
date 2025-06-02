@@ -69,7 +69,7 @@ func main() {
 		par4 := block.Block{
 			Component: paragraph.Paragraph{
 				Text:  para4,
-				Style: uv.Style{Bg: ansi.Black},
+				Style: uv.Style{}.UnderlineStyle(uv.SingleUnderline),
 			},
 			Style: uv.Style{Bg: ansi.Black},
 			Padding: layout.Padding{
