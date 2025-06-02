@@ -63,6 +63,8 @@ func (p Paragraph) Draw(scr uv.Screen, area uv.Rectangle) {
 					scr.SetCell(x, y, t)
 					x += t.Width
 				}
+				// We're done here, so we can break out of the loop.
+				break
 			} else {
 				// Print the cell to the screen
 				c := uv.Cell{
