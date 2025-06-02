@@ -36,7 +36,7 @@ func main() {
 	// Create random paragraph areas.
 	area1 := uv.Rect(0, 0, 30, 5)
 	area2 := uv.Rect(0, 6, 100, 5)
-	area3 := uv.Rect(10, 12, 50, 5)
+	area3 := uv.Rect(12, 12, 51, 5)
 	area4 := uv.Rect(8, 18, 78, 20)
 	area5 := uv.Rect(30, 33, 63, 12)
 
