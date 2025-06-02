@@ -71,11 +71,6 @@ func (c *Cell) IsZero() bool {
 	return *c == Cell{}
 }
 
-// Reset resets the cell to the default state zero value.
-func (c *Cell) Reset() {
-	*c = Cell{}
-}
-
 // IsBlank returns whether the cell represents a blank cell consisting of a
 // space character.
 func (c *Cell) IsBlank() bool {
@@ -113,11 +108,6 @@ type Link struct {
 // String returns a string representation of the hyperlink.
 func (h *Link) String() string {
 	return h.URL
-}
-
-// Reset resets the hyperlink to the default state zero value.
-func (h *Link) Reset() {
-	*h = Link{}
 }
 
 // Equal returns whether the hyperlink is equal to the other hyperlink.
@@ -187,37 +177,37 @@ type Style struct {
 }
 
 // NewStyle is a convenience function to create a new [Style].
-func NewStyle() *Style {
-	return &Style{}
+func NewStyle() Style {
+	return Style{}
 }
 
 // Foreground returns a new style with the foreground color set to the given color.
-func (s *Style) Foreground(c color.Color) *Style {
+func (s Style) Foreground(c color.Color) Style {
 	s.Fg = c
 	return s
 }
 
 // Background returns a new style with the background color set to the given color.
-func (s *Style) Background(c color.Color) *Style {
+func (s Style) Background(c color.Color) Style {
 	s.Bg = c
 	return s
 }
 
 // Underline returns a new style with the underline color set to the given color.
-func (s *Style) Underline(c color.Color) *Style {
+func (s Style) Underline(c color.Color) Style {
 	s.Ul = c
 	return s
 }
 
 // UnderlineStyle returns a new style with the underline style set to the
 // given style.
-func (s *Style) UnderlineStyle(st UnderlineStyle) *Style {
+func (s Style) UnderlineStyle(st UnderlineStyle) Style {
 	s.UlStyle = st
 	return s
 }
 
 // Bold returns a new style with the bold attribute set to the given value.
-func (s *Style) Bold(v bool) *Style {
+func (s Style) Bold(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(BoldAttr)
 	} else {
@@ -227,7 +217,7 @@ func (s *Style) Bold(v bool) *Style {
 }
 
 // Faint returns a new style with the faint attribute set to the given value.
-func (s *Style) Faint(v bool) *Style {
+func (s Style) Faint(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(FaintAttr)
 	} else {
@@ -237,7 +227,7 @@ func (s *Style) Faint(v bool) *Style {
 }
 
 // Italic returns a new style with the italic attribute set to the given value.
-func (s *Style) Italic(v bool) *Style {
+func (s Style) Italic(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(ItalicAttr)
 	} else {
@@ -248,7 +238,7 @@ func (s *Style) Italic(v bool) *Style {
 
 // SlowBlink returns a new style with the slow blink attribute set to the
 // given value.
-func (s *Style) SlowBlink(v bool) *Style {
+func (s Style) SlowBlink(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(SlowBlinkAttr)
 	} else {
@@ -259,7 +249,7 @@ func (s *Style) SlowBlink(v bool) *Style {
 
 // RapidBlink returns a new style with the rapid blink attribute set to
 // the given value.
-func (s *Style) RapidBlink(v bool) *Style {
+func (s Style) RapidBlink(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(RapidBlinkAttr)
 	} else {
@@ -270,7 +260,7 @@ func (s *Style) RapidBlink(v bool) *Style {
 
 // Reverse returns a new style with the reverse attribute set to the given
 // value.
-func (s *Style) Reverse(v bool) *Style {
+func (s Style) Reverse(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(ReverseAttr)
 	} else {
@@ -281,7 +271,7 @@ func (s *Style) Reverse(v bool) *Style {
 
 // Conceal returns a new style with the conceal attribute set to the given
 // value.
-func (s *Style) Conceal(v bool) *Style {
+func (s Style) Conceal(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(ConcealAttr)
 	} else {
@@ -292,7 +282,7 @@ func (s *Style) Conceal(v bool) *Style {
 
 // Strikethrough returns a new style with the strikethrough attribute set to
 // the given value.
-func (s *Style) Strikethrough(v bool) *Style {
+func (s Style) Strikethrough(v bool) Style {
 	if v {
 		s.Attrs = s.Attrs.Add(StrikethroughAttr)
 	} else {
@@ -475,11 +465,6 @@ func colorEqual(c, o ansi.Color) bool {
 	cr, cg, cb, ca := c.RGBA()
 	or, og, ob, oa := o.RGBA()
 	return cr == or && cg == og && cb == ob && ca == oa
-}
-
-// Reset resets the style to default.
-func (s *Style) Reset() {
-	*s = Style{}
 }
 
 // IsZero returns true if the style is empty.

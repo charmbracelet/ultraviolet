@@ -146,7 +146,7 @@ func renderLine(buf io.StringWriter, l Line) {
 			if cellStyle.IsZero() && !pen.IsZero() {
 				writePending()
 				buf.WriteString(ansi.ResetStyle) //nolint:errcheck
-				pen.Reset()
+				pen = Style{}
 			}
 			if !cellStyle.Equal(&pen) {
 				writePending()
@@ -159,7 +159,7 @@ func renderLine(buf io.StringWriter, l Line) {
 			if cellLink != link && link.URL != "" {
 				writePending()
 				buf.WriteString(ansi.ResetHyperlink()) //nolint:errcheck
-				link.Reset()
+				link = Link{}
 			}
 			if cellLink != link {
 				writePending()
