@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/x/exp/toner"
+	"github.com/charmbracelet/x/term"
 	"github.com/muesli/cancelreader"
 )
 
@@ -64,6 +67,7 @@ type TerminalReader struct {
 	closed bool
 
 	logger Logger // The logger to use for debugging.
+	isatty bool   // isatty indicates whether the input reader is a terminal or not.
 }
 
 // NewTerminalReader returns a new input event reader. The reader reads input
@@ -82,9 +86,14 @@ type TerminalReader struct {
 //	  log.Printf("%v", ev)
 //	}
 func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
+	var isatty bool
+	if f, ok := r.(term.File); ok {
+		isatty = term.IsTerminal(f.Fd())
+	}
 	return &TerminalReader{
-		r:    r,
-		term: termType,
+		r:      r,
+		term:   termType,
+		isatty: isatty,
 	}
 }
 
@@ -144,6 +153,16 @@ func (d *TerminalReader) Close() (rErr error) {
 	return d.rd.Close() //nolint:wrapcheck
 }
 
+func (d *TerminalReader) logInput(b []byte) {
+	var q string
+	if d.isatty {
+		q = toner.Strings(string(b))
+	} else {
+		q = strconv.Quote(string(b))
+	}
+	d.logf("input: %s", q)
+}
+
 func (d *TerminalReader) logf(format string, v ...interface{}) {
 	if d.logger == nil {
 		return
@@ -167,7 +186,7 @@ func (d *TerminalReader) readEvents() ([]Event, error) {
 	// Lookup table first
 	if bytes.HasPrefix(buf, []byte{'\x1b'}) {
 		if k, ok := d.table[string(buf)]; ok {
-			d.logf("input: %q", buf)
+			d.logInput(buf)
 			events = append(events, KeyPressEvent(k))
 			return events, nil
 		}
@@ -176,7 +195,7 @@ func (d *TerminalReader) readEvents() ([]Event, error) {
 	var i int
 	for i < len(buf) {
 		nb, ev := d.parseSequence(buf[i:])
-		d.logf("input: %q", buf[i:i+nb])
+		d.logInput(buf[i : i+nb])
 
 		// Handle bracketed-paste
 		if d.paste != nil {
