@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/exp/toner"
+	"github.com/charmbracelet/x/term"
 )
 
 // ErrInvalidDimensions is returned when the dimensions of a window are invalid
@@ -142,6 +145,7 @@ type TerminalRenderer struct {
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
 	logger           Logger       // The logger used for debugging.
+	isatty           bool         // whether the writer is a terminal (isatty)
 	laterFlush       bool         // whether this is the first flush of the renderer
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -171,6 +175,9 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.saved = s.cur
 	s.scrollHeight = 0
 	s.oldhash, s.newhash = nil, nil
+	if f, ok := w.(term.File); ok {
+		s.isatty = term.IsTerminal(f.Fd())
+	}
 	return
 }
 
@@ -1081,7 +1088,13 @@ func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
 		if s.logger != nil {
-			s.logf("output: %q", s.buf.String())
+			var q string
+			if s.isatty {
+				q = toner.Strings(s.buf.String())
+			} else {
+				q = strconv.Quote(s.buf.String())
+			}
+			s.logf("output: %s", q)
 		}
 		bts := s.buf.Bytes()
 		if !s.flags.Contains(tCursorHidden) {
