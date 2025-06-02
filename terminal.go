@@ -744,7 +744,7 @@ func (t *Terminal) Start() error {
 		{ansi.SetBackgroundColor, &t.setBg},
 		{ansi.SetCursorColor, &t.setCc},
 	} {
-		if c.colorp != nil {
+		if c.colorp != nil && *c.colorp != nil {
 			col, ok := colorful.MakeColor(*c.colorp)
 			if ok {
 				t.scr.WriteString(c.setter(col.Hex())) //nolint:errcheck
