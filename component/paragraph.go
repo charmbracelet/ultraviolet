@@ -1,6 +1,4 @@
-// Package paragraph provides a component for rendering paragraphs in a
-// document.
-package paragraph
+package component
 
 import (
 	"github.com/charmbracelet/uv"
