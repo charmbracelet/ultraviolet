@@ -156,7 +156,6 @@ type Side struct {
 
 // Border represents a border with its properties.
 type Border struct {
-	// Style will be merged with the styles of the sides.
 	Style       uv.Style
 	Top         Side
 	Bottom      Side
@@ -178,6 +177,20 @@ func (b Border) IsZero() bool {
 		b.TopRight.Content == "" &&
 		b.BottomLeft.Content == "" &&
 		b.BottomRight.Content == ""
+}
+
+// InnerArea computes the inner area after applying the border.
+func (b Border) InnerArea(wm uv.WidthMethod, area uv.Rectangle) uv.Rectangle {
+	if b.IsZero() {
+		return area
+	}
+	// Calculate the width and height of the border.
+	borderArea := area
+	borderArea.Min.X += wm.StringWidth(b.Left.Content)
+	borderArea.Min.Y += 1 // Top border height is always 1.
+	borderArea.Max.X -= wm.StringWidth(b.Right.Content)
+	borderArea.Max.Y -= 1 // Bottom border height is always 1.
+	return area.Intersect(borderArea)
 }
 
 // Draw draws the border around the given component.
