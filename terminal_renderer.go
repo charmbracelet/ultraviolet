@@ -1226,7 +1226,6 @@ func (s *TerminalRenderer) Resize(width, _ int) {
 		s.tabs.Resize(width)
 	}
 	s.scrollHeight = 0
-	s.laterFlush = false
 }
 
 // Position returns the cursor position in the screen buffer after applying any
