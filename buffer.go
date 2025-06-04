@@ -265,14 +265,14 @@ func (b *Buffer) SetCell(x, y int, c *Cell) {
 		if c != nil && c.Width > 0 {
 			width = c.Width
 		}
-		b.TouchLine(x, y, width)
+		b.TouchLine(x, y, width-1)
 	}
 	b.Lines[y].Set(x, c)
 }
 
 // Touch marks the cell at the given x, y position as touched.
 func (b *Buffer) Touch(x, y int) {
-	b.TouchLine(x, y, 1)
+	b.TouchLine(x, y, 0)
 }
 
 // TouchLine marks a line n times starting at the given x position as touched.
@@ -460,6 +460,7 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 			b.Lines[i][x] = b.Lines[i-n][x]
 		}
 		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
+		b.TouchLine(area.Min.X, i-n, area.Max.X-area.Min.X)
 	}
 
 	// Clear the newly inserted lines within bounds
@@ -493,6 +494,7 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 			b.Lines[dst][x] = b.Lines[src][x]
 		}
 		b.TouchLine(area.Min.X, dst, area.Max.X-area.Min.X)
+		b.TouchLine(area.Min.X, src, area.Max.X-area.Min.X)
 	}
 
 	// Fill the bottom n lines with blank cells
@@ -538,6 +540,8 @@ func (b *Buffer) InsertCellArea(x, y, n int, c *Cell, area Rectangle) {
 		// right.
 		b.Lines[y][i] = b.Lines[y][i-n]
 	}
+	// Touch the lines that were moved
+	b.TouchLine(x, y, n)
 
 	// Clear the newly inserted cells within rectangle bounds
 	for i := x; i < x+n && i < area.Max.X; i++ {
@@ -575,8 +579,9 @@ func (b *Buffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
 			// the left.
 			b.Lines[y][i] = b.Lines[y][i+n]
 		}
-		b.TouchLine(i, y, n)
 	}
+	// Touch the line that was modified
+	b.TouchLine(x, y, n)
 
 	// Fill the vacated positions with the given cell
 	for i := area.Max.X - n; i < area.Max.X; i++ {
