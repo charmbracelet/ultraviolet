@@ -1113,7 +1113,7 @@ func (s *TerminalRenderer) Touched(buf *Buffer) (n int) {
 }
 
 // Redraw forces a full redraw of the screen. It's equivalent to calling
-// [TerminalRenderer.Clear] and [TerminalRenderer.Render].
+// [TerminalRenderer.Erase] and [TerminalRenderer.Render].
 func (s *TerminalRenderer) Redraw(newbuf *Buffer) {
 	s.clear = true
 	s.Render(newbuf)
@@ -1214,8 +1214,8 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	s.updatePen(nil) // nil indicates a blank cell with no styles
 }
 
-// Clear marks the screen to be fully cleared on the next render.
-func (s *TerminalRenderer) Clear() {
+// Erase marks the screen to be fully erased on the next render.
+func (s *TerminalRenderer) Erase() {
 	s.clear = true
 }
 

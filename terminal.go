@@ -303,7 +303,7 @@ func (t *Terminal) configureRenderer() {
 // This won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) Erase() {
-	t.scr.Clear()
+	t.scr.Erase()
 	Clear(t)
 }
 
@@ -708,7 +708,7 @@ func (t *Terminal) Start() error {
 	if t.buf.Width() == 0 && t.buf.Height() == 0 {
 		// If the buffer is not initialized, set it to the terminal size.
 		t.buf.Resize(t.size.Width, t.size.Height)
-		t.scr.Clear()
+		t.scr.Erase()
 	}
 
 	// We need to call [Terminal.optimizeMovements] before creating the screen
