@@ -1,4 +1,4 @@
-package border
+package component
 
 import (
 	"github.com/charmbracelet/uv"
@@ -156,6 +156,7 @@ type Side struct {
 
 // Border represents a border with its properties.
 type Border struct {
+	Style       uv.Style
 	Top         Side
 	Bottom      Side
 	Left        Side
@@ -166,30 +167,30 @@ type Border struct {
 	BottomRight Side
 }
 
-// Style returns a new [Border] with the given style applied to all [Side]s.
-func (b Border) Style(style uv.Style) Border {
-	b.Top.Style = style
-	b.Bottom.Style = style
-	b.Left.Style = style
-	b.Right.Style = style
-	b.TopLeft.Style = style
-	b.TopRight.Style = style
-	b.BottomLeft.Style = style
-	b.BottomRight.Style = style
-	return b
+// IsZero checks if the border is empty (all sides have empty content).
+func (b Border) IsZero() bool {
+	return b.Top.Content == "" &&
+		b.Bottom.Content == "" &&
+		b.Left.Content == "" &&
+		b.Right.Content == "" &&
+		b.TopLeft.Content == "" &&
+		b.TopRight.Content == "" &&
+		b.BottomLeft.Content == "" &&
+		b.BottomRight.Content == ""
 }
 
-// Link returns a new [Border] with the given link applied to all [Side]s.
-func (b Border) Link(link uv.Link) Border {
-	b.Top.Link = link
-	b.Bottom.Link = link
-	b.Left.Link = link
-	b.Right.Link = link
-	b.TopLeft.Link = link
-	b.TopRight.Link = link
-	b.BottomLeft.Link = link
-	b.BottomRight.Link = link
-	return b
+// InnerArea computes the inner area after applying the border.
+func (b Border) InnerArea(wm uv.WidthMethod, area uv.Rectangle) uv.Rectangle {
+	if b.IsZero() {
+		return area
+	}
+	// Calculate the width and height of the border.
+	borderArea := area
+	borderArea.Min.X += wm.StringWidth(b.Left.Content)
+	borderArea.Min.Y += 1 // Top border height is always 1.
+	borderArea.Max.X -= wm.StringWidth(b.Right.Content)
+	borderArea.Max.Y -= 1 // Bottom border height is always 1.
+	return area.Intersect(borderArea)
 }
 
 // Draw draws the border around the given component.
@@ -220,6 +221,7 @@ func (b *Border) Draw(scr uv.Screen, area uv.Rectangle) {
 			if cell == nil {
 				continue
 			}
+			cell.Style = cell.Style.Merge(b.Style)
 			scr.SetCell(x, y, cell)
 		}
 	}

@@ -120,7 +120,7 @@ func (h *Link) Equal(o *Link) bool {
 
 // IsZero returns whether the hyperlink is empty.
 func (h *Link) IsZero() bool {
-	return *h == Link{}
+	return h.URL == ""
 }
 
 // StyleAttrs is a bitmask for text attributes that can change the look of text.
@@ -483,6 +483,33 @@ func (s *Style) IsBlank() bool {
 		s.Fg == nil &&
 		s.Bg == nil &&
 		s.Ul == nil
+}
+
+// Merge returns a new style that merges the given style with the current one.
+func (s Style) Merge(o Style) Style {
+	if o.IsZero() {
+		return s
+	}
+
+	if s.IsZero() {
+		return o
+	}
+
+	if s.Fg == nil && o.Fg != nil {
+		s.Fg = o.Fg
+	}
+	if s.Bg == nil && o.Bg != nil {
+		s.Bg = o.Bg
+	}
+	if s.Ul == nil && o.Ul != nil {
+		s.Ul = o.Ul
+	}
+	if s.UlStyle == NoUnderline && o.UlStyle != NoUnderline {
+		s.UlStyle = o.UlStyle
+	}
+	s.Attrs |= o.Attrs
+
+	return s
 }
 
 // Convert converts a style to respect the given color profile.
