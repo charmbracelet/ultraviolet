@@ -11,7 +11,7 @@ import (
 func (s *TerminalRenderer) scrollOptimize(newbuf *Buffer) {
 	height := newbuf.Height()
 	if s.oldnum == nil || len(s.oldnum) < height {
-		s.oldnum = make([]int, height)
+		s.oldnum = append(s.oldnum, make([]int, height-len(s.oldnum))...)
 	}
 
 	// Calculate the indices

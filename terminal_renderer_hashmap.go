@@ -28,7 +28,6 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
 			if newbuf.Touched == nil || newbuf.Touched[i] != nil {
-				s.oldhash[i] = hash(s.curbuf.Line(i))
 				s.newhash[i] = hash(newbuf.Line(i))
 			}
 		}
