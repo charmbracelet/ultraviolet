@@ -458,7 +458,7 @@ func (s *Style) DiffSequence(o Style) string {
 	return b.String()
 }
 
-func colorEqual(c, o ansi.Color) bool {
+func colorEqual(c, o color.Color) bool {
 	if c == nil && o == nil {
 		return true
 	}

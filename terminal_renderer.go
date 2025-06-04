@@ -72,11 +72,11 @@ type cursor struct {
 	Position
 }
 
-// lineData represents the metadata for a line.
-type lineData struct {
-	// first and last changed cell indices
-	firstCell, lastCell int
-	// old index used for scrolling
+// LineData represents the metadata for a line.
+type LineData struct {
+	// First and last changed cell indices.
+	FirstCell, LastCell int
+	// Old index used for scrolling
 	oldIndex int //nolint:unused
 }
 
@@ -1200,7 +1200,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	}
 
 	// Sync windows and screen
-	newbuf.Touched = make([]*lineData, newHeight)
+	newbuf.Touched = make([]*LineData, newHeight)
 
 	if curWidth != newWidth || curHeight != newHeight {
 		// Resize the old buffer to match the new buffer.

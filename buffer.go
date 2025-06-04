@@ -192,7 +192,7 @@ type Buffer struct {
 	Lines []Line
 	// Touched represents the lines that have been modified or touched. It is
 	// used to track which lines need to be redrawn.
-	Touched []*lineData
+	Touched []*LineData
 }
 
 // NewBuffer creates a new buffer with the given width and height.
@@ -206,7 +206,7 @@ func NewBuffer(width int, height int) *Buffer {
 			b.Lines[i][j] = EmptyCell
 		}
 	}
-	b.Touched = make([]*lineData, height)
+	b.Touched = make([]*LineData, height)
 	b.Resize(width, height)
 	return b
 }
@@ -282,15 +282,15 @@ func (b *Buffer) TouchLine(x, y, n int) {
 	}
 
 	if y >= len(b.Touched) {
-		b.Touched = append(b.Touched, make([]*lineData, y-len(b.Touched)+1)...)
+		b.Touched = append(b.Touched, make([]*LineData, y-len(b.Touched)+1)...)
 	}
 
 	ch := b.Touched[y]
 	if ch == nil {
-		ch = &lineData{firstCell: x, lastCell: x + n}
+		ch = &LineData{FirstCell: x, LastCell: x + n}
 	} else {
-		ch.firstCell = min(ch.firstCell, x)
-		ch.lastCell = max(ch.lastCell, x+n)
+		ch.FirstCell = min(ch.FirstCell, x)
+		ch.LastCell = max(ch.LastCell, x+n)
 	}
 	b.Touched[y] = ch
 }
@@ -459,6 +459,7 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 			// We don't need to clone c here because we're just moving lines down.
 			b.Lines[i][x] = b.Lines[i-n][x]
 		}
+		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
 	}
 
 	// Clear the newly inserted lines within bounds
@@ -491,6 +492,7 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 			// We don't need to clone c here because we're just moving cells up.
 			b.Lines[dst][x] = b.Lines[src][x]
 		}
+		b.TouchLine(area.Min.X, dst, area.Max.X-area.Min.X)
 	}
 
 	// Fill the bottom n lines with blank cells
@@ -534,7 +536,6 @@ func (b *Buffer) InsertCellArea(x, y, n int, c *Cell, area Rectangle) {
 	for i := area.Max.X - 1; i >= x+n && i-n >= area.Min.X; i-- {
 		// We don't need to clone c here because we're just moving cells to the
 		// right.
-		// b.lines[y][i] = b.lines[y][i-n]
 		b.Lines[y][i] = b.Lines[y][i-n]
 	}
 
@@ -572,9 +573,9 @@ func (b *Buffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
 		if i+n < area.Max.X {
 			// We don't need to clone c here because we're just moving cells to
 			// the left.
-			// b.lines[y][i] = b.lines[y][i+n]
 			b.Lines[y][i] = b.Lines[y][i+n]
 		}
+		b.TouchLine(i, y, n)
 	}
 
 	// Fill the vacated positions with the given cell

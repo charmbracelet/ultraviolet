@@ -186,7 +186,7 @@ func (s *TerminalRenderer) touchLine(newbuf *Buffer, y, n int, changed bool) {
 	width := newbuf.Width()
 	for i := y; i < y+n && i < height; i++ {
 		if changed {
-			newbuf.Touched[i] = &lineData{firstCell: 0, lastCell: width - 1}
+			newbuf.Touched[i] = &LineData{FirstCell: 0, LastCell: width - 1}
 		} else {
 			newbuf.Touched[i] = nil
 		}
