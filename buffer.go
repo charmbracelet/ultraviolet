@@ -265,7 +265,7 @@ func (b *Buffer) SetCell(x, y int, c *Cell) {
 		if c != nil && c.Width > 0 {
 			width = c.Width
 		}
-		b.TouchLine(x, y, width-1)
+		b.TouchLine(x, y, width)
 	}
 	b.Lines[y].Set(x, c)
 }
