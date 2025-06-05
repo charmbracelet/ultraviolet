@@ -24,6 +24,10 @@ const newIndex = -1
 // updateHashmap updates the hashmap with the new hash value.
 func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 	height := newbuf.Height()
+	if s.hashtab == nil || height > len(s.hashtab) {
+		s.hashtab = make([]hashmap, (height+1)*2)
+	}
+
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
@@ -45,17 +49,19 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		}
 	}
 
-	s.hashtab = make([]hashmap, height*2)
+	for i := 0; i < len(s.hashtab); i++ {
+		s.hashtab[i] = hashmap{}
+	}
+
 	for i := 0; i < height; i++ {
 		hashval := s.oldhash[i]
 
 		// Find matching hash or empty slot
-		idx := 0
-		for idx < len(s.hashtab) && s.hashtab[idx].value != 0 {
+		var idx int
+		for idx = 0; idx < len(s.hashtab) && s.hashtab[idx].value != 0; idx++ {
 			if s.hashtab[idx].value == hashval {
 				break
 			}
-			idx++
 		}
 
 		s.hashtab[idx].value = hashval // in case this is a new hash
@@ -66,12 +72,11 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		hashval := s.newhash[i]
 
 		// Find matching hash or empty slot
-		idx := 0
-		for idx < len(s.hashtab) && s.hashtab[idx].value != 0 {
+		var idx int
+		for idx = 0; idx < len(s.hashtab) && s.hashtab[idx].value != 0; idx++ {
 			if s.hashtab[idx].value == hashval {
 				break
 			}
-			idx++
 		}
 
 		s.hashtab[idx].value = hashval // in case this is a new hash

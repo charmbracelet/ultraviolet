@@ -1188,9 +1188,22 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty && i < newHeight; i++ {
-			if newbuf.Touched == nil || i >= len(newbuf.Touched) || newbuf.Touched[i] != nil {
+			if newbuf.Touched == nil || i >= len(newbuf.Touched) || newbuf.Touched[i] != nil ||
+				newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1 {
 				s.transformLine(newbuf, i)
 				changedLines++
+			}
+
+			// Mark line changed successfully.
+			if i < len(newbuf.Touched) && i <= newbuf.Height()-1 {
+				newbuf.Touched[i] = &LineData{
+					FirstCell: -1, LastCell: -1,
+				}
+			}
+			if i < len(s.curbuf.Touched) && i < s.curbuf.Height()-1 {
+				s.curbuf.Touched[i] = &LineData{
+					FirstCell: -1, LastCell: -1,
+				}
 			}
 		}
 	}
@@ -1201,6 +1214,16 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 	// Sync windows and screen
 	newbuf.Touched = make([]*LineData, newHeight)
+	for i := range newbuf.Touched {
+		newbuf.Touched[i] = &LineData{
+			FirstCell: -1, LastCell: -1,
+		}
+	}
+	for i := range s.curbuf.Touched {
+		s.curbuf.Touched[i] = &LineData{
+			FirstCell: -1, LastCell: -1,
+		}
+	}
 
 	if curWidth != newWidth || curHeight != newHeight {
 		// Resize the old buffer to match the new buffer.
