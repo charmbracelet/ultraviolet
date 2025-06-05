@@ -1033,3 +1033,29 @@ func (t *Terminal) PrependLines(lines ...Line) error {
 	t.scr.PrependLines(truncatedLines...)
 	return nil
 }
+
+// Write writes the given bytes to the underlying terminal renderer.
+// This is typically used to write arbitrary data to the terminal, usually
+// escape sequences or control characters.
+//
+// This can affect the renderer state and the terminal screen, so it should be
+// used with caution.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
+func (t *Terminal) Write(p []byte) (n int, err error) {
+	return t.scr.Write(p)
+}
+
+// WriteString writes the given string to the underlying terminal renderer.
+// This is typically used to write arbitrary data to the terminal, usually
+// escape sequences or control characters.
+//
+// This can affect the renderer state and the terminal screen, so it should be
+// used with caution.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
+func (t *Terminal) WriteString(s string) (n int, err error) {
+	return t.scr.WriteString(s)
+}
