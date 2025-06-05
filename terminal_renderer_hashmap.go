@@ -60,13 +60,12 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		var idx int
 		for idx = 0; idx < len(s.hashtab) && s.hashtab[idx].value != 0; idx++ {
 			if s.hashtab[idx].value == hashval {
+				s.hashtab[idx].value = hashval // in case this is a new hash
+				s.hashtab[idx].oldcount++
+				s.hashtab[idx].oldindex = i
 				break
 			}
 		}
-
-		s.hashtab[idx].value = hashval // in case this is a new hash
-		s.hashtab[idx].oldcount++
-		s.hashtab[idx].oldindex = i
 	}
 	for i := 0; i < height; i++ {
 		hashval := s.newhash[i]
@@ -75,15 +74,13 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		var idx int
 		for idx = 0; idx < len(s.hashtab) && s.hashtab[idx].value != 0; idx++ {
 			if s.hashtab[idx].value == hashval {
+				s.hashtab[idx].value = hashval // in case this is a new hash
+				s.hashtab[idx].newcount++
+				s.hashtab[idx].newindex = i
+				s.oldnum[i] = newIndex // init old indices slice
 				break
 			}
 		}
-
-		s.hashtab[idx].value = hashval // in case this is a new hash
-		s.hashtab[idx].newcount++
-		s.hashtab[idx].newindex = i
-
-		s.oldnum[i] = newIndex // init old indices slice
 	}
 
 	// Mark line pair corresponding to unique hash pairs.
