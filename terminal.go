@@ -640,15 +640,14 @@ func (t *Terminal) showCursor() {
 //
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
-func (t *Terminal) HideCursor() error {
-	return t.hideCursor()
+func (t *Terminal) HideCursor() {
+	t.hideCursor()
 }
 
-func (t *Terminal) hideCursor() error {
+func (t *Terminal) hideCursor() {
 	t.cursorHidden = true
 	t.scr.HideCursor()
 	t.modes[ansi.TextCursorEnableMode] = ansi.ModeReset
-	return nil
 }
 
 // SetTitle sets the title of the terminal window. This is typically used to
@@ -656,9 +655,8 @@ func (t *Terminal) hideCursor() error {
 //
 // Note that this won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
-func (t *Terminal) SetTitle(title string) error {
-	_, err := t.scr.WriteString(ansi.SetWindowTitle(title))
-	return err
+func (t *Terminal) SetTitle(title string) {
+	_, _ = t.scr.WriteString(ansi.SetWindowTitle(title))
 }
 
 // Resize resizes the terminal screen buffer to the given width and height.
