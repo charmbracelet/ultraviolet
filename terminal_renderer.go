@@ -345,7 +345,8 @@ func (s *TerminalRenderer) prependStringLines(lines ...string) {
 	s.moveCursor(s.curbuf, 0, 0, false)
 	s.buf.WriteString(ansi.InsertLine(len(lines)))
 	for _, line := range lines {
-		s.buf.WriteString(line + "\r\n")
+		s.buf.WriteString(line)
+		s.buf.WriteString("\r\n")
 	}
 }
 
