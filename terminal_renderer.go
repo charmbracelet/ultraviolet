@@ -1080,9 +1080,6 @@ func (s *TerminalRenderer) Buffered() int {
 func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
-		if s.logger != nil {
-			s.logf("output: %q", s.buf.String())
-		}
 		bts := s.buf.Bytes()
 		if !s.flags.Contains(tCursorHidden) {
 			// Hide the cursor during the flush operation.
@@ -1091,6 +1088,9 @@ func (s *TerminalRenderer) Flush() (err error) {
 			copy(buf[len(ansi.HideCursor):], bts)
 			copy(buf[len(ansi.HideCursor)+len(bts):], ansi.ShowCursor)
 			bts = buf
+		}
+		if s.logger != nil {
+			s.logf("output: %q", bts)
 		}
 		_, err = s.w.Write(bts)
 		s.buf.Reset()
