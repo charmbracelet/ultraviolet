@@ -376,19 +376,20 @@ func (t *Terminal) RequestMode(mode ansi.Mode) {
 	t.scr.WriteString(ansi.RequestMode(mode)) //nolint:errcheck
 }
 
-// MouseMode represents the mouse mode for the terminal. It is used to enable or
-// disable mouse support on the terminal.
-//
-// It is a bitmask of the following values:
-//   - [ReleasesMouseMode]: Enables mouse release events.
-//   - [AllMotionMouseMode]: Enables all mouse motion events.
+// MouseMode represents the mouse mode for the terminal. It is used to enable
+// or disable mouse support on the terminal.
 type MouseMode byte
 
 const (
-	// ReleasesMouseMode enables mouse release events.
-	ReleasesMouseMode MouseMode = 1 << iota
-	// AllMotionMouseMode enables all mouse motion events.
-	AllMotionMouseMode
+	// ButtonMouseMode enables basic mouse button clicks and releases.
+	ButtonMouseMode MouseMode = 1 << iota
+	// DragMouseMode enables basic mouse buttons [ButtonMouseMode] as well as
+	// click-and-drag mouse motion events.
+	DragMouseMode
+	// AllMouseMode enables all mouse events including button clicks, releases,
+	// and all motion events. This inclodes the [ButtonMouseMode] and
+	// [DragMouseMode] modes.
+	AllMouseMode
 )
 
 // SetForegroundColor sets the terminal default foreground color.
@@ -491,21 +492,35 @@ func (t *Terminal) SetCursorShape(shape CursorShape, blink bool) {
 	t.scr.WriteString(ansi.SetCursorStyle(style)) //nolint:errcheck
 }
 
-// EnableMouse enables mouse support on the terminal. This will enable basic
-// mouse button and button motion events. To enable release events and all
-// motion events, use [Terminal.EnableMouse] with the appropriate flags. See
-// [MouseMode] for more information.
+// EnableMouse enables mouse support on the terminal.
+// Calling this without any modes will enable all mouse modes by default.
+// The available modes are:
+//   - [ButtonMouseMode] Enables basic mouse button clicks and releases.
+//   - [DragMouseMode] Enables basic mouse buttons [ButtonMouseMode] as well as
+//     click-and-drag mouse motion events.
+//   - [AllMouseMode] Enables all mouse events including button clicks, releases,
+//     and all motion events. This inclodes the [ButtonMouseMode] and
+//     [DragMouseMode] modes.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
 func (t *Terminal) EnableMouse(modes ...MouseMode) {
 	var mode MouseMode
 	for _, m := range modes {
 		mode |= m
 	}
+	if mode == 0 {
+		mode = ButtonMouseMode | DragMouseMode | AllMouseMode
+	}
 	t.mouseMode = mode
 	if runtime.GOOS != "windows" {
 		modes := []ansi.Mode{}
-		modes = append(modes, ansi.ButtonEventMouseMode)
-		if t.mouseMode&AllMotionMouseMode != 0 {
+		if t.mouseMode&AllMouseMode != 0 {
 			modes = append(modes, ansi.AnyEventMouseMode)
+		} else if t.mouseMode&DragMouseMode != 0 {
+			modes = append(modes, ansi.ButtonEventMouseMode)
+		} else if t.mouseMode&ButtonMouseMode != 0 {
+			modes = append(modes, ansi.NormalMouseMode)
 		}
 		modes = append(modes, ansi.SgrExtMouseMode)
 		t.EnableMode(modes...)

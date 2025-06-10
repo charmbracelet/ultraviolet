@@ -83,17 +83,19 @@ func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState
 			}
 		}
 	case xwindows.MOUSE_EVENT:
+		if mouseMode == nil || *mouseMode == 0 {
+			return nil
+		}
 		mevent := event.MouseEvent()
 		event := mouseEvent(keyState.lastMouseBtns, mevent)
 		// We emulate mouse mode levels on Windows. This is because Windows
 		// doesn't have a concept of different mouse modes. We use the mouse mode to determine
 		switch m := event.(type) {
-		case MouseReleaseEvent:
-			if mouseMode == nil || (*mouseMode)&ReleasesMouseMode == 0 {
+		case MouseMotionEvent:
+			if m.Button == MouseNone && (*mouseMode)&AllMouseMode == 0 {
 				return nil
 			}
-		case MouseMotionEvent:
-			if (mouseMode == nil || (*mouseMode)&AllMotionMouseMode == 0) && m.Button == MouseNone {
+			if m.Button != MouseNone && (*mouseMode)&DragMouseMode == 0 {
 				return nil
 			}
 		}
