@@ -502,8 +502,8 @@ func (t *Terminal) SetCursorShape(shape CursorShape, blink bool) {
 //     and all motion events. This inclodes the [ButtonMouseMode] and
 //     [DragMouseMode] modes.
 //
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// Note that on Unix, this won't take any effect until the next
+// [Terminal.Display] or [Terminal.Flush] call.
 func (t *Terminal) EnableMouse(modes ...MouseMode) {
 	var mode MouseMode
 	for _, m := range modes {
@@ -530,14 +530,26 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 
 // DisableMouse disables mouse support on the terminal. This will disable mouse
 // button and button motion events.
+//
+// Note that on Unix, this won't take any effect until the next
+// [Terminal.Display] or [Terminal.Flush] call.
 func (t *Terminal) DisableMouse() {
 	t.mouseMode = 0
 	if runtime.GOOS != "windows" {
-		t.DisableMode(
-			ansi.ButtonEventMouseMode,
-			ansi.AnyEventMouseMode,
-			ansi.SgrExtMouseMode,
-		)
+		var modes []ansi.Mode
+		if t.modes.Get(ansi.AnyEventMouseMode).IsSet() {
+			modes = append(modes, ansi.AnyEventMouseMode)
+		}
+		if t.modes.Get(ansi.ButtonEventMouseMode).IsSet() {
+			modes = append(modes, ansi.ButtonEventMouseMode)
+		}
+		if t.modes.Get(ansi.NormalMouseMode).IsSet() {
+			modes = append(modes, ansi.NormalMouseMode)
+		}
+		if t.modes.Get(ansi.SgrExtMouseMode).IsSet() {
+			modes = append(modes, ansi.SgrExtMouseMode)
+		}
+		t.DisableMode(modes...)
 	}
 	t.disableWindowsMouse() //nolint:errcheck
 }
