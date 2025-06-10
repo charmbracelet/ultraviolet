@@ -509,6 +509,14 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 	for _, m := range modes {
 		mode |= m
 	}
+	if len(modes) == 1 {
+		if mode&AllMouseMode != 0 {
+			mode |= ButtonMouseMode | DragMouseMode
+		}
+		if mode&DragMouseMode != 0 {
+			mode |= ButtonMouseMode
+		}
+	}
 	if mode == 0 {
 		mode = ButtonMouseMode | DragMouseMode | AllMouseMode
 	}
