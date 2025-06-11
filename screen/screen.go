@@ -1,4 +1,4 @@
-// Package screen provides functions and helpers to manipulate a [uv.uv.Screen].
+// Package screen provides functions and helpers to manipulate a [uv.Screen].
 package screen
 
 import "github.com/charmbracelet/uv"
