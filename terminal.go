@@ -200,12 +200,14 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 	return w, h, nil
 }
 
-// Size returns the size of the terminal screen buffer. This is different from
-// [Terminal.GetSize] which returns the size of the terminal window.
-// The screen buffer can occupy a portion or all of the terminal window. Use
-// [Terminal.Resize] to change the size of the screen buffer.
-func (t *Terminal) Size() Size {
-	return Size{Width: t.buf.Width(), Height: t.buf.Height()}
+// Bounds returns the bounds of the terminal screen buffer. This is the
+// rectangle that contains start and end points of the screen buffer.
+// This is different from [Terminal.GetSize] which queries the size of the
+// terminal window. The screen buffer can occupy a portion or all of the
+// terminal window. Use [Terminal.Resize] to change the size of the screen
+// buffer.
+func (t *Terminal) Bounds() Rectangle {
+	return Rect(0, 0, t.buf.Width(), t.buf.Height())
 }
 
 // SetCell sets the cell at the given x, y position in the terminal buffer.

@@ -13,11 +13,9 @@ type WidthMethod interface {
 
 // Screen represents a screen that can be drawn to.
 type Screen interface {
-	// Size returns the size of the screen buffer. Most of the times, this
-	// would also be the size of the screen window.
-	// It returns -1 for width and height if the screen is not initialized or
-	// has no size.
-	Size() Size
+	// Bounds returns the bounds of the screen. This is the rectangle that
+	// includes the start and end points of the screen.
+	Bounds() Rectangle
 
 	// CellAt returns the cell at the given position. If the position is out of
 	// bounds, it returns nil. Otherwise, it always returns a cell, even if it
@@ -74,7 +72,7 @@ func Fill(scr Screen, cell *Cell) {
 		f.Fill(cell)
 		return
 	}
-	FillArea(scr, cell, scr.Size().Bounds())
+	FillArea(scr, cell, scr.Bounds())
 }
 
 // FillArea fills the given area of the screen with the given cell. If the cell
@@ -134,7 +132,7 @@ func Clone(scr Screen) *Buffer {
 	}); ok {
 		return c.Clone()
 	}
-	return CloneArea(scr, scr.Size().Bounds())
+	return CloneArea(scr, scr.Bounds())
 }
 
 // CursorShape represents a terminal cursor shape.

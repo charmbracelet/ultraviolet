@@ -413,7 +413,7 @@ func (b *Buffer) Draw(scr Screen, area Rectangle) {
 	}
 
 	// Ensure the area is within the bounds of the screen.
-	bounds := scr.Size().Bounds()
+	bounds := scr.Bounds()
 	if !area.In(bounds) {
 		return
 	}
@@ -603,11 +603,6 @@ func NewScreenBuffer(width, height int) ScreenBuffer {
 		Buffer: NewBuffer(width, height),
 		Method: ansi.WcWidth,
 	}
-}
-
-// Size returns the size of the screen buffer.
-func (s ScreenBuffer) Size() Size {
-	return Size{Width: s.Buffer.Width(), Height: s.Buffer.Height()}
 }
 
 // WidthMethod returns the width method used by the screen.
