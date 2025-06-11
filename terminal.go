@@ -299,14 +299,14 @@ func (t *Terminal) configureRenderer() {
 }
 
 // Erase fills the screen buffer with empty cells, and wipe the terminal
-// screen. This is different from [Clear], which only fills the terminal with
-// empty cells.
+// screen. This is different from [Terminal.Clear], which only fills the
+// terminal with empty cells.
 //
 // This won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) Erase() {
 	t.scr.Erase()
-	t.buf.Clear()
+	t.Clear()
 }
 
 // Display computes the necessary changes to the terminal screen and renders
