@@ -565,72 +565,82 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 // Returns whether the cursor is at the end of interval or somewhere in the
 // middle.
 func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool) {
-	for n > 0 {
-		var count int
-		for n > 1 && !cellEqual(line.At(0), line.At(1)) {
-			s.putCell(newbuf, line.At(0))
-			line = line[1:]
-			n--
-		}
-
-		cell0 := line[0]
-		if n == 1 {
-			s.putCell(newbuf, &cell0)
-			return false
-		}
-
-		count = 2
-		for count < n && cellEqual(line.At(count), &cell0) {
-			count++
-		}
-
-		ech := ansi.EraseCharacter(count)
-		cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
-		rep := ansi.RepeatPreviousCharacter(count)
-		if s.caps.Contains(capECH) && count > len(ech)+len(cup) && cell0.IsBlank() {
-			s.updatePen(&cell0)
-			s.buf.WriteString(ech) //nolint:errcheck
-
-			// If this is the last cell, we don't need to move the cursor.
-			if count < n {
-				s.move(newbuf, s.cur.X+count, s.cur.Y)
-			} else {
-				return true // cursor in the middle
-			}
-		} else if s.caps.Contains(capREP) && count > len(rep) &&
-			(len(cell0.Content) == 1 && cell0.Content[0] >= ansi.US && cell0.Content[0] < ansi.DEL) {
-			// We only support ASCII characters. Most terminals will handle
-			// non-ASCII characters correctly, but some might not, ahem xterm.
-			//
-			// NOTE: [ansi.REP] only repeats the last rune and won't work
-			// if the last cell contains multiple runes.
-
-			wrapPossible := s.cur.X+count >= newbuf.Width()
-			repCount := count
-			if wrapPossible {
-				repCount--
+	hasECH := s.caps.Contains(capECH)
+	hasREP := s.caps.Contains(capREP)
+	if hasECH || hasREP {
+		for n > 0 {
+			var count int
+			for n > 1 && !cellEqual(line.At(0), line.At(1)) {
+				s.putCell(newbuf, line.At(0))
+				line = line[1:]
+				n--
 			}
 
-			s.updatePen(&cell0)
-			s.putCell(newbuf, &cell0)
-			repCount-- // cell0 is a single width cell ASCII character
-
-			s.buf.WriteString(ansi.RepeatPreviousCharacter(repCount)) //nolint:errcheck
-			s.cur.X += repCount
-			if wrapPossible {
+			cell0 := line[0]
+			if n == 1 {
 				s.putCell(newbuf, &cell0)
+				return false
 			}
-		} else {
-			for i := 0; i < count; i++ {
-				s.putCell(newbuf, line.At(i))
+
+			count = 2
+			for count < n && cellEqual(line.At(count), &cell0) {
+				count++
 			}
+
+			ech := ansi.EraseCharacter(count)
+			cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
+			rep := ansi.RepeatPreviousCharacter(count)
+			if hasECH && count > len(ech)+len(cup) && cell0.IsBlank() {
+				s.updatePen(&cell0)
+				s.buf.WriteString(ech) //nolint:errcheck
+
+				// If this is the last cell, we don't need to move the cursor.
+				if count < n {
+					s.move(newbuf, s.cur.X+count, s.cur.Y)
+				} else {
+					return true // cursor in the middle
+				}
+			} else if hasREP && count > len(rep) &&
+				(len(cell0.Content) == 1 && cell0.Content[0] >= ansi.US && cell0.Content[0] < ansi.DEL) {
+				// We only support ASCII characters. Most terminals will handle
+				// non-ASCII characters correctly, but some might not, ahem xterm.
+				//
+				// NOTE: [ansi.REP] only repeats the last rune and won't work
+				// if the last cell contains multiple runes.
+
+				wrapPossible := s.cur.X+count >= newbuf.Width()
+				repCount := count
+				if wrapPossible {
+					repCount--
+				}
+
+				s.updatePen(&cell0)
+				s.putCell(newbuf, &cell0)
+				repCount-- // cell0 is a single width cell ASCII character
+
+				s.buf.WriteString(ansi.RepeatPreviousCharacter(repCount)) //nolint:errcheck
+				s.cur.X += repCount
+				if wrapPossible {
+					s.putCell(newbuf, &cell0)
+				}
+			} else {
+				for i := 0; i < count; i++ {
+					s.putCell(newbuf, line.At(i))
+				}
+			}
+
+			line = line[clamp(count, 0, len(line)):]
+			n -= count
 		}
 
-		line = line[clamp(count, 0, len(line)):]
-		n -= count
+		return false
 	}
 
-	return
+	for i := 0; i < n; i++ {
+		s.putCell(newbuf, line.At(i))
+	}
+
+	return false
 }
 
 // putRange puts a range of cells from the old line to the new line.
