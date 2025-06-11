@@ -37,9 +37,8 @@ func NewStyledString(str string) *StyledString {
 // specified area.
 func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	// Clear the area before drawing.
-	bounds := buf.Bounds()
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
 			buf.SetCell(x, y, nil) //nolint:errcheck
 		}
 	}
