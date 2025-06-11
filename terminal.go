@@ -51,7 +51,6 @@ type Terminal struct {
 	buf                 *Buffer           // Reference to the last buffer used.
 	scr                 *TerminalRenderer // The actual screen to be drawn to.
 	size                Size              // The last known full size of the terminal.
-	frameHeight         int               // The height of the last frame displayed.
 	method              ansi.Method       // The width method used by the terminal.
 	profile             colorprofile.Profile
 	modes               ansi.Modes  // Keep track of terminal modes.
