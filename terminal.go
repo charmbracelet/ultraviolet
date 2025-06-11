@@ -306,7 +306,7 @@ func (t *Terminal) configureRenderer() {
 // [Terminal.Flush] call.
 func (t *Terminal) Erase() {
 	t.scr.Erase()
-	Clear(t)
+	t.buf.Clear()
 }
 
 // Display computes the necessary changes to the terminal screen and renders

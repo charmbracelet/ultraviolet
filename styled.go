@@ -37,7 +37,12 @@ func NewStyledString(str string) *StyledString {
 // specified area.
 func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	// Clear the area before drawing.
-	FillArea(buf, nil, area)
+	bounds := buf.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			buf.SetCell(x, y, nil) //nolint:errcheck
+		}
+	}
 	str := s.Text
 	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
 	// output.
