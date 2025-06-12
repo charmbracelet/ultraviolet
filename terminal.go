@@ -901,13 +901,13 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 
 	// Consume any pending events or listen for the context to be done.
 	for {
+		if len(t.evch) == 0 {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-t.evch:
-			if len(t.evch) == 0 {
-				return nil
-			}
 		}
 	}
 }
