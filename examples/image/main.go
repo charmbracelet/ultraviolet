@@ -92,6 +92,12 @@ func main() {
 	}
 
 	defer charmImgFile.Close() //nolint:errcheck
+	charmImgStat, err := charmImgFile.Stat()
+	if err != nil {
+		log.Fatalf("failed to stat image file: %v", err)
+	}
+
+	charmImgFileSize := charmImgStat.Size()
 
 	var charmImgBuf bytes.Buffer
 	var charmImgB64 []byte
@@ -150,6 +156,7 @@ func main() {
 		return imgW / cellW, imgH / cellH
 	}
 
+	var transmitKitty bool
 	var imgCellW, imgCellH int
 	var imgOffsetX, imgOffsetY int
 	fillStyle := uv.Style{Fg: ansi.IndexedColor(240)}
@@ -165,8 +172,12 @@ func main() {
 			imgArea = imgArea.Intersect(winSize.Bounds())
 			// TODO: Crop image.
 		}
+
+		log.Printf("image area: %v", imgArea)
+
 		// Clear the screen.
-		screen.Fill(t, &uv.Cell{Content: "/", Width: 1, Style: fillStyle})
+		fill := uv.Cell{Content: "/", Width: 1, Style: fillStyle}
+		screen.Fill(t, &fill)
 
 		// Draw the image on the screen.
 		switch imgEnc {
@@ -195,6 +206,7 @@ func main() {
 				// Encode the image to base64 for the first time.
 				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
 			}
+			t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
 			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
 			data := ansi.ITerm2(iterm2.File{
 				Name:              "charm.jpg",
@@ -206,49 +218,67 @@ func main() {
 			})
 
 			var dataCell uv.Cell
-			dataCell.Content = cup + data + cup
+			dataCell.Content = data + cup
 			t.SetCell(imgArea.Min.X, imgArea.Min.Y, &dataCell)
 		case kittyEncoding:
-			// Build Kitty graphics unicode place holders
 			const imgId = 31 // random id for kitty graphics
-			var fgSeq string
+			if !transmitKitty {
+				var buf bytes.Buffer
+				if err := ansi.EncodeKittyGraphics(&buf, img, &kitty.Options{
+					ID:               imgId,
+					Action:           kitty.TransmitAndPut,
+					Transmission:     kitty.Direct,
+					Format:           kitty.RGBA,
+					Size:             int(charmImgFileSize),
+					ImageWidth:       charmImgArea.Dx(),
+					ImageHeight:      charmImgArea.Dy(),
+					Columns:          imgArea.Dx(),
+					Rows:             imgArea.Dy(),
+					VirtualPlacement: true,
+				}); err != nil {
+					log.Fatalf("failed to encode image for Kitty Graphics: %v", err)
+				}
+
+				t.WriteString(buf.String()) //nolint:errcheck
+				transmitKitty = true
+			}
+
+			// Build Kitty graphics unicode place holders
+			var fg color.Color
 			var extra int
 			var r, g, b int
 			extra, r, g, b = imgId>>24&0xff, imgId>>16&0xff, imgId>>8&0xff, imgId&0xff
 
 			if r == 0 && g == 0 {
-				fgSeq = ansi.Style{}.ForegroundColor(ansi.IndexedColor(b)).String() //nolint:gosec
+				fg = ansi.IndexedColor(b)
 			} else {
-				fgSeq = ansi.Style{}.ForegroundColor(color.RGBA{
+				fg = color.RGBA{
 					R: uint8(r), //nolint:gosec
 					G: uint8(g), //nolint:gosec
 					B: uint8(b), //nolint:gosec
 					A: 0xff,
-				}).String()
+				}
 			}
-
-			var s strings.Builder
-			s.WriteString(ansi.ResetStyle)
 
 			for y := 0; y < imgArea.Dy(); y++ {
 				// As an optimization, we only write the fg color sequence id, and
 				// column-row data once on the first cell. The terminal will handle
 				// the rest.
-				s.WriteString(fgSeq)
-				s.WriteRune(kitty.Placeholder)
-				s.WriteRune(kitty.Diacritic(y))
-				s.WriteRune(kitty.Diacritic(0))
+				content := []rune{kitty.Placeholder, kitty.Diacritic(y), kitty.Diacritic(0)}
 				if extra > 0 {
-					s.WriteRune(kitty.Diacritic(extra))
+					content = append(content, kitty.Diacritic(extra))
 				}
-
+				t.SetCell(imgArea.Min.X, imgArea.Min.Y+y, &uv.Cell{
+					Style:   uv.Style{Fg: fg},
+					Content: string(content),
+					Width:   1,
+				})
 				for x := 1; x < imgArea.Dx(); x++ {
-					s.WriteRune(kitty.Placeholder)
-				}
-
-				s.WriteString(ansi.ResetStyle)
-				if y != imgArea.Dy()-1 {
-					s.WriteByte('\n')
+					t.SetCell(imgArea.Min.X+x, imgArea.Min.Y+y, &uv.Cell{
+						Style:   uv.Style{Fg: fg},
+						Content: string(kitty.Placeholder),
+						Width:   1,
+					})
 				}
 			}
 
