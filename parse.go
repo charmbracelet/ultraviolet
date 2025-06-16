@@ -515,6 +515,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 			kd == 1,    // Kd bKeyDown
 			uint32(cs), //nolint:gosec // Cs dwControlKeyState
 			rc,         // Rc wRepeatCount
+			nil,
 		)
 
 		if event == nil {

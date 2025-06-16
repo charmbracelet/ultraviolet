@@ -51,13 +51,19 @@ func (d *TerminalReader) handleConInput(
 
 	var evs []Event
 	for _, event := range events {
-		if e := d.SequenceParser.parseConInputEvent(event, &d.keyState, d.MouseMode); e != nil {
+		if e := d.SequenceParser.parseConInputEvent(event, &d.keyState, d.MouseMode, d.logger); e != nil {
 			if e == nil {
 				continue
 			}
 			if multi, ok := e.(MultiEvent); ok {
+				if d.logger != nil {
+					for _, ev := range multi {
+						d.logf("input: %T %v", ev, ev)
+					}
+				}
 				evs = append(evs, multi...)
 			} else {
+				d.logf("input: %T %v", e, e)
 				evs = append(evs, e)
 			}
 		}
@@ -66,12 +72,12 @@ func (d *TerminalReader) handleConInput(
 	return evs, nil
 }
 
-func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode) Event {
+func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
 	switch event.EventType {
 	case xwindows.KEY_EVENT:
 		kevent := event.KeyEvent()
 		return p.parseWin32InputKeyEvent(keyState, kevent.VirtualKeyCode, kevent.VirtualScanCode,
-			kevent.Char, kevent.KeyDown, kevent.ControlKeyState, kevent.RepeatCount)
+			kevent.Char, kevent.KeyDown, kevent.ControlKeyState, kevent.RepeatCount, logger)
 
 	case xwindows.WINDOW_BUFFER_SIZE_EVENT:
 		wevent := event.WindowBufferSizeEvent()
@@ -236,7 +242,7 @@ func peekConsoleInput(console windows.Handle, inputRecords []xwindows.InputRecor
 // an event from win32-input-mode. Otherwise, it's a key event from the Windows
 // Console API and needs a state to decode ANSI escape sequences and utf16
 // runes.
-func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16) (event Event) {
+func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
 	defer func() {
 		// Respect the repeat count.
 		if repeatCount > 1 {
@@ -277,6 +283,9 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 		// Zero means this event is either an escape code or a unicode
 		// codepoint.
 		if state != nil && state.ansiIdx == 0 && r != ansi.ESC {
+			if logger != nil {
+				logger.Printf("input: received unicode codepoint instead of sequence %q", r)
+			}
 			// This is a unicode codepoint.
 			baseCode = r
 			break
@@ -291,18 +300,25 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 				// ANSI escape code.
 				return nil
 			}
+			if r == ansi.ESC {
+				// We're expecting a closing String Terminator [ansi.ST].
+				return nil
+			}
 
-			n, Event := p.parseSequence(state.ansiBuf[:state.ansiIdx])
+			n, event := p.parseSequence(state.ansiBuf[:state.ansiIdx])
 			if n == 0 {
 				return nil
 			}
-
-			if _, ok := Event.(UnknownEvent); ok {
+			if _, ok := event.(UnknownEvent); ok {
 				return nil
 			}
 
+			if logger != nil {
+				logger.Printf("input: parsed sequence %q, %d bytes", state.ansiBuf[:n], n)
+			}
+
 			state.ansiIdx = 0
-			return Event
+			return event
 		}
 	case vkc == xwindows.VK_BACK:
 		baseCode = KeyBackspace
@@ -482,10 +498,10 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 	if !unicode.IsControl(r) {
 		rw := utf8.EncodeRune(utf8Buf[:], r)
 		keyCode, _ = utf8.DecodeRune(utf8Buf[:rw])
-		if cks == 0 ||
+		if unicode.IsPrint(keyCode) && (cks == 0 ||
 			cks == xwindows.SHIFT_PRESSED ||
 			cks == xwindows.CAPSLOCK_ON ||
-			altGr {
+			altGr) {
 			// If the control key state is 0, shift is pressed, or caps lock
 			// then the key event is a printable event i.e. [text] is not empty.
 			text = string(keyCode)

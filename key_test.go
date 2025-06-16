@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image/color"
 	"io"
 	"math/rand"
 	"reflect"
@@ -20,6 +21,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 	"github.com/charmbracelet/x/ansi/parser"
+	"github.com/lucasb-eyer/go-colorful"
 )
 
 var sequences = buildKeysTable(LegacyKeyEncoding(0), "dumb", true)
@@ -123,6 +125,17 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// OSC 11 with ST termination.
+		seqTest{
+			[]byte("\x1b]11;#123456\x1b\\"),
+			[]Event{BackgroundColorEvent{
+				Color: func() color.Color {
+					c, _ := colorful.Hex("#123456")
+					return c
+				}(),
+			}},
+		},
+
 		// Kitty Graphics response.
 		seqTest{
 			[]byte("\x1b_Ga=t;OK\x1b\\"),
