@@ -319,6 +319,8 @@ func main() {
 			// Windows, we would need to use [ansi.RequestWindowSizeWinOp] to
 			// get the pixel size.
 			pixSize = ev
+
+			displayImg()
 		case uv.WindowSizeEvent:
 			winSize = ev
 			imgCellW, imgCellH = imgCellSize()
@@ -329,6 +331,8 @@ func main() {
 				log.Fatalf("failed to resize program: %v", err)
 			}
 			t.Erase()
+
+			displayImg()
 		case uv.KeyPressEvent:
 			switch {
 			case ev.MatchStrings("q", "ctrl+c"):
@@ -342,9 +346,13 @@ func main() {
 			case ev.MatchStrings("right", "l"):
 				imgOffsetX++
 			}
+
+			displayImg()
 		case uv.MouseClickEvent:
 			imgOffsetX = ev.X - (imgCellW / 2)
 			imgOffsetY = ev.Y - (imgCellH / 2)
+
+			displayImg()
 		case uv.PrimaryDeviceAttributesEvent:
 			for _, attr := range ev {
 				if attr == 4 {
@@ -352,11 +360,15 @@ func main() {
 					break
 				}
 			}
+
+			displayImg()
 		case uv.TerminalVersionEvent:
 			switch {
 			case strings.Contains(string(ev), "iTerm"), strings.Contains(string(ev), "WezTerm"):
 				upgradeEnc(itermEncoding)
 			}
+
+			displayImg()
 		case uv.WindowOpEvent:
 			// The [ansi.RequestWindowSizeWinOp] request responds with a "4" or
 			// [ansi.ResizeWindowWinOp] first parameter.
@@ -368,10 +380,9 @@ func main() {
 			if ev.Options.ID == 31 {
 				upgradeEnc(kittyEncoding)
 			}
-		}
 
-		// Display the image.
-		displayImg()
+			displayImg()
+		}
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
