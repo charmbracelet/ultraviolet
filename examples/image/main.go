@@ -159,7 +159,9 @@ func main() {
 	var transmitKitty bool
 	var imgCellW, imgCellH int
 	var imgOffsetX, imgOffsetY int
+	var lastImgArea uv.Rectangle
 	fillStyle := uv.Style{Fg: ansi.IndexedColor(240)}
+	empty := uv.EmptyCell
 	displayImg := func() {
 		img := charmImg
 		imgArea := uv.Rect(
@@ -185,41 +187,9 @@ func main() {
 			blocks := mosaic.New().Width(imgCellW).Height(imgCellH).Scale(2)
 			ss := styledstring.New(blocks.Render(img))
 			ss.Draw(t, imgArea)
-		case sixelEncoding:
-			screen.FillArea(t, &uv.Cell{}, imgArea)
+		case sixelEncoding, itermEncoding:
+			screen.FillArea(t, &empty, imgArea)
 
-			var senc sixel.Encoder
-			var buf bytes.Buffer
-			senc.Encode(&buf, img)
-			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-
-			var dataCell uv.Cell
-			dataCell.Content = six + cup
-			t.SetCell(imgArea.Min.X, imgArea.Min.Y, &dataCell)
-		case itermEncoding:
-			screen.FillArea(t, &uv.Cell{}, imgArea)
-
-			// Now, we need to encode the image and place it in the first
-			// cell before moving the cursor to the correct position.
-			if charmImgB64 == nil {
-				// Encode the image to base64 for the first time.
-				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
-			}
-			t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-			data := ansi.ITerm2(iterm2.File{
-				Name:              "charm.jpg",
-				Width:             iterm2.Cells(imgArea.Dx()),
-				Height:            iterm2.Cells(imgArea.Dy()),
-				Inline:            true,
-				Content:           charmImgB64,
-				IgnoreAspectRatio: true,
-			})
-
-			var dataCell uv.Cell
-			dataCell.Content = data + cup
-			t.SetCell(imgArea.Min.X, imgArea.Min.Y, &dataCell)
 		case kittyEncoding:
 			const imgId = 31 // random id for kitty graphics
 			if !transmitKitty {
@@ -285,6 +255,48 @@ func main() {
 		}
 
 		t.Display() //nolint:errcheck
+
+		switch imgEnc {
+		case sixelEncoding:
+			var senc sixel.Encoder
+			var buf bytes.Buffer
+			senc.Encode(&buf, img)
+			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
+			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
+
+			if lastImgArea != imgArea {
+				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
+				t.WriteString(six) //nolint:errcheck
+				t.WriteString(cup) //nolint:errcheck
+			}
+		case itermEncoding:
+			// Now, we need to encode the image and place it in the first
+			// cell before moving the cursor to the correct position.
+			if charmImgB64 == nil {
+				// Encode the image to base64 for the first time.
+				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
+			}
+
+			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
+			data := ansi.ITerm2(iterm2.File{
+				Name:              "charm.jpg",
+				Width:             iterm2.Cells(imgArea.Dx()),
+				Height:            iterm2.Cells(imgArea.Dy()),
+				Inline:            true,
+				Content:           charmImgB64,
+				IgnoreAspectRatio: true,
+			})
+
+			if lastImgArea != imgArea {
+				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
+				t.WriteString(data) //nolint:errcheck
+				t.WriteString(cup)  //nolint:errcheck
+			}
+		}
+
+		t.Flush()
+
+		lastImgArea = imgArea
 	}
 
 	// Query image encoding support.
@@ -316,6 +328,7 @@ func main() {
 			if err := t.Resize(ev.Width, ev.Height); err != nil {
 				log.Fatalf("failed to resize program: %v", err)
 			}
+			t.Erase()
 		case uv.KeyPressEvent:
 			switch {
 			case ev.MatchStrings("q", "ctrl+c"):
@@ -369,4 +382,13 @@ func main() {
 	}
 
 	fmt.Println("image encoding:", imgEnc)
+}
+
+func init() {
+	f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	if err != nil {
+		log.Fatalf("failed to open log file: %v", err)
+	}
+
+	log.SetOutput(f)
 }
