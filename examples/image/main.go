@@ -198,7 +198,11 @@ func main() {
 
 			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
 			if lastCell != nil {
-				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + six
+				// Some terminals mess up the cursor position after drawing the
+				// image, so we need to move the cursor back to the correct
+				// position.
+				cup := ansi.CursorPosition(imgArea.Max.X+1, imgArea.Max.Y)
+				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + six + cup
 			}
 		case itermEncoding:
 			screen.FillArea(t, &empty, imgArea)
@@ -221,7 +225,11 @@ func main() {
 
 			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
 			if lastCell != nil {
-				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + data
+				// Some terminals mess up the cursor position after drawing the
+				// image, so we need to move the cursor back to the correct
+				// position.
+				cup := ansi.CursorPosition(imgArea.Max.X+1, imgArea.Max.Y)
+				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + data + cup
 			}
 
 		case kittyEncoding:
