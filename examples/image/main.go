@@ -178,6 +178,7 @@ func main() {
 		log.Printf("image area: %v", imgArea)
 
 		// Clear the screen.
+		screen.FillArea(t, &empty, lastImgArea)
 		fill := uv.Cell{Content: "/", Width: 1, Style: fillStyle}
 		screen.Fill(t, &fill)
 
@@ -187,8 +188,41 @@ func main() {
 			blocks := mosaic.New().Width(imgCellW).Height(imgCellH).Scale(2)
 			ss := styledstring.New(blocks.Render(img))
 			ss.Draw(t, imgArea)
-		case sixelEncoding, itermEncoding:
+		case sixelEncoding:
 			screen.FillArea(t, &empty, imgArea)
+
+			var senc sixel.Encoder
+			var buf bytes.Buffer
+			senc.Encode(&buf, img)
+			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
+
+			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
+			if lastCell != nil {
+				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + six
+			}
+		case itermEncoding:
+			screen.FillArea(t, &empty, imgArea)
+
+			// Now, we need to encode the image and place it in the first
+			// cell before moving the cursor to the correct position.
+			if charmImgB64 == nil {
+				// Encode the image to base64 for the first time.
+				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
+			}
+
+			data := ansi.ITerm2(iterm2.File{
+				Name:              "charm.jpg",
+				Width:             iterm2.Cells(imgArea.Dx()),
+				Height:            iterm2.Cells(imgArea.Dy()),
+				Inline:            true,
+				Content:           charmImgB64,
+				IgnoreAspectRatio: true,
+			})
+
+			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
+			if lastCell != nil {
+				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + data
+			}
 
 		case kittyEncoding:
 			const imgId = 31 // random id for kitty graphics
@@ -258,40 +292,7 @@ func main() {
 
 		switch imgEnc {
 		case sixelEncoding:
-			var senc sixel.Encoder
-			var buf bytes.Buffer
-			senc.Encode(&buf, img)
-			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-
-			if lastImgArea != imgArea {
-				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-				t.WriteString(six) //nolint:errcheck
-				t.WriteString(cup) //nolint:errcheck
-			}
 		case itermEncoding:
-			// Now, we need to encode the image and place it in the first
-			// cell before moving the cursor to the correct position.
-			if charmImgB64 == nil {
-				// Encode the image to base64 for the first time.
-				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
-			}
-
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-			data := ansi.ITerm2(iterm2.File{
-				Name:              "charm.jpg",
-				Width:             iterm2.Cells(imgArea.Dx()),
-				Height:            iterm2.Cells(imgArea.Dy()),
-				Inline:            true,
-				Content:           charmImgB64,
-				IgnoreAspectRatio: true,
-			})
-
-			if lastImgArea != imgArea {
-				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-				t.WriteString(data) //nolint:errcheck
-				t.WriteString(cup)  //nolint:errcheck
-			}
 		}
 
 		t.Flush()
