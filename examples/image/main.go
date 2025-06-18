@@ -128,7 +128,14 @@ func main() {
 	}
 
 	// Check environment variables for supported encodings.
-	if termProg, ok := os.LookupEnv("TERM_PROGRAM"); ok {
+	var (
+		termType    = os.Getenv("TERM")
+		termProg    string
+		lcTerm      string
+		termVersion string
+		ok          bool
+	)
+	if termProg, ok = os.LookupEnv("TERM_PROGRAM"); ok {
 		if strings.Contains(termProg, "iTerm") ||
 			strings.Contains(termProg, "WezTerm") ||
 			strings.Contains(termProg, "mintty") ||
@@ -138,7 +145,7 @@ func main() {
 			strings.Contains(termProg, "rio") {
 			upgradeEnc(itermEncoding)
 		}
-		if lcTerm, ok := os.LookupEnv("LC_TERMINAL"); ok {
+		if lcTerm, ok = os.LookupEnv("LC_TERMINAL"); ok {
 			if strings.Contains(lcTerm, "iTerm") {
 				upgradeEnc(itermEncoding)
 			}
@@ -298,13 +305,6 @@ func main() {
 
 		t.Display() //nolint:errcheck
 
-		switch imgEnc {
-		case sixelEncoding:
-		case itermEncoding:
-		}
-
-		t.Flush()
-
 		lastImgArea = imgArea
 	}
 
@@ -372,6 +372,7 @@ func main() {
 
 			displayImg()
 		case uv.TerminalVersionEvent:
+			termVersion = string(ev)
 			switch {
 			case strings.Contains(string(ev), "iTerm"), strings.Contains(string(ev), "WezTerm"):
 				upgradeEnc(itermEncoding)
@@ -386,6 +387,12 @@ func main() {
 				pixSize.Width = ev.Args[1]
 			}
 		case uv.KittyGraphicsEvent:
+			if strings.Contains(termType, "wezterm") ||
+				strings.Contains(termVersion, "WezTerm") ||
+				strings.Contains(termProg, "WezTerm") {
+				// WezTerm doesn't support Kitty Unicode Graphics
+				break
+			}
 			if ev.Options.ID == 31 {
 				upgradeEnc(kittyEncoding)
 			}
