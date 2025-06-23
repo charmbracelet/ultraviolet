@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/uv"
 	"github.com/charmbracelet/uv/component/styledstring"
+	"github.com/charmbracelet/uv/screen"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -21,16 +22,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Make sure we restore the terminal to its original state
-	// before we exit. We don't care about errors here, but you
-	// can handle them if you want.
-	defer t.Restore() //nolint:errcheck
-
 	// Enter the alternate screen buffer
 	t.EnterAltScreen()
-	// Make sure we leave the alternate screen buffer
-	// when we are done with our program.
-	defer t.ExitAltScreen()
 
 	// Create a new program
 	// Start the program
@@ -61,9 +54,9 @@ func main() {
 		// Display the frame with the styled string
 		// We want the component to occupy the given area which is the
 		// entire screen because we're using the alternate screen buffer.
-		uv.FillArea(t, &uv.Cell{
+		screen.FillArea(t, &uv.Cell{
 			Content: " ",
-			Style:   uv.Style{Bg: ansi.Red},
+			Style:   uv.Style{Fg: ansi.Red},
 		}, fixed)
 		// We will use the StyledString component to simplify displaying
 		// text on the screen.

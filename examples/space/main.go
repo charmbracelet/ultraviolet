@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/uv"
+	"github.com/charmbracelet/uv/screen"
 )
 
 func setupColors(width, height int) [][]color.Color {
@@ -106,7 +107,7 @@ LOOP:
 
 			frameCount++
 			fpsFrameCount++
-			uv.Clear(t)
+			screen.Clear(t)
 
 			// Title
 			uv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).

@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/uv"
 	"github.com/charmbracelet/uv/component/styledstring"
+	"github.com/charmbracelet/uv/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
@@ -78,7 +79,7 @@ Press any key to continue...`
 		midArea := uv.Rect(x, y, helpW, helpH)
 		if show {
 			// Save the area under the help to restore it later.
-			prevHelpBuf = uv.CloneArea(t, midArea)
+			prevHelpBuf = screen.CloneArea(t, midArea)
 			helpComp.Draw(t, midArea)
 		} else if prevHelpBuf != nil {
 			// Restore saved area under the help.
@@ -88,7 +89,7 @@ Press any key to continue...`
 	}
 
 	clearScreen := func() {
-		uv.Clear(t)
+		screen.Clear(t)
 		t.Display()
 	}
 
@@ -173,7 +174,7 @@ Press any key to continue...`
 			case ev.MatchStrings("ctrl+c"):
 				cancel()
 			case ev.MatchString("alt+esc"):
-				pen.Style.Reset()
+				pen.Style = uv.Style{}
 				pen.Content = defaultChar
 				fallthrough
 			case ev.MatchString("esc"):
@@ -188,7 +189,7 @@ Press any key to continue...`
 				}
 				r, rw := utf8.DecodeRuneInString(text)
 				if rw == 1 && unicode.IsDigit(r) {
-					pen.Style.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
+					pen.Style = pen.Style.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
 					break
 				}
 				pen.Content = text

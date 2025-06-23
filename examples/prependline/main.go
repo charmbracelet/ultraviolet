@@ -7,6 +7,7 @@ import (
 	"math/rand"
 
 	"github.com/charmbracelet/uv"
+	"github.com/charmbracelet/uv/screen"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -42,7 +43,8 @@ func main() {
 	}
 
 	var st uv.Style
-	st.Background(ansi.Red).Foreground(ansi.Black)
+	bg := 1
+	st = st.Background(ansi.BasicColor(bg)).Foreground(ansi.Black)
 	display := func() {
 		// This is the program display. It takes a function that receives a
 		// [uv.Frame]. The frame contains the last displayed buffer, cursor
@@ -53,7 +55,7 @@ func main() {
 		const hw = "Hello, World!"
 		bg := uv.EmptyCell
 		bg.Style = st
-		uv.Fill(t, &bg)
+		screen.Fill(t, &bg)
 		for i, r := range hw {
 			t.SetCell(i, 0, &uv.Cell{
 				Content: string(r),
@@ -96,9 +98,14 @@ func main() {
 		// Handle events here
 		switch ev := ev.(type) {
 		case uv.KeyPressEvent:
-			if ev.MatchStrings("q", "ctrl+c") {
+			switch {
+			case ev.MatchStrings("q", "ctrl+c"):
 				cancel()
+			case ev.MatchStrings("A"):
+				t.PrependString("Shift + A pressed")
 			}
+
+			st = st.Background(ansi.BasicColor(rand.Intn(16)))
 		case uv.WindowSizeEvent:
 			t.Resize(ev.Width, frameHeight)
 			t.Erase()
