@@ -39,7 +39,7 @@ func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	// Clear the area before drawing.
 	for y := area.Min.Y; y < area.Max.Y; y++ {
 		for x := area.Min.X; x < area.Max.X; x++ {
-			buf.SetCell(x, y, nil) //nolint:errcheck
+			buf.SetCell(x, y, nil)
 		}
 	}
 	str := s.Text
@@ -50,19 +50,31 @@ func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	printString(buf, ansi.GraphemeWidth, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
 }
 
-// Bounds returns the bounds of the styled string. This is the rectangle
-// that contains the entire styled string, including all lines and cells.
-func (s *StyledString) Bounds() Rectangle {
-	var w, h int
+// Height returns the number of lines in the styled string. This is the number
+// of lines that the styled string will occupy when rendered to the screen.
+func (s *StyledString) Height() int {
+	return strings.Count(s.Text, "\n") + 1
+}
+
+// UnicodeWidth returns the cells width of the widest line in the styled string
+// using the [ansi.GraphemeWidth] method.
+func (s *StyledString) UnicodeWidth() int {
+	return s.width(ansi.GraphemeWidth)
+}
+
+// WcWidth returns the cells width of the widest line in the styled string
+// using the [ansi.WcWidth] method.
+func (s *StyledString) WcWidth() int {
+	return s.width(ansi.WcWidth)
+}
+
+func (s *StyledString) width(m ansi.Method) int {
 	lines := strings.Split(s.Text, "\n")
-	h = len(lines)
+	var w int
 	for _, l := range lines {
-		width := ansi.StringWidth(l)
-		if width > w {
-			w = width
-		}
+		w = max(w, m.StringWidth(l))
 	}
-	return Rect(0, 0, w, h)
+	return w
 }
 
 // printString draws a string starting at the given position.
