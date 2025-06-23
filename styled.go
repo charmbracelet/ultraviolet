@@ -59,22 +59,30 @@ func (s *StyledString) Height() int {
 // UnicodeWidth returns the cells width of the widest line in the styled string
 // using the [ansi.GraphemeWidth] method.
 func (s *StyledString) UnicodeWidth() int {
-	return s.width(ansi.GraphemeWidth)
+	w, _ := s.widthHeight(ansi.GraphemeWidth)
+	return w
 }
 
 // WcWidth returns the cells width of the widest line in the styled string
 // using the [ansi.WcWidth] method.
 func (s *StyledString) WcWidth() int {
-	return s.width(ansi.WcWidth)
+	w, _ := s.widthHeight(ansi.WcWidth)
+	return w
 }
 
-func (s *StyledString) width(m ansi.Method) int {
+func (s *StyledString) widthHeight(m ansi.Method) (w, h int) {
 	lines := strings.Split(s.Text, "\n")
-	var w int
+	h = len(lines)
 	for _, l := range lines {
 		w = max(w, m.StringWidth(l))
 	}
-	return w
+	return
+}
+
+// Bounds returns the minimum area that can contain the whole styled string.
+func (s *StyledString) Bounds() Rectangle {
+	w, h := s.widthHeight(ansi.GraphemeWidth)
+	return Rect(0, 0, w, h)
 }
 
 // printString draws a string starting at the given position.
