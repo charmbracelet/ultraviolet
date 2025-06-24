@@ -1,11 +1,11 @@
 package uv
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/cancelreader"
 )
 
@@ -53,7 +53,7 @@ type TerminalReader struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	buf [256]byte // do we need a larger buffer?
+	buf []byte // buffer to hold the read data.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
@@ -156,16 +156,17 @@ func (d *TerminalReader) readEvents(evs []Event) (int, error) {
 		return 0, err
 	}
 
-	nb, err := d.rd.Read(d.buf[:])
+	var readBuf [256]byte
+	nb, err := d.rd.Read(readBuf[:])
 	if err != nil {
 		return 0, err //nolint:wrapcheck
 	}
 
 	var events []Event
-	buf := d.buf[:nb]
+	buf := append(d.buf, readBuf[:nb]...) // append the new data to the buffer
 
 	// Lookup table first
-	if bytes.HasPrefix(buf, []byte{'\x1b'}) {
+	if len(buf) > 0 && buf[0] == ansi.ESC {
 		if k, ok := d.table[string(buf)]; ok {
 			d.logf("input: %q", buf)
 			return copy(evs, []Event{KeyPressEvent(k)}), nil

@@ -423,14 +423,15 @@ func TestReadLongInput(t *testing.T) {
 
 	var Events []Event
 	for {
-		events, err := drv.ReadEvents()
+		var events [256]Event
+		n, err := drv.ReadEvents(events[:])
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			t.Fatalf("unexpected input error: %v", err)
 		}
-		Events = append(Events, events...)
+		Events = append(Events, events[:n]...)
 	}
 
 	if !reflect.DeepEqual(expect, Events) {
@@ -688,6 +689,14 @@ func TestReadInput(t *testing.T) {
 				t.Fatalf("unexpected message list length: got %d, expected %d\n  got: %#v\n  expected: %#v\n", len(Events), len(td.out), Events, td.out)
 			}
 
+			if len(td.out) != len(Events) {
+				t.Fatalf("expected %d events, got %d: %s", len(td.out), len(Events), buf.String())
+			}
+			for i, e := range Events {
+				if !reflect.DeepEqual(td.out[i], e) {
+					t.Errorf("expected event %d to be %T %v, got %T %v", i, td.out[i], td.out[i], e, e)
+				}
+			}
 			if !reflect.DeepEqual(td.out, Events) {
 				t.Fatalf("expected:\n%#v\ngot:\n%#v", td.out, Events)
 			}
@@ -718,10 +727,11 @@ func testReadInputs(t *testing.T, input io.Reader) []Event {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var events []Event
-		events, inputErr = dr.ReadEvents()
+		var events [256]Event
+		var n int
+		n, inputErr = dr.ReadEvents(events[:])
 	out:
-		for _, ev := range events {
+		for _, ev := range events[:n] {
 			select {
 			case EventsC <- ev:
 			case <-ctx.Done():
@@ -1440,4 +1450,21 @@ func TestKeyMatchString(t *testing.T) {
 			}
 		})
 	}
+}
+
+type stringSliceReader struct {
+	s []string
+	i int
+}
+
+func (r *stringSliceReader) Read(p []byte) (n int, err error) {
+	if r.i >= len(r.s) {
+		return 0, io.EOF
+	}
+	n = copy(p, r.s[r.i])
+	r.i++
+	if n < len(r.s[r.i-1]) {
+		return n, nil
+	}
+	return n, nil
 }
