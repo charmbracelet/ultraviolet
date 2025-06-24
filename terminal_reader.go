@@ -151,14 +151,14 @@ func (d *TerminalReader) logf(format string, v ...interface{}) {
 	d.logger.Printf(format, v...)
 }
 
-func (d *TerminalReader) readEvents() ([]Event, error) {
+func (d *TerminalReader) readEvents(evs []Event) (int, error) {
 	if err := d.Start(); err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	nb, err := d.rd.Read(d.buf[:])
 	if err != nil {
-		return nil, err //nolint:wrapcheck
+		return 0, err //nolint:wrapcheck
 	}
 
 	var events []Event
@@ -168,8 +168,7 @@ func (d *TerminalReader) readEvents() ([]Event, error) {
 	if bytes.HasPrefix(buf, []byte{'\x1b'}) {
 		if k, ok := d.table[string(buf)]; ok {
 			d.logf("input: %q", buf)
-			events = append(events, KeyPressEvent(k))
-			return events, nil
+			return copy(evs, []Event{KeyPressEvent(k)}), nil
 		}
 	}
 
@@ -220,5 +219,5 @@ func (d *TerminalReader) readEvents() ([]Event, error) {
 		i += nb
 	}
 
-	return events, nil
+	return copy(evs, events), nil
 }

@@ -20,12 +20,12 @@ import (
 // ReadEvents reads input events from the terminal. It returns a slice of
 // events. The events are parsed from the input buffer and translated into
 // input events that can be used by applications to handle user input.
-func (d *TerminalReader) ReadEvents() ([]Event, error) {
-	events, err := d.handleConInput(readConsoleInput)
+func (d *TerminalReader) ReadEvents(events []Event) (int, error) {
+	evs, err := d.handleConInput(readConsoleInput)
 	if errors.Is(err, errNotConInputReader) {
-		return d.readEvents()
+		return d.readEvents(events)
 	}
-	return events, err
+	return copy(events, evs), err
 }
 
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")

@@ -40,12 +40,13 @@ func (t *TerminalInputReceiver) ReceiveEvents(ctx context.Context, events chan<-
 		defer close(t.readLoopDone)
 	})
 
+	var evs [256]Event
 	for {
-		evs, err := t.rd.ReadEvents()
+		n, err := t.rd.ReadEvents(evs[:])
 		if err != nil {
 			return err
 		}
-		for _, ev := range evs {
+		for _, ev := range evs[:n] {
 			select {
 			case <-ctx.Done():
 				return nil
