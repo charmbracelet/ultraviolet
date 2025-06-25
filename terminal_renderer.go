@@ -1199,8 +1199,8 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty && i < newHeight; i++ {
-			if newbuf.Touched == nil || i >= len(newbuf.Touched) || newbuf.Touched[i] != nil ||
-				newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1 {
+			if newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
+				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
 				changedLines++
 			}
