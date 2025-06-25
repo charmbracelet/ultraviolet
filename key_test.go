@@ -454,6 +454,73 @@ func TestParseSequence(t *testing.T) {
 	}
 }
 
+func TestSplitReads(t *testing.T) {
+	expect := []Event{
+		KeyPressEvent{Code: 'a', Text: "a"},
+		KeyPressEvent{Code: 'b', Text: "b"},
+		KeyPressEvent{Code: 'c', Text: "c"},
+		KeyPressEvent{Code: KeyUp},
+		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
+		FocusEvent{},
+		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
+		BlurEvent{},
+		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
+		KeyPressEvent{Code: KeyUp},
+		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
+		FocusEvent{},
+	}
+	inputs := []string{
+		"abc",
+		"\x1b[A",
+		"\x1b[<0;33",
+		";17M",
+		"\x1b[I",
+		"\x1b",
+		"[",
+		"<",
+		"0",
+		";",
+		"3",
+		"3",
+		";",
+		"1",
+		"7",
+		"M",
+		"\x1b[O",
+		"\x1b[",
+		"<0;3",
+		"3;17M",
+		"\x1b[A\x1b[",
+		"<0;33;17M\x1b[",
+		"<0;33;17M\x1b[I",
+	}
+
+	drv := NewTerminalReader(&stringSliceReader{s: inputs}, "dumb")
+	drv.SetLogger(TLogger{t})
+	if err := drv.Start(); err != nil {
+		t.Fatalf("unexpected error starting terminal reader: %v", err)
+	}
+
+	var evs []Event
+	var err error
+	var n int
+	for {
+		var events [256]Event
+		n, err = drv.ReadEvents(events[:])
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("unexpected input error: %v", err)
+		}
+		evs = append(evs, events[:n]...)
+	}
+
+	if !reflect.DeepEqual(expect, evs) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, evs)
+	}
+}
+
 func TestReadLongInput(t *testing.T) {
 	expect := make([]Event, 1000)
 	for i := 0; i < 1000; i++ {
@@ -462,21 +529,22 @@ func TestReadLongInput(t *testing.T) {
 	input := strings.Repeat("a", 1000)
 	drv := NewTerminalReader(strings.NewReader(input), "dumb")
 
-	var Events []Event
+	var events [256]Event
+	var n int
+	var err error
 	for {
 		var events [256]Event
-		n, err := drv.ReadEvents(events[:])
+		n, err = drv.ReadEvents(events[:])
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			t.Fatalf("unexpected input error: %v", err)
 		}
-		Events = append(Events, events[:n]...)
 	}
 
-	if !reflect.DeepEqual(expect, Events) {
-		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, Events)
+	if !reflect.DeepEqual(expect, events[:n]) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events[:n])
 	}
 }
 
@@ -609,9 +677,9 @@ func TestReadInput(t *testing.T) {
 			},
 		},
 		{
-			"CSI?----X?",
-			[]byte{'\x1b', '[', '-', '-', '-', '-', 'X'},
-			[]Event{UnknownCsiEvent([]byte{'\x1b', '[', '-', '-', '-', '-', 'X'})},
+			"CSI?-X?",
+			[]byte{'\x1b', '[', '-', 'X'},
+			[]Event{UnknownEvent("\x1b[-X")},
 		},
 		// Powershell sequences.
 		{
@@ -712,7 +780,7 @@ func TestReadInput(t *testing.T) {
 	}
 
 	for i, td := range testData {
-		t.Run(fmt.Sprintf("%d: %s", i, td.keyname), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d: %s", i+1, td.keyname), func(t *testing.T) {
 			Events := testReadInputs(t, bytes.NewReader(td.in))
 			var buf strings.Builder
 			for i, Event := range Events {
@@ -762,7 +830,7 @@ func testReadInputs(t *testing.T, input io.Reader) []Event {
 	dr := NewTerminalReader(input, "dumb")
 
 	// The messages we're consuming.
-	EventsC := make(chan Event)
+	eventsc := make(chan Event)
 
 	// Start the reader in the background.
 	wg.Add(1)
@@ -774,30 +842,30 @@ func testReadInputs(t *testing.T, input io.Reader) []Event {
 	out:
 		for _, ev := range events[:n] {
 			select {
-			case EventsC <- ev:
+			case eventsc <- ev:
 			case <-ctx.Done():
 				break out
 			}
 		}
-		EventsC <- nil
+		eventsc <- nil
 	}()
 
-	var Events []Event
+	var events []Event
 loop:
 	for {
 		select {
-		case Event := <-EventsC:
-			if Event == nil {
+		case ev := <-eventsc:
+			if ev == nil {
 				// end of input marker for the test.
 				break loop
 			}
-			Events = append(Events, Event)
+			events = append(events, ev)
 		case <-time.After(2 * time.Second):
 			t.Errorf("timeout waiting for input event")
 			break loop
 		}
 	}
-	return Events
+	return events
 }
 
 // randTest defines the test input and expected output for a sequence
@@ -1203,7 +1271,7 @@ func TestParseX10MouseDownEvent(t *testing.T) {
 		tc := tt[i]
 
 		t.Run(tc.name, func(t *testing.T) {
-			actual := parseX10MouseEvent(tc.buf)
+			actual := parseX10MouseEvent(tc.buf[3], tc.buf[4], tc.buf[5])
 
 			if tc.expected != actual {
 				t.Fatalf("expected %#v but got %#v",
@@ -1508,4 +1576,12 @@ func (r *stringSliceReader) Read(p []byte) (n int, err error) {
 		return n, nil
 	}
 	return n, nil
+}
+
+type TLogger struct {
+	testing.TB
+}
+
+func (l TLogger) Printf(format string, args ...interface{}) {
+	l.Logf(format, args...)
 }

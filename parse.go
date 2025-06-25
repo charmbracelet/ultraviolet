@@ -253,16 +253,16 @@ func (p *SequenceParser) parseSequence(buf []byte) (n int, Event Event) {
 		return p.parseSs3(buf)
 	case ansi.DCS:
 		return p.parseDcs(buf)
+	case ansi.SOS:
+		return p.parseStTerminated(ansi.SOS, 'X', nil)(buf)
 	case ansi.CSI:
 		return p.parseCsi(buf)
 	case ansi.OSC:
 		return p.parseOsc(buf)
-	case ansi.APC:
-		return p.parseApc(buf)
 	case ansi.PM:
 		return p.parseStTerminated(ansi.PM, '^', nil)(buf)
-	case ansi.SOS:
-		return p.parseStTerminated(ansi.SOS, 'X', nil)(buf)
+	case ansi.APC:
+		return p.parseApc(buf)
 	default:
 		if b <= ansi.US || b == ansi.DEL || b == ansi.SP {
 			return 1, p.parseControl(b)
@@ -472,7 +472,8 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 		if i+3 > len(b) {
 			return i, UnknownCsiEvent(b[:i])
 		}
-		return i + 3, parseX10MouseEvent(append(b[:i], b[i:i+3]...))
+		cb, cx, cy := b[i], b[i+1], b[i+2]
+		return i + 3, parseX10MouseEvent(cb, cx, cy)
 	case 'y' | '$'<<parser.IntermedShift:
 		// Report Mode (DECRPM)
 		mode, _, ok := pa.Param(0, -1)
@@ -1450,7 +1451,7 @@ func parseSGRMouseEvent(cmd ansi.Cmd, params ansi.Params) Event {
 	}
 	release := cmd.Final() == 'm'
 	b, _, _ := params.Param(0, 0)
-	mod, btn, _, isMotion := parseMouseButton(b)
+	mod, btn, _, isMotion := parseMouseButton(byte(b))
 
 	// (1,1) is the upper left. We subtract 1 to normalize it to (0,0).
 	x--
@@ -1481,19 +1482,17 @@ const x10MouseByteOffset = 32
 //	ESC [M Cb Cx Cy
 //
 // See: http://www.xfree86.org/current/ctlseqs.html#Mouse%20Tracking
-func parseX10MouseEvent(buf []byte) Event {
-	v := buf[3:6]
-	b := int(v[0])
-	if b >= x10MouseByteOffset {
+func parseX10MouseEvent(cb, cx, cy byte) Event {
+	if cb >= x10MouseByteOffset {
 		// XXX: b < 32 should be impossible, but we're being defensive.
-		b -= x10MouseByteOffset
+		cb -= x10MouseByteOffset
 	}
 
-	mod, btn, isRelease, isMotion := parseMouseButton(b)
+	mod, btn, isRelease, isMotion := parseMouseButton(cb)
 
 	// (1,1) is the upper left. We subtract 1 to normalize it to (0,0).
-	x := int(v[1]) - x10MouseByteOffset - 1
-	y := int(v[2]) - x10MouseByteOffset - 1
+	x := int(cx) - x10MouseByteOffset - 1
+	y := int(cy) - x10MouseByteOffset - 1
 
 	m := Mouse{X: x, Y: y, Button: btn, Mod: mod}
 	if isWheel(m.Button) {
@@ -1507,7 +1506,7 @@ func parseX10MouseEvent(buf []byte) Event {
 }
 
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates
-func parseMouseButton(b int) (mod KeyMod, btn MouseButton, isRelease bool, isMotion bool) {
+func parseMouseButton(b byte) (mod KeyMod, btn MouseButton, isRelease bool, isMotion bool) {
 	// mouse bit shifts
 	const (
 		bitShift  = 0b0000_0100

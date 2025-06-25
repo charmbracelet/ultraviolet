@@ -3,11 +3,11 @@
 
 package uv
 
-// ReadEvents reads input events from the terminal. It takes a slice of [Event]
-// as an argument that will be filled with the read events. It returns the
-// number of events read and an error if any occurred during reading.
-func (d *TerminalReader) ReadEvents(events []Event) (int, error) {
-	return d.readEvents(events)
+// ReadEvents reads input events from the terminal. It returns a slice of
+// events. The events are parsed from the input buffer and translated into
+// input events that can be used by applications to handle user input.
+func (d *TerminalReader) ReadEvents(evs []Event) (int, error) {
+	return d.readEvents(evs)
 }
 
 // parseWin32InputKeyEvent parses a Win32 input key events. This function is
