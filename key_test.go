@@ -125,6 +125,47 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// ESC [ [ansi.CSI]
+		seqTest{
+			[]byte("\x1b["),
+			[]Event{KeyPressEvent{Code: '[', Mod: ModAlt}},
+		},
+		// ESC ] [ansi.OSC]
+		seqTest{
+			[]byte("\x1b]"),
+			[]Event{KeyPressEvent{Code: ']', Mod: ModAlt}},
+		},
+		// ESC ^ [ansi.PM]
+		seqTest{
+			[]byte("\x1b^"),
+			[]Event{KeyPressEvent{Code: '^', Mod: ModAlt}},
+		},
+		// ESC _ [ansi.APC]
+		seqTest{
+			[]byte("\x1b_"),
+			[]Event{KeyPressEvent{Code: '_', Mod: ModAlt}},
+		},
+		// ESC p
+		seqTest{
+			[]byte("\x1bp"),
+			[]Event{KeyPressEvent{Code: 'p', Mod: ModAlt}},
+		},
+		// ESC P [ansi.DCS]
+		seqTest{
+			[]byte("\x1bP"),
+			[]Event{KeyPressEvent{Code: 'P', Mod: ModShift | ModAlt}},
+		},
+		// ESC x
+		seqTest{
+			[]byte("\x1bx"),
+			[]Event{KeyPressEvent{Code: 'x', Mod: ModAlt}},
+		},
+		// ESC X [ansi.SOS]
+		seqTest{
+			[]byte("\x1bX"),
+			[]Event{KeyPressEvent{Code: 'X', Mod: ModShift | ModAlt}},
+		},
+
 		// OSC 11 with ST termination.
 		seqTest{
 			[]byte("\x1b]11;#123456\x1b\\"),

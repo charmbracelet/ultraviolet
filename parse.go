@@ -280,7 +280,7 @@ func (p *SequenceParser) parseSequence(buf []byte) (n int, Event Event) {
 func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+[ key
-		return 2, KeyPressEvent{Text: string(rune(b[1])), Mod: ModAlt}
+		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
 	}
 
 	var cmd ansi.Cmd
@@ -786,6 +786,15 @@ func (p *SequenceParser) parseOsc(b []byte) (int, Event) {
 // parseStTerminated parses a control sequence that gets terminated by a ST character.
 func (p *SequenceParser) parseStTerminated(intro8, intro7 byte, fn func([]byte) Event) func([]byte) (int, Event) {
 	return func(b []byte) (int, Event) {
+		if len(b) == 2 && b[0] == ansi.ESC {
+			switch intro8 {
+			case ansi.SOS:
+				return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModShift | ModAlt}
+			case ansi.PM, ansi.APC:
+				return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
+			}
+		}
+
 		var i int
 		if b[i] == intro8 || b[i] == ansi.ESC {
 			i++
@@ -836,7 +845,7 @@ func (p *SequenceParser) parseStTerminated(intro8, intro7 byte, fn func([]byte) 
 func (p *SequenceParser) parseDcs(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+P key
-		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
+		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModShift | ModAlt}
 	}
 
 	var params [16]ansi.Param
