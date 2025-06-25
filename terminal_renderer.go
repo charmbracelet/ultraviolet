@@ -1070,7 +1070,7 @@ func (s *TerminalRenderer) clearUpdate(newbuf *Buffer) {
 		s.clearBelow(newbuf, blank, 0)
 	}
 	nonEmpty = s.clearBottom(newbuf, nonEmpty)
-	for i := 0; i < nonEmpty; i++ {
+	for i := 0; i < nonEmpty && i < newbuf.Height(); i++ {
 		s.transformLine(newbuf, i)
 	}
 }
