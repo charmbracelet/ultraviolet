@@ -1,4 +1,4 @@
-# Ultra Violet
+# Ultraviolet
 
 <p>
     <a href="https://github.com/charmbracelet/uv/releases"><img src="https://img.shields.io/github/release/charmbracelet/uv.svg" alt="Latest Release"></a>
@@ -6,11 +6,12 @@
     <a href="https://github.com/charmbracelet/uv/actions"><img src="https://github.com/charmbracelet/uv/actions/workflows/build.yml/badge.svg" alt="Build Status"></a>
 </p>
 
-> **Caution**: This project is in early development and may change significantly.
+> [!CAUTION]
+> This project is in very early development and may change significantly at any moment. Expect no API guarantees as of now.
 
-UV, or Ultra Violet, is a Golang library for building cell-based terminal user
-interfaces and programs. It provides a toolkit for creating terminal
-applications with a focus on simplicity and ease of use.
+Ultraviolet, or UV, is a Go library for cell-based terminal applications. It
+provides a toolkit for creating terminal applications with a focus on
+simplicity and ease of use.
 
 ## Installation
 
