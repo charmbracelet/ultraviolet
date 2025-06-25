@@ -21,6 +21,62 @@ func (e UnknownEvent) String() string {
 	return fmt.Sprintf("%q", string(e))
 }
 
+// UnknownCsiEvent represents an unknown CSI (Control Sequence Introducer) event.
+type UnknownCsiEvent string
+
+// String returns a string representation of the unknown CSI event.
+func (e UnknownCsiEvent) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
+// UnknownSs3Event represents an unknown SS3 (Single Shift 3) event.
+type UnknownSs3Event string
+
+// String returns a string representation of the unknown SS3 event.
+func (e UnknownSs3Event) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
+// UnknownOscEvent represents an unknown OSC (Operating System Command) event.
+type UnknownOscEvent string
+
+// String returns a string representation of the unknown OSC event.
+func (e UnknownOscEvent) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
+// UnknownDcsEvent represents an unknown DCS (Device Control String) event.
+type UnknownDcsEvent string
+
+// String returns a string representation of the unknown DCS event.
+func (e UnknownDcsEvent) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
+// UnknownSosEvent represents an unknown SOS (Start of String) event.
+type UnknownSosEvent string
+
+// String returns a string representation of the unknown SOS event.
+func (e UnknownSosEvent) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
+// UnknownPmEvent represents an unknown PM (Privacy Message) event.
+type UnknownPmEvent string
+
+// String returns a string representation of the unknown PM event.
+func (e UnknownPmEvent) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
+// UnknownApcEvent represents an unknown APC (Application Program Command) event.
+type UnknownApcEvent string
+
+// String returns a string representation of the unknown APC event.
+func (e UnknownApcEvent) String() string {
+	return fmt.Sprintf("%q", string(e))
+}
+
 // MultiEvent represents multiple messages event.
 type MultiEvent []Event
 

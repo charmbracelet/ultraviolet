@@ -470,7 +470,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 	case 'M':
 		// Handle X10 mouse
 		if i+3 > len(b) {
-			return i, UnknownEvent(b[:i])
+			return i, UnknownCsiEvent(b[:i])
 		}
 		return i + 3, parseX10MouseEvent(append(b[:i], b[i:i+3]...))
 	case 'y' | '$'<<parser.IntermedShift:
@@ -487,13 +487,13 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 	case 'u':
 		// Kitty keyboard protocol & CSI u (fixterms)
 		if paramsLen == 0 {
-			return i, UnknownEvent(b[:i])
+			return i, UnknownCsiEvent(b[:i])
 		}
 		return i, parseKittyKeyboard(pa)
 	case '_':
 		// Win32 Input Mode
 		if paramsLen != 6 {
-			return i, UnknownEvent(b[:i])
+			return i, UnknownCsiEvent(b[:i])
 		}
 
 		vrc, _, _ := pa.Param(5, 0)
@@ -519,13 +519,13 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 		)
 
 		if event == nil {
-			return i, UnknownEvent(b[:])
+			return i, UnknownCsiEvent(b[:])
 		}
 
 		return i, event
 	case '@', '^', '~':
 		if paramsLen == 0 {
-			return i, UnknownEvent(b[:i])
+			return i, UnknownCsiEvent(b[:i])
 		}
 
 		param, _, _ := pa.Param(0, 0)
@@ -535,7 +535,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 			case 27:
 				// XTerm modifyOtherKeys 2
 				if paramsLen != 3 {
-					return i, UnknownEvent(b[:i])
+					return i, UnknownCsiEvent(b[:i])
 				}
 				return i, parseXTermModifyOtherKeys(pa)
 			case 200:
@@ -628,7 +628,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 
 		return i, winop
 	}
-	return i, UnknownEvent(b[:i])
+	return i, UnknownCsiEvent(b[:i])
 }
 
 // parseSs3 parses a SS3 sequence.
@@ -686,7 +686,7 @@ func (p *SequenceParser) parseSs3(b []byte) (int, Event) {
 	case 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y':
 		k = KeyPressEvent{Code: KeyKpMultiply + rune(gl-'j')}
 	default:
-		return i, UnknownEvent(b[:i])
+		return i, UnknownSs3Event(b[:i])
 	}
 
 	// Handle weird SS3 <modifier> Func
@@ -780,7 +780,7 @@ func (p *SequenceParser) parseOsc(b []byte) (int, Event) {
 		return i, ClipboardEvent{Selection: sel, Content: string(bts)}
 	}
 
-	return i, UnknownEvent(b[:i])
+	return i, UnknownOscEvent(b[:i])
 }
 
 // parseStTerminated parses a control sequence that gets terminated by a ST character.
@@ -820,7 +820,16 @@ func (p *SequenceParser) parseStTerminated(intro8, intro7 byte, fn func([]byte) 
 			}
 		}
 
-		return i, UnknownEvent(b[:i])
+		switch intro8 {
+		case ansi.PM:
+			return i, UnknownPmEvent(b[:i])
+		case ansi.SOS:
+			return i, UnknownSosEvent(b[:i])
+		case ansi.APC:
+			return i, UnknownApcEvent(b[:i])
+		default:
+			return i, UnknownEvent(b[:i])
+		}
 	}
 }
 
@@ -935,7 +944,7 @@ func (p *SequenceParser) parseDcs(b []byte) (int, Event) {
 		return i, TerminalVersionEvent(b[start:end])
 	}
 
-	return i, UnknownEvent(b[:i])
+	return i, UnknownDcsEvent(b[:i])
 }
 
 func (p *SequenceParser) parseApc(b []byte) (int, Event) {

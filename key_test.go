@@ -79,7 +79,7 @@ func buildBaseSeqTests() []seqTest {
 		seqTest{
 			[]byte{'\x1b', '[', '-', '-', '-', '-', 'X'},
 			[]Event{
-				UnknownEvent([]byte{'\x1b', '[', '-', '-', '-', '-', 'X'}),
+				UnknownCsiEvent([]byte{'\x1b', '[', '-', '-', '-', '-', 'X'}),
 			},
 		},
 		// A lone space character.
@@ -570,7 +570,7 @@ func TestReadInput(t *testing.T) {
 		{
 			"CSI?----X?",
 			[]byte{'\x1b', '[', '-', '-', '-', '-', 'X'},
-			[]Event{UnknownEvent([]byte{'\x1b', '[', '-', '-', '-', '-', 'X'})},
+			[]Event{UnknownCsiEvent([]byte{'\x1b', '[', '-', '-', '-', '-', 'X'})},
 		},
 		// Powershell sequences.
 		{
