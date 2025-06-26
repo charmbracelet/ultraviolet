@@ -190,11 +190,6 @@ func (d *TerminalReader) receiveEvents(ctx context.Context, events chan<- Event)
 	}
 
 	for {
-		if len(d.buf) > 0 || d.esc.Load() {
-			d.timedout.Store(false)
-			d.timeout.Reset(d.Interval)
-		}
-
 		closingFunc := func() error {
 			// If we're closing, make sure to send any remaining events even if
 			// they are incomplete.
@@ -254,6 +249,7 @@ func (d *TerminalReader) run() {
 		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
 		if esc {
 			d.esc.Store(true)
+			d.timeout.Reset(d.Interval)
 		}
 
 		d.notify <- readBuf[:n]
@@ -302,6 +298,7 @@ LOOP:
 						ansi.ESC, ansi.CSI, ansi.OSC, ansi.DCS, ansi.APC, ansi.SOS, ansi.PM,
 					}, d.buf[0]) {
 						d.esc.Store(true)
+						d.timeout.Reset(d.Interval)
 					}
 				}
 				// If this is the entire buffer, we can break and assume this
