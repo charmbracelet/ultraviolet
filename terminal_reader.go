@@ -40,8 +40,8 @@ type win32InputState struct {
 var ErrReaderNotStarted = fmt.Errorf("reader not started")
 
 // DefaultTerminalReaderInterval is the default interval at which the
-// TerminalReader will process ESC sequences. It is set to 10 milliseconds.
-const DefaultTerminalReaderInterval = 10 * time.Millisecond
+// TerminalReader will process ESC sequences. It is set to 50 milliseconds.
+const DefaultTerminalReaderInterval = 50 * time.Millisecond
 
 // TerminalReader represents an input event reader. It reads input events and
 // parses escape sequences from the terminal input buffer and translates them
@@ -168,20 +168,19 @@ func (d *TerminalReader) Close() (rErr error) {
 	if !d.started {
 		return ErrReaderNotStarted
 	}
+	if err := d.rd.Close(); err != nil {
+		return fmt.Errorf("failed to close reader: %w", err)
+	}
+	d.closed = true
 	d.started = false
 	d.closeEvents()
-	close(d.notify) // close the notify channel to stop the reader
-	defer func() {
-		if rErr != nil {
-			d.closed = true
-		}
-	}()
-	return d.rd.Close() //nolint:wrapcheck
+	return nil
 }
 
 func (d *TerminalReader) closeEvents() {
 	d.closeOnce.Do(func() {
-		close(d.close) // signal the reader to close
+		close(d.close)  // signal the reader to close
+		close(d.notify) // close the notify channel to stop the reader
 	})
 }
 
@@ -243,6 +242,9 @@ func (d *TerminalReader) run() {
 			d.closeEvents()
 			return
 		}
+		if d.closed {
+			return
+		}
 
 		d.logf("input: %q", readBuf[:n])
 		// This handles small inputs that start with an ESC like:
@@ -256,15 +258,17 @@ func (d *TerminalReader) run() {
 		if esc {
 			d.esc.Store(true)
 		}
+
 		d.notify <- readBuf[:n]
 	}
 }
 
 func (d *TerminalReader) sendEvents(events chan<- Event) {
 	// Lookup table first
-	if d.lookup && len(d.buf) > 0 && d.buf[0] == ansi.ESC {
+	if d.lookup && d.timedout.Load() && len(d.buf) > 0 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
 			events <- KeyPressEvent(k)
+			d.buf = d.buf[:0]
 			return
 		}
 	}
@@ -293,7 +297,7 @@ LOOP:
 			}
 
 			d.logf("unknown sequence: %q", d.buf[:nb])
-			if !d.timedout.Load() {
+			if d.esc.Load() && !d.timedout.Load() {
 				d.logf("timed out, skipping unknown sequence: %q", d.buf[:nb])
 				if nb > 0 {
 					// This handles unknown escape sequences that might be incomplete.
