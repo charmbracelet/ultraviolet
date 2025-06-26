@@ -110,7 +110,7 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 		Interval: DefaultTerminalReaderInterval,
 		r:        r,
 		term:     termType,
-		lookup:   false, // Use lookup table by default.
+		lookup:   true, // Use lookup table by default.
 	}
 }
 
