@@ -215,15 +215,12 @@ func (d *TerminalReader) receiveEvents(ctx context.Context, events chan<- Event)
 		case <-d.timeout.C:
 			d.timedout.Store(true)
 			d.sendEvents(events)
-			if d.esc.Load() {
-				d.esc.Store(false)
-			}
+			d.esc.Store(false)
 		case buf := <-d.notify:
 			d.buf = append(d.buf, buf...)
 			if !d.esc.Load() {
 				d.sendEvents(events)
 				d.timedout.Store(false)
-				d.esc.Store(false)
 			}
 		}
 	}
