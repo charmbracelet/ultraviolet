@@ -290,7 +290,6 @@ LOOP:
 
 			d.logf("unknown sequence: %q", d.buf[:nb])
 			if !d.timedout.Load() {
-				d.logf("timed out, skipping unknown sequence: %q", d.buf[:nb])
 				if nb > 0 {
 					// This handles unknown escape sequences that might be incomplete.
 					if slices.Contains([]byte{
@@ -304,6 +303,7 @@ LOOP:
 				// is an incomplete sequence.
 				break LOOP
 			}
+			d.logf("timed out, skipping unknown sequence: %q", d.buf[:nb])
 		case PasteStartEvent:
 			d.paste = []byte{}
 		case PasteEndEvent:
