@@ -989,7 +989,7 @@ func (p *SequenceParser) parseUtf8(b []byte) (int, Event) {
 	}
 
 	c := b[0]
-	if c <= ansi.US || c == ansi.DEL || c == ansi.SP {
+	if c <= ansi.US || c == ansi.DEL {
 		// Control codes get handled by parseControl
 		return 1, p.parseControl(c)
 	} else if c > ansi.US && c < ansi.DEL {

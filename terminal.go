@@ -62,7 +62,6 @@ type Terminal struct {
 
 	// Terminal input stream.
 	rd           *TerminalReader
-	rdr          *TerminalInputReceiver
 	wrdr         *WinChReceiver
 	im           *InputManager
 	err          error
@@ -117,7 +116,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.SetColorProfile(colorprofile.Detect(out, env))
 	t.rd = NewTerminalReader(t.in, t.termtype)
 	t.rd.MouseMode = &t.mouseMode
-	t.rdr = NewTerminalInputReceiver(t.rd)
 	t.readLoopDone = make(chan struct{})
 	t.evch = make(chan Event, 1)
 	t.once = sync.Once{}
@@ -793,7 +791,7 @@ func (t *Terminal) Start() error {
 		return fmt.Errorf("error starting terminal: %w", err)
 	}
 
-	recvs := []InputReceiver{t.rdr}
+	recvs := []InputReceiver{t.rd}
 	if runtime.GOOS != "windows" {
 		t.wrdr = &WinChReceiver{t.winchTty}
 		if err := t.wrdr.Start(); err != nil {
@@ -895,9 +893,6 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 
 	// Cancel the input reader.
 	t.rd.Cancel()
-	if err := t.rdr.Shutdown(ctx); err != nil {
-		return fmt.Errorf("error shutting down input reader: %w", err)
-	}
 
 	// Consume any pending events or listen for the context to be done.
 	for {
