@@ -251,7 +251,7 @@ func (d *TerminalReader) run() {
 		// - "\x1bP" (alt+shift+p key press)
 		// - "\x1bX" (alt+shift+X key press)
 		// - "\x1b_" (alt+_ key press)
-		esc := n > 0 && readBuf[0] == ansi.ESC
+		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
 		if esc {
 			d.esc.Store(true)
 		}
@@ -294,7 +294,7 @@ LOOP:
 			}
 
 			d.logf("unknown sequence: %q", d.buf[:nb])
-			if d.esc.Load() && !d.timedout.Load() {
+			if !d.timedout.Load() {
 				d.logf("timed out, skipping unknown sequence: %q", d.buf[:nb])
 				if nb > 0 {
 					// This handles unknown escape sequences that might be incomplete.
