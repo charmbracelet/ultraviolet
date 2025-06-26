@@ -189,19 +189,19 @@ func (d *TerminalReader) receiveEvents(ctx context.Context, events chan<- Event)
 		return ErrReaderNotStarted
 	}
 
-	for {
-		closingFunc := func() error {
-			// If we're closing, make sure to send any remaining events even if
-			// they are incomplete.
-			d.timedout.Store(true)
-			d.sendEvents(events)
-			err, ok := d.err.Load().(error)
-			if !ok {
-				return nil
-			}
-			return err
+	closingFunc := func() error {
+		// If we're closing, make sure to send any remaining events even if
+		// they are incomplete.
+		d.timedout.Store(true)
+		d.sendEvents(events)
+		err, ok := d.err.Load().(error)
+		if !ok {
+			return nil
 		}
+		return err
+	}
 
+	for {
 		select {
 		case <-ctx.Done():
 			return closingFunc()
