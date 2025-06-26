@@ -537,21 +537,19 @@ func TestReadLongInput(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	t.Cleanup(cancel)
 
+	var err error
 	var evs []Event
 	events := make(chan Event)
-	errc := make(chan error, 1)
 	go func() {
-		errc <- drv.ReceiveEvents(ctx, events)
+		err = drv.ReceiveEvents(ctx, events)
 		close(events)
-		close(errc)
-	}()
-	go func() {
-		for ev := range events {
-			evs = append(evs, ev)
-		}
 	}()
 
-	if err := <-errc; err != nil && !errors.Is(err, io.EOF) {
+	for ev := range events {
+		evs = append(evs, ev)
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("unexpected error receiving events: %v", err)
 	}
 
