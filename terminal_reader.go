@@ -179,8 +179,7 @@ func (d *TerminalReader) Close() (rErr error) {
 
 func (d *TerminalReader) closeEvents() {
 	d.closeOnce.Do(func() {
-		close(d.close)  // signal the reader to close
-		close(d.notify) // close the notify channel to stop the reader
+		close(d.close) // signal the reader to close
 	})
 }
 
