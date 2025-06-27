@@ -505,7 +505,7 @@ func TestSplitReads(t *testing.T) {
 	var evs []Event
 	events := make(chan Event)
 	go func() {
-		err = drv.ReceiveEvents(context.TODO(), events)
+		err = drv.ReceiveEvents(context.Background(), events)
 		close(events)
 	}()
 
@@ -534,7 +534,7 @@ func TestReadLongInput(t *testing.T) {
 		t.Fatalf("unexpected error starting terminal reader: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
 	var err error
@@ -826,7 +826,7 @@ func TestReadInput(t *testing.T) {
 func testReadInputs(t *testing.T, input io.Reader) []Event {
 	// We'll check that the input reader finishes at the end
 	// without error.
-	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	t.Cleanup(cancel)
 
 	dr := NewTerminalReader(input, "dumb")
