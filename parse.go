@@ -407,6 +407,18 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 			break
 		}
 		return i, ModifyOtherKeysEvent(val) //nolint:gosec
+	case 'n' | '?'<<parser.PrefixShift:
+		report, _, _ := pa.Param(0, -1)
+		darkLight, _, _ := pa.Param(1, -1)
+		switch report {
+		case 997: // [ansi.LightDarkReport]
+			switch darkLight {
+			case 1:
+				return i, DarkColorSchemeEvent{}
+			case 2:
+				return i, LightColorSchemeEvent{}
+			}
+		}
 	case 'I':
 		return i, FocusEvent{}
 	case 'O':

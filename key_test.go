@@ -124,6 +124,16 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Light/dark color scheme reports.
+		seqTest{
+			[]byte("\x1b[?997;1n"),
+			[]Event{DarkColorSchemeEvent{}},
+		},
+		seqTest{
+			[]byte("\x1b[?997;2n"),
+			[]Event{LightColorSchemeEvent{}},
+		},
+
 		// ESC [ [ansi.CSI]
 		seqTest{
 			[]byte("\x1b["),
