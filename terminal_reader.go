@@ -39,9 +39,9 @@ type win32InputState struct {
 // ErrReaderNotStarted is returned when the reader has not been started yet.
 var ErrReaderNotStarted = fmt.Errorf("reader not started")
 
-// DefaultTerminalReaderInterval is the default interval at which the
-// TerminalReader will process ESC sequences. It is set to 50 milliseconds.
-const DefaultTerminalReaderInterval = 50 * time.Millisecond
+// DefaultEscTimeout is the default timeout at which the [TerminalReader] will
+// process ESC sequences. It is set to 50 milliseconds.
+const DefaultEscTimeout = 50 * time.Millisecond
 
 // TerminalReader represents an input event reader. It reads input events and
 // parses escape sequences from the terminal input buffer and translates them
@@ -55,8 +55,14 @@ type TerminalReader struct {
 	// Windows Console API.
 	MouseMode *MouseMode
 
-	// Interval is the interval at which the reader will process ESC sequences.
-	Interval time.Duration
+	// Timeout is the escape character timeout duration. Most escape sequences
+	// start with an escape character [ansi.ESC] and are followed by one or
+	// more characters. If the next character is not received within this
+	// timeout, the reader will assume that the escape sequence is complete and
+	// will process the received characters as a complete escape sequence.
+	//
+	// By default, this is set to [DefaultEscTimeout] (50 milliseconds).
+	Timeout time.Duration
 
 	r     io.Reader
 	rd    cancelreader.CancelReader
@@ -107,10 +113,10 @@ type TerminalReader struct {
 //	}
 func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	return &TerminalReader{
-		Interval: DefaultTerminalReaderInterval,
-		r:        r,
-		term:     termType,
-		lookup:   true, // Use lookup table by default.
+		Timeout: DefaultEscTimeout,
+		r:       r,
+		term:    termType,
+		lookup:  true, // Use lookup table by default.
 	}
 }
 
@@ -136,7 +142,7 @@ func (d *TerminalReader) Start() (err error) {
 	}
 	d.started = true
 	d.esc.Store(false)
-	d.timeout = time.NewTimer(d.Interval)
+	d.timeout = time.NewTimer(d.Timeout)
 	d.notify = make(chan []byte)
 	d.close = make(chan struct{}, 1)
 	d.closeOnce = sync.Once{}
@@ -248,7 +254,7 @@ func (d *TerminalReader) run() {
 		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
 		if esc {
 			d.esc.Store(true)
-			d.timeout.Reset(d.Interval)
+			d.timeout.Reset(d.Timeout)
 		}
 
 		d.notify <- readBuf[:n]
@@ -296,7 +302,7 @@ LOOP:
 						ansi.ESC, ansi.CSI, ansi.OSC, ansi.DCS, ansi.APC, ansi.SOS, ansi.PM,
 					}, d.buf[0]) {
 						d.esc.Store(true)
-						d.timeout.Reset(d.Interval)
+						d.timeout.Reset(d.Timeout)
 					}
 				}
 				// If this is the entire buffer, we can break and assume this
