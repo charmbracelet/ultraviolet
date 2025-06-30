@@ -4,6 +4,7 @@
 package uv
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,15 +18,25 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ReadEvents reads input events from the terminal. It returns a slice of
-// events. The events are parsed from the input buffer and translated into
-// input events that can be used by applications to handle user input.
-func (d *TerminalReader) ReadEvents(events []Event) (int, error) {
-	evs, err := d.handleConInput(readConsoleInput)
-	if errors.Is(err, errNotConInputReader) {
-		return d.readEvents(events)
+// ReceiveEvents reads input events from the terminal and sends them to the
+// given event channel.
+func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
+	for {
+		evs, err := d.handleConInput(readConsoleInput)
+		if errors.Is(err, errNotConInputReader) {
+			return d.receiveEvents(ctx, events)
+		}
+		if err != nil {
+			return fmt.Errorf("read coninput events: %w", err)
+		}
+		for _, ev := range evs {
+			select {
+			case <-ctx.Done():
+				return nil
+			case events <- ev:
+			}
+		}
 	}
-	return copy(events, evs), err
 }
 
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
