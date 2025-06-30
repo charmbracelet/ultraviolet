@@ -618,6 +618,43 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 			break
 		}
 
+		switch param {
+		case 4: // Report Terminal pixel size.
+			if paramsLen == 3 {
+				height, _, hOk := pa.Param(1, 0)
+				width, _, wOk := pa.Param(2, 0)
+				if !hOk || !wOk {
+					break
+				}
+				return i, WindowSizeEvent{Width: width, Height: height}
+			}
+		case 6: // Report Terminal cell size.
+			if paramsLen == 3 {
+				height, _, hOk := pa.Param(1, 0)
+				width, _, wOk := pa.Param(2, 0)
+				if !hOk || !wOk {
+					break
+				}
+				return i, WindowPixelSizeEvent{Width: width, Height: height}
+			}
+		case 48: // In band terminal size report.
+			if paramsLen == 5 {
+				cellHeight, _, chOk := pa.Param(1, 0)
+				cellWidth, _, cwOk := pa.Param(2, 0)
+				pixelHeight, _, phOk := pa.Param(3, 0)
+				pixelWidth, _, pwOk := pa.Param(4, 0)
+				if !chOk || !cwOk || !phOk || !pwOk {
+					break
+				}
+				return i, MultiEvent{
+					WindowSizeEvent{Width: cellWidth, Height: cellHeight},
+					WindowPixelSizeEvent{Width: pixelWidth, Height: pixelHeight},
+				}
+			}
+		}
+
+		// Any other window operation event.
+
 		var winop WindowOpEvent
 		winop.Op = param
 		for j := 1; j < paramsLen; j++ {
