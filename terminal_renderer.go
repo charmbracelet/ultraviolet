@@ -120,7 +120,7 @@ func (v tFlag) Contains(c tFlag) bool {
 // Using these methods will queue the appropriate escape sequences to enter or
 // exit the alternate screen and show or hide the cursor respectively to be
 // flushed to the terminal.
-
+//
 // Use the [io.Writer] and [io.StringWriter] interfaces to queue custom
 // commands the renderer.
 //
