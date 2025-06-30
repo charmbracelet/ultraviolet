@@ -427,3 +427,7 @@ type ClipboardEvent struct {
 func (e ClipboardEvent) String() string {
 	return e.Content
 }
+
+// ignoredEvent represents a sequence event that is ignored by the terminal
+// reader. This is used to ignore certain sequences that can be canceled.
+type ignoredEvent string

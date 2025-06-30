@@ -487,6 +487,14 @@ func TestSplitReads(t *testing.T) {
 		"7",
 		"M",
 		"\x1b[O",
+		"\x1b",
+		"]",
+		"2",
+		";",
+		"a",
+		"b",
+		"c",
+		"\x1b",
 		"\x1b[",
 		"<0;3",
 		"3;17M",
@@ -565,6 +573,45 @@ func TestReadInput(t *testing.T) {
 		out     []Event
 	}
 	testData := []test{
+		{
+			"ignored osc esc",
+			[]byte("\x1b]11;#123456\x1b"),
+			[]Event(nil),
+		},
+		{
+			"ignored osc can",
+			[]byte("\x1b]11;#123456\x18"),
+			[]Event(nil),
+		},
+		{
+			"ignored osc sub",
+			[]byte("\x1b]11;#123456\x1a"),
+			[]Event(nil),
+		},
+		{
+			"ignored apc esc",
+			[]byte("\x1b_hello\x1b\x1b_abc\x1b\\\x1ba"),
+			[]Event{
+				UnknownApcEvent("\x1b_abc\x1b\\"),
+				KeyPressEvent{Code: 'a', Mod: ModAlt},
+			},
+		},
+		{
+			"alt+] alt+'",
+			[]byte("\x1b]\x1b'"),
+			[]Event{
+				KeyPressEvent{Code: ']', Mod: ModAlt},
+				KeyPressEvent{Code: '\'', Mod: ModAlt},
+			},
+		},
+		{
+			"alt+^ alt+&",
+			[]byte("\x1b^\x1b&"),
+			[]Event{
+				KeyPressEvent{Code: '^', Mod: ModAlt},
+				KeyPressEvent{Code: '&', Mod: ModAlt},
+			},
+		},
 		{
 			"a",
 			[]byte{'a'},

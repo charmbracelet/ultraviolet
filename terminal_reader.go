@@ -287,6 +287,8 @@ LOOP:
 
 		var isUnknownEvent bool
 		switch ev.(type) {
+		case ignoredEvent:
+			ev = nil // ignore this event
 		case UnknownEvent:
 			isUnknownEvent = true
 
