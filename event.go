@@ -269,6 +269,16 @@ type FocusEvent struct{}
 // This occurs when the terminal loses focus.
 type BlurEvent struct{}
 
+// DarkColorSchemeEvent is sent when the operating system is using a dark color
+// scheme. This is typically used to notify applications of the current or new
+// system color scheme.
+type DarkColorSchemeEvent struct{}
+
+// LightColorSchemeEvent is sent when the operating system is using a light color
+// scheme. This is typically used to notify applications of the current or new
+// system color scheme.
+type LightColorSchemeEvent struct{}
+
 // PasteEvent is an message that is emitted when a terminal receives pasted text
 // using bracketed-paste.
 type PasteEvent string
@@ -427,3 +437,7 @@ type ClipboardEvent struct {
 func (e ClipboardEvent) String() string {
 	return e.Content
 }
+
+// ignoredEvent represents a sequence event that is ignored by the terminal
+// reader. This is used to ignore certain sequences that can be canceled.
+type ignoredEvent string

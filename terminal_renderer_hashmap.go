@@ -32,6 +32,10 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		// rehash changed lines
 		for i := 0; i < height; i++ {
 			if newbuf.Touched == nil || newbuf.Touched[i] != nil {
+				// TODO: Investigate why this is needed. If we remove this
+				// line, scroll optimization does not work correctly. This
+				// should happen else where.
+				s.oldhash[i] = hash(s.curbuf.Line(i))
 				s.newhash[i] = hash(newbuf.Line(i))
 			}
 		}
@@ -60,12 +64,13 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		var idx int
 		for idx = 0; idx < len(s.hashtab) && s.hashtab[idx].value != 0; idx++ {
 			if s.hashtab[idx].value == hashval {
-				s.hashtab[idx].value = hashval // in case this is a new hash
-				s.hashtab[idx].oldcount++
-				s.hashtab[idx].oldindex = i
 				break
 			}
 		}
+
+		s.hashtab[idx].value = hashval // in case this is a new hash
+		s.hashtab[idx].oldcount++
+		s.hashtab[idx].oldindex = i
 	}
 	for i := 0; i < height; i++ {
 		hashval := s.newhash[i]
@@ -74,13 +79,14 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		var idx int
 		for idx = 0; idx < len(s.hashtab) && s.hashtab[idx].value != 0; idx++ {
 			if s.hashtab[idx].value == hashval {
-				s.hashtab[idx].value = hashval // in case this is a new hash
-				s.hashtab[idx].newcount++
-				s.hashtab[idx].newindex = i
-				s.oldnum[i] = newIndex // init old indices slice
 				break
 			}
 		}
+
+		s.hashtab[idx].value = hashval // in case this is a new hash
+		s.hashtab[idx].newcount++
+		s.hashtab[idx].newindex = i
+		s.oldnum[i] = newIndex // init old indices slice
 	}
 
 	// Mark line pair corresponding to unique hash pairs.
@@ -123,7 +129,7 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 	s.growHunks(newbuf)
 }
 
-// scrollOldhash
+// scrollOldhash scrolls the oldhash slice by 'n' lines between 'top' and 'bot'.
 func (s *TerminalRenderer) scrollOldhash(n, top, bot int) {
 	if len(s.oldhash) == 0 {
 		return

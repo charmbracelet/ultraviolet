@@ -1,8 +1,4 @@
-package border
-
-import (
-	"github.com/charmbracelet/uv"
-)
+package uv
 
 // NormalBorder returns a standard-type border with a normal weight and 90
 // degree corners.
@@ -150,8 +146,8 @@ func ASCIIBorder() Border {
 // Side represents a single border side with its properties.
 type Side struct {
 	Content string
-	uv.Style
-	uv.Link
+	Style
+	Link
 }
 
 // Border represents a border with its properties.
@@ -167,7 +163,7 @@ type Border struct {
 }
 
 // Style returns a new [Border] with the given style applied to all [Side]s.
-func (b Border) Style(style uv.Style) Border {
+func (b Border) Style(style Style) Border {
 	b.Top.Style = style
 	b.Bottom.Style = style
 	b.Left.Style = style
@@ -180,7 +176,7 @@ func (b Border) Style(style uv.Style) Border {
 }
 
 // Link returns a new [Border] with the given link applied to all [Side]s.
-func (b Border) Link(link uv.Link) Border {
+func (b Border) Link(link Link) Border {
 	b.Top.Link = link
 	b.Bottom.Link = link
 	b.Left.Link = link
@@ -193,10 +189,10 @@ func (b Border) Link(link uv.Link) Border {
 }
 
 // Draw draws the border around the given component.
-func (b *Border) Draw(scr uv.Screen, area uv.Rectangle) {
+func (b *Border) Draw(scr Screen, area Rectangle) {
 	for y := area.Min.Y; y < area.Max.Y; y++ {
 		for x := area.Min.X; x < area.Max.X; x++ {
-			var cell *uv.Cell
+			var cell *Cell
 			switch {
 			case y == area.Min.Y && x == area.Min.X:
 				cell = borderCell(scr, &b.TopLeft)
@@ -225,8 +221,8 @@ func (b *Border) Draw(scr uv.Screen, area uv.Rectangle) {
 	}
 }
 
-func borderCell(scr uv.Screen, b *Side) *uv.Cell {
-	c := uv.NewCell(scr.WidthMethod(), b.Content)
+func borderCell(scr Screen, b *Side) *Cell {
+	c := NewCell(scr.WidthMethod(), b.Content)
 	if c != nil {
 		c.Style = b.Style
 		c.Link = b.Link
