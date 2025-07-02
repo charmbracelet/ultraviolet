@@ -1,6 +1,6 @@
 module github.com/charmbracelet/ultraviolet
 
-go 1.24.2
+go 1.24.0
 
 require (
 	github.com/charmbracelet/colorprofile v0.3.1
