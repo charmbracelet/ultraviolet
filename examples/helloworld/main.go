@@ -5,9 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/charmbracelet/uv"
-	"github.com/charmbracelet/uv/component/styledstring"
-	"github.com/charmbracelet/uv/screen"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -60,7 +59,7 @@ func main() {
 		}, fixed)
 		// We will use the StyledString component to simplify displaying
 		// text on the screen.
-		ss := styledstring.New("Hello, World!")
+		ss := uv.NewStyledString("Hello, World!")
 		carea := fixed
 		carea.Min.X = (carea.Max.X / 2) - 6
 		carea.Min.Y = (carea.Max.Y / 2) - 1

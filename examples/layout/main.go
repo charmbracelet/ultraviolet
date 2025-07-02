@@ -9,9 +9,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss/v2"
-	"github.com/charmbracelet/uv"
-	"github.com/charmbracelet/uv/component/styledstring"
-	"github.com/charmbracelet/uv/screen"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/rivo/uniseg"
 )
@@ -395,7 +394,7 @@ func main() {
 
 	display := func() {
 		screen.Clear(t)
-		mainSs := styledstring.New(mainDoc)
+		mainSs := uv.NewStyledString(mainDoc)
 		mainSs.Draw(t, t.Bounds()) //nolint:errcheck
 		boxArea := uv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
 		box := uv.NewStyledString(dialogBoxStyle.Render(dialogUI))

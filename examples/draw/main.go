@@ -7,9 +7,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/uv"
-	"github.com/charmbracelet/uv/component/styledstring"
-	"github.com/charmbracelet/uv/screen"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
@@ -67,7 +66,7 @@ Press ctrl+h for this help message.
 
 Press any key to continue...`
 
-	helpComp := styledstring.New(help)
+	helpComp := uv.NewStyledString(help)
 	helpArea := helpComp.Bounds()
 	helpW, helpH := helpArea.Dx(), helpArea.Dy()
 

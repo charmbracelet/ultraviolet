@@ -8,8 +8,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/charmbracelet/uv"
-	"github.com/charmbracelet/uv/screen"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 )
 
 func setupColors(width, height int) [][]color.Color {

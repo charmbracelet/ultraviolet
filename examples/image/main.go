@@ -17,9 +17,8 @@ import (
 
 	_ "image/jpeg" // Register JPEG format
 
-	"github.com/charmbracelet/uv"
-	"github.com/charmbracelet/uv/component/styledstring"
-	"github.com/charmbracelet/uv/screen"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/iterm2"
 	"github.com/charmbracelet/x/ansi/kitty"
@@ -185,7 +184,7 @@ func main() {
 		switch imgEnc {
 		case blocksEncoding:
 			blocks := mosaic.New().Width(imgCellW).Height(imgCellH).Scale(2)
-			ss := styledstring.New(blocks.Render(img))
+			ss := uv.NewStyledString(blocks.Render(img))
 			ss.Draw(t, imgArea)
 		case sixelEncoding, itermEncoding:
 			screen.FillArea(t, &empty, imgArea)

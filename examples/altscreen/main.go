@@ -5,9 +5,8 @@ import (
 	"errors"
 	"log"
 
-	"github.com/charmbracelet/uv"
-	"github.com/charmbracelet/uv/component/styledstring"
-	"github.com/charmbracelet/uv/screen"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/muesli/cancelreader"
 )
 
@@ -53,7 +52,7 @@ func main() {
 			str = "This is using inline mode.\n" + help
 		}
 
-		ss := styledstring.New(str)
+		ss := uv.NewStyledString(str)
 		screen.Clear(t)
 		ss.Draw(t, uv.Rect(0, 0, width, frameHeight))
 		t.Display()

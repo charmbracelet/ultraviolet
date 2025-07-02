@@ -2,11 +2,11 @@ module examples
 
 go 1.24.2
 
-replace github.com/charmbracelet/uv => ../
+replace github.com/charmbracelet/ultraviolet => ../
 
 require (
 	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.1.0.20250603140710-946081c6f1a5
-	github.com/charmbracelet/uv v0.0.0-00010101000000-000000000000
+	github.com/charmbracelet/ultraviolet v0.0.0-00010101000000-000000000000
 	github.com/charmbracelet/x/ansi v0.9.3
 	github.com/charmbracelet/x/mosaic v0.0.0-20250509021451-13796e822d86
 	github.com/lucasb-eyer/go-colorful v1.2.0
