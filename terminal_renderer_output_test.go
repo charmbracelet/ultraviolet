@@ -15,13 +15,13 @@ func TestRendererOutput(t *testing.T) {
 		expected  []string
 	}{
 		{
-			name:     "Single Line",
+			name:     "scroll to bottom in inline mode",
 			input:    []string{"ABC", "XXX"},
 			expected: []string{"\x1b[?25l\rABC\r\n\n\n\n\x1b[?25h", "\x1b[?25l\x1b[4AXXX\x1b[?25h"},
 			relative: true,
 		},
 		{
-			name: "Scroll one line",
+			name: "scroll one line",
 			input: []string{
 				loremIpsum[0],
 				loremIpsum[0][10:],
@@ -37,7 +37,7 @@ func TestRendererOutput(t *testing.T) {
 			altscreen: true,
 		},
 		{
-			name: "Scroll two lines",
+			name: "scroll two lines",
 			input: []string{
 				loremIpsum[0],
 				loremIpsum[0][20:],
@@ -51,6 +51,33 @@ func TestRendererOutput(t *testing.T) {
 				"\x1b[?25l\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
 			},
 			altscreen: true,
+		},
+		{
+			name: "insert line in the middle",
+			input: []string{
+				"ABC\nDEF\nGHI\n",
+				"ABC\n\nDEF\nGHI",
+			},
+			wrap: []bool{
+				true,
+				true,
+			},
+			expected: []string{
+				"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JABC\r\nDEF\r\nGHI\x1b[?25h",
+				"\x1b[?25l\r\x1bM\x1b[L\x1b[?25h",
+			},
+			altscreen: true,
+		},
+		{
+			name: "erase until end of line",
+			input: []string{
+				"\nABCEFGHIJK",
+				"\nABCE      ",
+			},
+			expected: []string{
+				"\x1b[?25l\x1b[2;1HABCEFGHIJK\r\n\n\n\x1b[?25h",
+				"\x1b[?25l\x1b[2;5H\x1b[K\x1b[?25h",
+			},
 		},
 	}
 
