@@ -10,15 +10,47 @@ func TestRendererOutput(t *testing.T) {
 		name      string
 		input     []string
 		wrap      []bool
-		relative  []bool
-		altscreen []bool
+		relative  bool
+		altscreen bool
 		expected  []string
 	}{
 		{
 			name:     "Single Line",
 			input:    []string{"ABC", "XXX"},
 			expected: []string{"\x1b[?25l\rABC\r\n\n\n\n\x1b[?25h", "\x1b[?25l\x1b[4AXXX\x1b[?25h"},
-			relative: []bool{true},
+			relative: true,
+		},
+		{
+			name: "Scroll one line",
+			input: []string{
+				loremIpsum[0],
+				loremIpsum[0][10:],
+			},
+			wrap: []bool{
+				true,
+				true,
+			},
+			expected: []string{
+				"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
+				"\x1b[?25l\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
+			},
+			altscreen: true,
+		},
+		{
+			name: "Scroll two lines",
+			input: []string{
+				loremIpsum[0],
+				loremIpsum[0][20:],
+			},
+			wrap: []bool{
+				true,
+				true,
+			},
+			expected: []string{
+				"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
+				"\x1b[?25l\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
+			},
+			altscreen: true,
 		},
 	}
 
@@ -30,17 +62,15 @@ func TestRendererOutput(t *testing.T) {
 				"COLORTERM=truecolor", // Enable true color support
 			})
 
+			s.SetRelativeCursor(c.relative)
+			if c.altscreen {
+				s.EnterAltScreen()
+			}
+
+			scr := NewScreenBuffer(10, 5)
 			for i := range c.input {
 				buf.Reset()
 
-				if i < len(c.relative) {
-					s.SetRelativeCursor(c.relative[i])
-				}
-				if i < len(c.altscreen) && c.altscreen[i] {
-					s.EnterAltScreen()
-				}
-
-				scr := NewScreenBuffer(10, 5)
 				comp := NewStyledString(c.input[i])
 				if i < len(c.wrap) {
 					comp.Wrap = c.wrap[i]
@@ -54,68 +84,6 @@ func TestRendererOutput(t *testing.T) {
 				if buf.String() != c.expected[i] {
 					t.Errorf("Expected output[%d]:\n%q\nGot:\n%q", i, c.expected[i], buf.String())
 				}
-			}
-		})
-	}
-}
-
-func TestRendererScrollOptimizationOutput(t *testing.T) {
-	cases := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "Single Line",
-			input:    loremIpsum[0][10:], // skip the first 10 characters
-			expected: "\x1b[?25l\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
-		},
-		{
-			name:     "Two Lines",
-			input:    loremIpsum[0][20:], // skip the first 20 characters
-			expected: "\x1b[?25l\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
-		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			s := NewTerminalRenderer(&buf, []string{
-				"TERM=xterm-256color", // Enable 256 colors
-				"COLORTERM=truecolor", // Enable true color support
-			})
-
-			// Enable alternative screen buffer
-			s.EnterAltScreen()
-
-			scr := NewScreenBuffer(10, 5)
-			comp := NewStyledString(loremIpsum[0])
-			comp.Wrap = true
-			comp.Draw(scr, scr.Bounds())
-			s.Render(scr.Buffer)
-			if err := s.Flush(); err != nil {
-				t.Fatalf("Flush failed: %v", err)
-			}
-
-			expected := "\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h"
-			if buf.String() != expected {
-				t.Errorf("Expected output:\n%q\nGot:\n%q", expected, buf.String())
-			}
-
-			buf.Reset()
-			scr.Clear()
-
-			// Skip the first line to simulate scrolling
-			comp = NewStyledString(c.input)
-			comp.Wrap = true
-			comp.Draw(scr, scr.Bounds())
-			s.Render(scr.Buffer)
-			if err := s.Flush(); err != nil {
-				t.Fatalf("Flush failed: %v", err)
-			}
-
-			if buf.String() != c.expected {
-				t.Errorf("Expected output after scroll:\n%q\nGot:\n%q", c.expected, buf.String())
 			}
 		})
 	}
