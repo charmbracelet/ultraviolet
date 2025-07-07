@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -22,7 +23,7 @@ import (
 // given event channel.
 func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
 	for {
-		evs, err := d.handleConInput(readConsoleInput)
+		evs, err := d.handleConInput()
 		if errors.Is(err, errNotConInputReader) {
 			return d.receiveEvents(ctx, events)
 		}
@@ -41,22 +42,39 @@ func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event)
 
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
 
-func (d *TerminalReader) handleConInput(
-	finput func(windows.Handle, []xwindows.InputRecord) (uint32, error),
-) ([]Event, error) {
+func (d *TerminalReader) handleConInput() ([]Event, error) {
 	cc, ok := d.rd.(*conInputReader)
 	if !ok {
 		return nil, errNotConInputReader
 	}
 
-	// read up to 256 events, this is to allow for sequences events reported as
-	// key events.
-	var events [256]xwindows.InputRecord
-	_, err := finput(cc.conin, events[:])
-	if err != nil {
+	var (
+		events []xwindows.InputRecord
+		err    error
+	)
+	for {
+		// Peek up to 256 events, this is to allow for sequences events reported as
+		// key events.
+		events, err = peekNConsoleInputs(cc.conin, 256)
 		if cc.isCanceled() {
 			return nil, cancelreader.ErrCanceled
 		}
+		if err != nil {
+			return nil, fmt.Errorf("peek coninput events: %w", err)
+		}
+		if len(events) > 0 {
+			break
+		}
+
+		// Sleep for a bit to avoid busy waiting.
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	events, err = readNConsoleInputs(cc.conin, uint32(len(events)))
+	if cc.isCanceled() {
+		return nil, cancelreader.ErrCanceled
+	}
+	if err != nil {
 		return nil, fmt.Errorf("read coninput events: %w", err)
 	}
 
@@ -223,6 +241,16 @@ func highWord(data uint32) uint16 {
 	return uint16((data & 0xFFFF0000) >> 16) //nolint:gosec
 }
 
+func readNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.InputRecord, error) {
+	if maxEvents == 0 {
+		return nil, fmt.Errorf("maxEvents cannot be zero")
+	}
+
+	records := make([]xwindows.InputRecord, maxEvents)
+	n, err := readConsoleInput(console, records)
+	return records[:n], err
+}
+
 func readConsoleInput(console windows.Handle, inputRecords []xwindows.InputRecord) (uint32, error) {
 	if len(inputRecords) == 0 {
 		return 0, fmt.Errorf("size of input record buffer cannot be zero")
@@ -235,7 +263,6 @@ func readConsoleInput(console windows.Handle, inputRecords []xwindows.InputRecor
 	return read, err //nolint:wrapcheck
 }
 
-//nolint:unused
 func peekConsoleInput(console windows.Handle, inputRecords []xwindows.InputRecord) (uint32, error) {
 	if len(inputRecords) == 0 {
 		return 0, fmt.Errorf("size of input record buffer cannot be zero")
@@ -246,6 +273,16 @@ func peekConsoleInput(console windows.Handle, inputRecords []xwindows.InputRecor
 	err := xwindows.PeekConsoleInput(console, &inputRecords[0], uint32(len(inputRecords)), &read) //nolint:gosec
 
 	return read, err //nolint:wrapcheck
+}
+
+func peekNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.InputRecord, error) {
+	if maxEvents == 0 {
+		return nil, fmt.Errorf("maxEvents cannot be zero")
+	}
+
+	records := make([]xwindows.InputRecord, maxEvents)
+	n, err := peekConsoleInput(console, records)
+	return records[:n], err
 }
 
 // parseWin32InputKeyEvent parses a single key event from either the Windows
