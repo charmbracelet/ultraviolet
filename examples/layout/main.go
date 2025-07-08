@@ -366,9 +366,15 @@ func main() {
 	}
 
 	t := uv.DefaultTerminal()
+	// Set terminal to raw mode to read input events.
+	if err := t.MakeRaw(); err != nil {
+		log.Fatalf("making raw: %v", err)
+	}
 	if err := t.Start(); err != nil {
 		log.Fatalf("starting program: %v", err)
 	}
+
+	t.SetLogger(log.Default())
 
 	physicalWidth, _, err := t.GetSize()
 	if err != nil {
@@ -402,11 +408,6 @@ func main() {
 		t.Display()
 	}
 
-	// Set terminal to raw mode to read input events.
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("making raw: %v", err)
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -423,6 +424,7 @@ func main() {
 		case uv.MouseClickEvent:
 			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
 		case uv.KeyPressEvent:
+			log.Printf("%T %q %q", ev, ev.String(), ev.Keystroke())
 			switch {
 			case ev.MatchStrings("ctrl+c", "q"):
 				cancel() // This will exit the loop.
