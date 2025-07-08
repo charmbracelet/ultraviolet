@@ -55,14 +55,15 @@ type TerminalReader struct {
 	// Windows Console API.
 	MouseMode *MouseMode
 
-	// Timeout is the escape character timeout duration. Most escape sequences
-	// start with an escape character [ansi.ESC] and are followed by one or
-	// more characters. If the next character is not received within this
-	// timeout, the reader will assume that the escape sequence is complete and
-	// will process the received characters as a complete escape sequence.
+	// EscTimeout is the escape character timeout duration. Most escape
+	// sequences start with an escape character [ansi.ESC] and are followed by
+	// one or more characters. If the next character is not received within
+	// this timeout, the reader will assume that the escape sequence is
+	// complete and will process the received characters as a complete escape
+	// sequence.
 	//
 	// By default, this is set to [DefaultEscTimeout] (50 milliseconds).
-	Timeout time.Duration
+	EscTimeout time.Duration
 
 	r     io.Reader
 	rd    cancelreader.CancelReader
@@ -113,10 +114,10 @@ type TerminalReader struct {
 //	}
 func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	return &TerminalReader{
-		Timeout: DefaultEscTimeout,
-		r:       r,
-		term:    termType,
-		lookup:  true, // Use lookup table by default.
+		EscTimeout: DefaultEscTimeout,
+		r:          r,
+		term:       termType,
+		lookup:     true, // Use lookup table by default.
 	}
 }
 
@@ -142,7 +143,7 @@ func (d *TerminalReader) Start() (err error) {
 	}
 	d.started = true
 	d.esc.Store(false)
-	d.timeout = time.NewTimer(d.Timeout)
+	d.timeout = time.NewTimer(d.EscTimeout)
 	d.notify = make(chan []byte)
 	d.close = make(chan struct{}, 1)
 	d.closeOnce = sync.Once{}
@@ -255,7 +256,7 @@ func (d *TerminalReader) run() {
 		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
 		if esc {
 			d.esc.Store(true)
-			d.timeout.Reset(d.Timeout)
+			d.timeout.Reset(d.EscTimeout)
 		}
 
 		d.notify <- readBuf[:n]
@@ -305,7 +306,7 @@ LOOP:
 						ansi.ESC, ansi.CSI, ansi.OSC, ansi.DCS, ansi.APC, ansi.SOS, ansi.PM,
 					}, d.buf[0]) {
 						d.esc.Store(true)
-						d.timeout.Reset(d.Timeout)
+						d.timeout.Reset(d.EscTimeout)
 					}
 				}
 				// If this is the entire buffer, we can break and assume this
