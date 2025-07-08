@@ -86,6 +86,7 @@ type TerminalReader struct {
 	// prevent	multiple calls to the Close() method.
 	closed    bool
 	started   bool          // started indicates whether the reader has been started.
+	runOnce   sync.Once     // runOnce is used to ensure that the reader is only started once.
 	close     chan struct{} // close is a channel used to signal the reader to close.
 	closeOnce sync.Once
 	notify    chan []byte // notify is a channel used to notify the reader of new input events.
@@ -132,11 +133,9 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 // lookup table for key sequences if it is not already set. This function
 // should be called before reading input events.
 func (d *TerminalReader) Start() (err error) {
-	if d.rd == nil {
-		d.rd, err = newCancelreader(d.r)
-		if err != nil {
-			return err
-		}
+	d.rd, err = newCancelreader(d.r)
+	if err != nil {
+		return err
 	}
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
@@ -147,7 +146,7 @@ func (d *TerminalReader) Start() (err error) {
 	d.notify = make(chan []byte)
 	d.close = make(chan struct{}, 1)
 	d.closeOnce = sync.Once{}
-	go d.run()
+	d.runOnce = sync.Once{}
 	return nil
 }
 
@@ -194,6 +193,11 @@ func (d *TerminalReader) receiveEvents(ctx context.Context, events chan<- Event)
 	if !d.started {
 		return ErrReaderNotStarted
 	}
+
+	// Start the reader loop if it hasn't been started yet.
+	d.runOnce.Do(func() {
+		go d.run()
+	})
 
 	closingFunc := func() error {
 		// If we're closing, make sure to send any remaining events even if
