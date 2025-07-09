@@ -104,20 +104,20 @@ func main() {
 		}
 
 		// Special case for the before last bar
-		subBarOffset := botBarWidth / 3
+		const specialRow = 5
 		subBarWidth := barWidth / 3
-		for j := 0; j < 3; j++ {
-			subBar := uv.Rect(4*botBarWidth+j*(subBarWidth)+subBarOffset-1, botRow.Min.Y, subBarWidth, botRow.Max.Y)
+		for i := 0; i < 3; i++ {
+			bar := uv.Rect(specialRow*barWidth+i*subBarWidth, botRow.Min.Y, subBarWidth, botRow.Max.Y)
 			cell := uv.EmptyCell
-			switch j {
+			switch i {
 			case 0:
 				cell.Style.Bg = fullBlack
 			case 1:
-				cell.Style.Bg = black
+				continue
 			case 2:
 				cell.Style.Bg = lightBlack
 			}
-			t.FillArea(&cell, subBar)
+			t.FillArea(&cell, bar)
 		}
 
 		if err := t.Display(); err != nil {
