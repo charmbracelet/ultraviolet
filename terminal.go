@@ -44,8 +44,7 @@ type Terminal struct {
 	inTtyState  *term.State
 	outTty      term.File
 	outTtyState *term.State
-	winchTty    term.File // The terminal to receive window size changes from.
-	started     bool      // Indicates if the terminal has been started.
+	started     bool // Indicates if the terminal has been started.
 
 	// Terminal type, screen and buffer.
 	termtype            string            // The $TERM type.
@@ -727,11 +726,6 @@ func (t *Terminal) Start() error {
 		return ErrNotTerminal
 	}
 
-	t.winchTty = t.inTty
-	if t.winchTty == nil {
-		t.winchTty = t.outTty
-	}
-
 	// Get the initial terminal size.
 	var err error
 	t.size.Width, t.size.Height, err = t.GetSize()
@@ -793,9 +787,20 @@ func (t *Terminal) Start() error {
 		return fmt.Errorf("error starting terminal: %w", err)
 	}
 
-	recvs := []InputReceiver{t.rd}
+	var winchTty term.File
+	if runtime.GOOS == isWindows {
+		// On Windows, we need to use the console output buffer to get the
+		// window size.
+		winchTty = t.outTty
+	} else {
+		winchTty = t.inTty
+		if winchTty == nil {
+			winchTty = t.outTty
+		}
+	}
+	recvs := []InputReceiver{t.rd, &InitialSizeReceiver{winchTty}}
 	if runtime.GOOS != isWindows {
-		t.wrdr = &WinChReceiver{t.winchTty}
+		t.wrdr = &WinChReceiver{winchTty}
 		if err := t.wrdr.Start(); err != nil {
 			return fmt.Errorf("error starting window size receiver: %w", err)
 		}
