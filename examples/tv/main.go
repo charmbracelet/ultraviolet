@@ -125,7 +125,6 @@ func main() {
 		}
 	}
 
-	display()
 	for ev := range t.Events(ctx) {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
