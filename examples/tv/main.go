@@ -103,7 +103,7 @@ func main() {
 			t.FillArea(&cell, bar)
 		}
 
-		// Special case for the last bar
+		// Special case for the before last bar
 		subBarOffset := botBarWidth / 3
 		subBarWidth := barWidth / 3
 		for j := 0; j < 3; j++ {
