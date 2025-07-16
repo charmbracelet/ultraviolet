@@ -135,7 +135,7 @@ func printString[T []byte | string](
 					// Print the cell to the screen
 					cell.Style = style
 					cell.Link = link
-					s.SetCell(x, y, &cell) //nolint:errcheck
+					s.SetCell(x, y, &cell)
 					x += width
 				}
 
@@ -169,7 +169,7 @@ func printString[T []byte | string](
 
 	// Make sure to set the last cell if it's not empty.
 	if !cell.IsZero() {
-		s.SetCell(x, y, &cell) //nolint:errcheck
+		s.SetCell(x, y, &cell)
 		cell = Cell{}
 	}
 }
