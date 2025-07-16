@@ -91,7 +91,7 @@ type TerminalReader struct {
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
-	keyState win32InputState //nolint:all
+	keyState win32InputState
 
 	// This indicates whether the reader is closed or not. It is used to
 	// prevent	multiple calls to the Close() method.
@@ -107,6 +107,12 @@ type TerminalReader struct {
 	err       atomic.Value // err is the last error encountered by the reader.
 
 	logger Logger // The logger to use for debugging.
+}
+
+// This is to silence the linter warning about the [win32InputState] not being
+// used.
+var _ any = &TerminalReader{
+	keyState: win32InputState{},
 }
 
 // NewTerminalReader returns a new input event reader. The reader reads input
