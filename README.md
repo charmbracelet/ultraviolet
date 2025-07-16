@@ -11,12 +11,14 @@
 > [!CAUTION]
 > This project is in very early development and may change significantly at any moment. Expect no API guarantees as of now.
 
-Ultraviolet is a set of of primitives for manipulating terminal emulators with
-a focus on terminal user interfaces (TUIs). It provides a set of tools and
+Ultraviolet is a set of primitives for manipulating terminal emulators with a
+focus on terminal user interfaces (TUIs). It provides a set of tools and
 abstractions for interactive terminal applications that can handle user input
 and display dynamic, cell-based content.
 
-[Ultraviolet is not yet licensed.](https://github.com/charmbracelet/ultraviolet/raw/main/LICENSE)
+## License
+
+[MIT](./LICENSE)
 
 ---
 
