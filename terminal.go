@@ -743,6 +743,8 @@ func (t *Terminal) SetTitle(title string) {
 // This won't affect [Terminal.Size] or the terminal size, but it will resize
 // the screen buffer used by the terminal.
 func (t *Terminal) Resize(width, height int) error {
+	// We need to reset the touched lines buffer to match the new height.
+	t.buf.Touched = nil
 	t.buf.Resize(width, height)
 	t.scr.Resize(width, height)
 	return nil
