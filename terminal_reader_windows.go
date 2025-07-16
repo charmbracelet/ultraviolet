@@ -70,7 +70,7 @@ func (d *TerminalReader) handleConInput() ([]Event, error) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	events, err = readNConsoleInputs(cc.conin, uint32(len(events)))
+	events, err = readNConsoleInputs(cc.conin, uint32(len(events))) //nolint:gosec
 	if cc.isCanceled() {
 		return nil, cancelreader.ErrCanceled
 	}
@@ -80,7 +80,7 @@ func (d *TerminalReader) handleConInput() ([]Event, error) {
 
 	var evs []Event
 	for _, event := range events {
-		if e := d.SequenceParser.parseConInputEvent(event, &d.keyState, d.MouseMode, d.logger); e != nil {
+		if e := d.parseConInputEvent(event, &d.keyState, d.MouseMode, d.logger); e != nil {
 			if multi, ok := e.(MultiEvent); ok {
 				if d.logger != nil {
 					for _, ev := range multi {
@@ -336,7 +336,7 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 			break
 		}
 
-		if state != nil {
+		if state != nil { //nolint:nestif
 			// Collect ANSI escape code.
 			state.ansiBuf[state.ansiIdx] = byte(r)
 			state.ansiIdx++

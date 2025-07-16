@@ -24,8 +24,6 @@ type Logger interface {
 // control key state to determine modifier key changes. It also keeps track of
 // the last mouse button state and window size changes to determine which mouse
 // buttons were released and to prevent multiple size events from firing.
-//
-//nolint:all
 type win32InputState struct {
 	ansiBuf                    [256]byte
 	ansiIdx                    int
@@ -34,6 +32,19 @@ type win32InputState struct {
 	lastCks                    uint32 // the last control key state for the previous event
 	lastMouseBtns              uint32 // the last mouse button state for the previous event
 	lastWinsizeX, lastWinsizeY int16  // the last window size for the previous event to prevent multiple size events from firing
+}
+
+// This is to silence the linter warning about the win32InputState not being
+// used.
+var _ any = win32InputState{
+	ansiBuf:       [256]byte{},
+	ansiIdx:       0,
+	utf16Buf:      [2]rune{},
+	utf16Half:     false,
+	lastCks:       0,
+	lastMouseBtns: 0,
+	lastWinsizeX:  0,
+	lastWinsizeY:  0,
 }
 
 // ErrReaderNotStarted is returned when the reader has not been started yet.

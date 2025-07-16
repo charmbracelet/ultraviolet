@@ -54,7 +54,7 @@ func (t *Terminal) makeRaw() (err error) {
 
 func (t *Terminal) getSize() (w, h int, err error) {
 	if t.outTty != nil {
-		return term.GetSize(t.outTty.Fd())
+		return term.GetSize(t.outTty.Fd()) //nolint:wrapcheck
 	}
 	return 0, 0, ErrNotTerminal
 }
@@ -74,14 +74,14 @@ func (t *Terminal) setMouse(enable bool) (err error) {
 	}
 	state, err := term.GetState(inTty.Fd())
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck
 	}
 	if enable {
 		state.Mode |= windows.ENABLE_MOUSE_INPUT
 	} else {
 		state.Mode &^= windows.ENABLE_MOUSE_INPUT
 	}
-	return term.SetState(inTty.Fd(), state)
+	return term.SetState(inTty.Fd(), state) //nolint:wrapcheck
 }
 
 func (t *Terminal) enableWindowsMouse() (err error) {

@@ -11,11 +11,11 @@ func openTTY() (inTty, outTty *os.File, err error) {
 	// See https://learn.microsoft.com/en-us/windows/console/getstdhandle#remarks
 	inTty, err = os.OpenFile("CONIN$", os.O_RDWR, 0o644) //nolint:gosec
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, err //nolint:wrapcheck
 	}
 	outTty, err = os.OpenFile("CONOUT$", os.O_RDWR, 0o644) //nolint:gosec
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, err //nolint:wrapcheck
 	}
 	return inTty, outTty, nil
 }
