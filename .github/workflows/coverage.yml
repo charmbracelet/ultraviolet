@@ -21,7 +21,7 @@ jobs:
 
       - name: Coverage
         run: |
-          go test -race -covermode=atomic -coverprofile=coverage.txt ./...
+          go test -race -covermode=atomic -coverprofile='coverage.txt' ./...
 
       - uses: codecov/codecov-action@v5
         with:
