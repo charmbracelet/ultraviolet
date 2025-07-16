@@ -133,6 +133,9 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 // lookup table for key sequences if it is not already set. This function
 // should be called before reading input events.
 func (d *TerminalReader) Start() (err error) {
+	if d.started {
+		return ErrStarted
+	}
 	d.rd, err = newCancelreader(d.r)
 	if err != nil {
 		return err
@@ -140,6 +143,7 @@ func (d *TerminalReader) Start() (err error) {
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
+	d.closed = false
 	d.started = true
 	d.esc.Store(false)
 	d.timeout = time.NewTimer(d.EscTimeout)
