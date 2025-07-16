@@ -323,6 +323,7 @@ func (t *Terminal) configureRenderer() {
 // This won't take any effect until the next [Terminal.Display] or
 // [Terminal.Flush] call.
 func (t *Terminal) Erase() {
+	t.buf.Touched = nil
 	t.scr.Erase()
 	t.Clear()
 }
