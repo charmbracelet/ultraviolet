@@ -127,7 +127,14 @@ func main() {
 	}
 
 	// Check environment variables for supported encodings.
-	if termProg, ok := os.LookupEnv("TERM_PROGRAM"); ok {
+	var (
+		termType    = os.Getenv("TERM")
+		termProg    string
+		lcTerm      string
+		termVersion string
+		ok          bool
+	)
+	if termProg, ok = os.LookupEnv("TERM_PROGRAM"); ok {
 		if strings.Contains(termProg, "iTerm") ||
 			strings.Contains(termProg, "WezTerm") ||
 			strings.Contains(termProg, "mintty") ||
@@ -137,7 +144,7 @@ func main() {
 			strings.Contains(termProg, "rio") {
 			upgradeEnc(itermEncoding)
 		}
-		if lcTerm, ok := os.LookupEnv("LC_TERMINAL"); ok {
+		if lcTerm, ok = os.LookupEnv("LC_TERMINAL"); ok {
 			if strings.Contains(lcTerm, "iTerm") {
 				upgradeEnc(itermEncoding)
 			}
@@ -177,6 +184,7 @@ func main() {
 		log.Printf("image area: %v", imgArea)
 
 		// Clear the screen.
+		screen.FillArea(t, &empty, lastImgArea)
 		fill := uv.Cell{Content: "/", Width: 1, Style: fillStyle}
 		screen.Fill(t, &fill)
 
@@ -186,8 +194,49 @@ func main() {
 			blocks := mosaic.New().Width(imgCellW).Height(imgCellH).Scale(2)
 			ss := uv.NewStyledString(blocks.Render(img))
 			ss.Draw(t, imgArea)
-		case sixelEncoding, itermEncoding:
+		case sixelEncoding:
 			screen.FillArea(t, &empty, imgArea)
+
+			var senc sixel.Encoder
+			var buf bytes.Buffer
+			senc.Encode(&buf, img)
+			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
+
+			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
+			if lastCell != nil {
+				// Some terminals mess up the cursor position after drawing the
+				// image, so we need to move the cursor back to the correct
+				// position.
+				cup := ansi.CursorPosition(imgArea.Max.X+1, imgArea.Max.Y)
+				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + six + cup
+			}
+		case itermEncoding:
+			screen.FillArea(t, &empty, imgArea)
+
+			// Now, we need to encode the image and place it in the first
+			// cell before moving the cursor to the correct position.
+			if charmImgB64 == nil {
+				// Encode the image to base64 for the first time.
+				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
+			}
+
+			data := ansi.ITerm2(iterm2.File{
+				Name:              "charm.jpg",
+				Width:             iterm2.Cells(imgArea.Dx()),
+				Height:            iterm2.Cells(imgArea.Dy()),
+				Inline:            true,
+				Content:           charmImgB64,
+				IgnoreAspectRatio: true,
+			})
+
+			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
+			if lastCell != nil {
+				// Some terminals mess up the cursor position after drawing the
+				// image, so we need to move the cursor back to the correct
+				// position.
+				cup := ansi.CursorPosition(imgArea.Max.X+1, imgArea.Max.Y)
+				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + data + cup
+			}
 
 		case kittyEncoding:
 			const imgId = 31 // random id for kitty graphics
@@ -254,46 +303,6 @@ func main() {
 		}
 
 		t.Display() //nolint:errcheck
-
-		switch imgEnc {
-		case sixelEncoding:
-			var senc sixel.Encoder
-			var buf bytes.Buffer
-			senc.Encode(&buf, img)
-			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-
-			if lastImgArea != imgArea {
-				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-				t.WriteString(six) //nolint:errcheck
-				t.WriteString(cup) //nolint:errcheck
-			}
-		case itermEncoding:
-			// Now, we need to encode the image and place it in the first
-			// cell before moving the cursor to the correct position.
-			if charmImgB64 == nil {
-				// Encode the image to base64 for the first time.
-				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
-			}
-
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-			data := ansi.ITerm2(iterm2.File{
-				Name:              "charm.jpg",
-				Width:             iterm2.Cells(imgArea.Dx()),
-				Height:            iterm2.Cells(imgArea.Dy()),
-				Inline:            true,
-				Content:           charmImgB64,
-				IgnoreAspectRatio: true,
-			})
-
-			if lastImgArea != imgArea {
-				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-				t.WriteString(data) //nolint:errcheck
-				t.WriteString(cup)  //nolint:errcheck
-			}
-		}
-
-		t.Flush()
 
 		lastImgArea = imgArea
 	}
@@ -362,6 +371,7 @@ func main() {
 
 			displayImg()
 		case uv.TerminalVersionEvent:
+			termVersion = string(ev)
 			switch {
 			case strings.Contains(string(ev), "iTerm"), strings.Contains(string(ev), "WezTerm"):
 				upgradeEnc(itermEncoding)
@@ -376,6 +386,12 @@ func main() {
 				pixSize.Width = ev.Args[1]
 			}
 		case uv.KittyGraphicsEvent:
+			if strings.Contains(termType, "wezterm") ||
+				strings.Contains(termVersion, "WezTerm") ||
+				strings.Contains(termProg, "WezTerm") {
+				// WezTerm doesn't support Kitty Unicode Graphics
+				break
+			}
 			if ev.Options.ID == 31 {
 				upgradeEnc(kittyEncoding)
 			}
