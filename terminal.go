@@ -121,6 +121,26 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.evch = make(chan Event, 1)
 	t.once = sync.Once{}
 
+	// Create default input receivers.
+	var winchTty term.File
+	if runtime.GOOS == isWindows {
+		// On Windows, we need to use the console output buffer to get the
+		// window size.
+		winchTty = t.outTty
+	} else {
+		winchTty = t.inTty
+		if winchTty == nil {
+			winchTty = t.outTty
+		}
+	}
+	recvs := []InputReceiver{t.rd, &InitialSizeReceiver{winchTty}}
+	if runtime.GOOS != isWindows {
+		// t.wrdr needs to be started. We handle that in [Terminal.Start].
+		t.wrdr = &WinChReceiver{winchTty}
+		recvs = append(recvs, t.wrdr)
+	}
+	t.im = NewInputManager(recvs...)
+
 	// Handle debugging I/O.
 	debug, ok := os.LookupEnv("UV_DEBUG")
 	if ok && len(debug) > 0 {
@@ -787,27 +807,12 @@ func (t *Terminal) Start() error {
 		return fmt.Errorf("error starting terminal: %w", err)
 	}
 
-	var winchTty term.File
-	if runtime.GOOS == isWindows {
-		// On Windows, we need to use the console output buffer to get the
-		// window size.
-		winchTty = t.outTty
-	} else {
-		winchTty = t.inTty
-		if winchTty == nil {
-			winchTty = t.outTty
-		}
-	}
-	recvs := []InputReceiver{t.rd, &InitialSizeReceiver{winchTty}}
-	if runtime.GOOS != isWindows {
-		t.wrdr = &WinChReceiver{winchTty}
+	if t.wrdr != nil {
 		if err := t.wrdr.Start(); err != nil {
 			return fmt.Errorf("error starting window size receiver: %w", err)
 		}
-		recvs = append(recvs, t.wrdr)
 	}
 
-	t.im = NewInputManager(recvs...)
 	t.started = true
 
 	return nil
@@ -918,8 +923,6 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 // close the terminal when it is no longer needed. When reset is true, it will
 // also reset the terminal screen.
 func (t *Terminal) close(reset bool) (rErr error) {
-	defer t.closeChannels()
-
 	defer func() {
 		err := t.Restore()
 		if rErr == nil && err != nil {
@@ -939,6 +942,8 @@ func (t *Terminal) close(reset bool) (rErr error) {
 		}
 	}()
 
+	t.started = false
+
 	return
 }
 
@@ -946,13 +951,6 @@ func (t *Terminal) close(reset bool) (rErr error) {
 // its original state.
 func (t *Terminal) Close() error {
 	return t.close(true)
-}
-
-// closeChannels closes the event and error channels.
-func (t *Terminal) closeChannels() {
-	t.once.Do(func() {
-		close(t.evch)
-	})
 }
 
 // SendEvent is a helper function to send an event to the event channel. It
@@ -990,8 +988,6 @@ func (t *Terminal) Events(ctx context.Context) <-chan Event {
 			}
 		}()
 		go func() {
-			defer t.closeChannels()
-
 			t.err = t.im.ReceiveEvents(ctx, evch)
 			if errors.Is(t.err, io.EOF) || errors.Is(t.err, cancelreader.ErrCanceled) {
 				t.err = nil
