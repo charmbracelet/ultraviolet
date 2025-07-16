@@ -16,9 +16,17 @@ focus on terminal user interfaces (TUIs). It provides a set of tools and
 abstractions for interactive terminal applications that can handle user input
 and display dynamic, cell-based content.
 
-Ultraviolet is the secret power behind the wonder and majesty of the Charm’s terminal user interface libraries. It is the result of research, development, collaboration and ingenuity.
+Ultraviolet is the secret power behind the wonder and majesty of the Charm’s terminal user interface libraries. It is the result of many years of research, development, collaboration and ingenuity.
 
 _So mote it be_.
+
+## Whatcha think?
+
+We’d love to hear your thoughts on this project. Feel free to drop us a note!
+
+- [Twitter](https://twitter.com/charmcli)
+- [The Fediverse](https://mastodon.social/@charmcli)
+- [Discord](https://charm.sh/chat)
 
 ## License
 
@@ -26,8 +34,8 @@ _So mote it be_.
 
 ---
 
-Part of [Charm](https://charm.sh).
+Part of [Charm](https://charm.land).
 
-<a href="https://charm.sh/"><img alt="The Charm logo" src="https://stuff.charm.sh/charm-badge.jpg" width="400"></a>
+<a href="https://charm.sh/"><img alt="The Charm logo" width="400" src="https://stuff.charm.sh/charm-banner-next.jpg" /></a>
 
 Charm热爱开源 • Charm loves open source • نحنُ نحب المصادر المفتوحة
