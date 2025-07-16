@@ -328,6 +328,15 @@ func (t *Terminal) Erase() {
 	t.Clear()
 }
 
+// Render computes the necessary changes to the terminal screen and marks the
+// current buffer pending to be rendered to the terminal screen.
+//
+// Use [Terminal.Display] or [Terminal.Flush] to actually render the buffer to
+// the terminal screen.
+func (t *Terminal) Render() {
+	t.scr.Render(t.buf)
+}
+
 // Display computes the necessary changes to the terminal screen and renders
 // the current buffer to the terminal screen.
 //
