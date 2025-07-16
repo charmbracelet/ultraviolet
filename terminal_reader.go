@@ -274,7 +274,7 @@ func (d *TerminalReader) resetEsc() {
 
 func (d *TerminalReader) sendEvents(events chan<- Event) {
 	// Lookup table first
-	if d.lookup && d.timedout.Load() && len(d.buf) > 0 && d.buf[0] == ansi.ESC {
+	if d.lookup && d.timedout.Load() && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
 			events <- KeyPressEvent(k)
 			d.buf = d.buf[:0]
