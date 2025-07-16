@@ -311,7 +311,7 @@ func (s *Style) Sequence() string {
 
 	var b ansi.Style
 
-	if s.Attrs != 0 {
+	if s.Attrs != 0 { //nolint:nestif
 		if s.Attrs&BoldAttr != 0 {
 			b = b.Bold()
 		}
@@ -390,7 +390,7 @@ func (s *Style) DiffSequence(o Style) string {
 		isNormal bool
 	)
 
-	if s.Attrs != o.Attrs {
+	if s.Attrs != o.Attrs { //nolint:nestif
 		if s.Attrs&BoldAttr != o.Attrs&BoldAttr {
 			if s.Attrs&BoldAttr != 0 {
 				b = b.Bold()
@@ -485,11 +485,12 @@ func (s *Style) IsBlank() bool {
 		s.Ul == nil
 }
 
-// Convert converts a style to respect the given color profile.
+// ConvertStyle converts a style to respect the given color profile.
 func ConvertStyle(s Style, p colorprofile.Profile) Style {
 	switch p {
 	case colorprofile.TrueColor:
 		return s
+	case colorprofile.ANSI, colorprofile.ANSI256:
 	case colorprofile.Ascii:
 		s.Fg = nil
 		s.Bg = nil
@@ -510,7 +511,7 @@ func ConvertStyle(s Style, p colorprofile.Profile) Style {
 	return s
 }
 
-// Convert converts a hyperlink to respect the given color profile.
+// ConvertLink converts a hyperlink to respect the given color profile.
 func ConvertLink(h Link, p colorprofile.Profile) Link {
 	if p == colorprofile.NoTTY {
 		return Link{}

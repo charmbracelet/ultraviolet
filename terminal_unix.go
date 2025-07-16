@@ -27,7 +27,7 @@ func (t *Terminal) makeRaw() error {
 	}
 
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck
 	}
 
 	return nil
@@ -42,7 +42,7 @@ func (t *Terminal) getSize() (w, h int, err error) {
 		}
 		w, h, err = term.GetSize(f.Fd())
 		if err == nil {
-			return
+			return w, h, nil
 		}
 	}
 	return

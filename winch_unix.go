@@ -43,7 +43,7 @@ func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch cha
 		case <-sig:
 			winsize, err := termios.GetWinsize(int(f.Fd()))
 			if err != nil {
-				return err
+				return err //nolint:wrapcheck
 			}
 
 			wg.Add(1)

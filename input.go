@@ -58,7 +58,7 @@ func (im *InputManager) ReceiveEvents(ctx context.Context, events chan<- Event) 
 	}
 
 	// Wait for all receivers to finish
-	return errg.Wait()
+	return errg.Wait() //nolint:wrapcheck
 }
 
 // InitialSizeReceiver query the initial size of the terminal window and sends
@@ -77,12 +77,12 @@ func (r *InitialSizeReceiver) ReceiveEvents(ctx context.Context, events chan<- E
 
 	w, h, err := term.GetSize(r.File.Fd())
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck
 	}
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return ctx.Err() //nolint:wrapcheck
 	case events <- WindowSizeEvent{Width: w, Height: h}:
 		return nil
 	}

@@ -75,7 +75,7 @@ func (s *TerminalRenderer) scrolln(newbuf *Buffer, n, top, bot, maxY int) (v boo
 	)
 
 	blank := s.clearBlank()
-	if n > 0 {
+	if n > 0 { //nolint:nestif
 		// Scroll up (forward)
 		v = s.scrollUp(newbuf, n, top, bot, 0, maxY, blank)
 		if !v {
@@ -133,7 +133,7 @@ func (s *TerminalRenderer) scrolln(newbuf *Buffer, n, top, bot, maxY int) (v boo
 	}
 
 	if !v {
-		return
+		return false
 	}
 
 	s.scrollBuffer(s.curbuf, n, top, bot, blank)
@@ -195,7 +195,7 @@ func (s *TerminalRenderer) touchLine(newbuf *Buffer, y, n int, changed bool) {
 
 // scrollUp scrolls the screen up by n lines.
 func (s *TerminalRenderer) scrollUp(newbuf *Buffer, n, top, bot, minY, maxY int, blank *Cell) bool {
-	if n == 1 && top == minY && bot == maxY {
+	if n == 1 && top == minY && bot == maxY { //nolint:nestif
 		s.move(newbuf, 0, bot)
 		s.updatePen(blank)
 		s.buf.WriteByte('\n')
@@ -228,7 +228,7 @@ func (s *TerminalRenderer) scrollUp(newbuf *Buffer, n, top, bot, minY, maxY int,
 
 // scrollDown scrolls the screen down by n lines.
 func (s *TerminalRenderer) scrollDown(newbuf *Buffer, n, top, bot, minY, maxY int, blank *Cell) bool {
-	if n == 1 && top == minY && bot == maxY {
+	if n == 1 && top == minY && bot == maxY { //nolint:nestif
 		s.move(newbuf, 0, top)
 		s.updatePen(blank)
 		s.buf.WriteString(ansi.ReverseIndex)

@@ -41,7 +41,7 @@ func (l Line) Set(x int, c *Cell) {
 	// to fill the rest of the cell with space cells to
 	// avoid rendering issues.
 	var prev *Cell
-	if prev = l.At(x); prev != nil {
+	if prev = l.At(x); prev != nil { //nolint:nestif
 		if pw := prev.Width; pw > 1 {
 			// Writing to the first wide cell
 			for j := 0; j < pw && x+j < lineWidth; j++ {
@@ -106,9 +106,8 @@ func (l Line) String() (s string) {
 	for _, c := range l {
 		if c.IsZero() {
 			continue
-		} else {
-			s += c.String()
 		}
+		s += c.String()
 	}
 	s = strings.TrimRight(s, " ")
 	return
@@ -133,37 +132,37 @@ func renderLine(buf io.StringWriter, l Line) {
 		if len(pendingLine) == 0 {
 			return
 		}
-		buf.WriteString(pendingLine)
+		_, _ = buf.WriteString(pendingLine)
 		pendingWidth = 0
 		pendingLine = ""
 	}
 
 	for _, cell := range l {
-		if cell.Width > 0 {
+		if cell.Width > 0 { //nolint:nestif
 			// Convert the cell's style and link to the given color profile.
 			cellStyle := cell.Style
 			cellLink := cell.Link
 			if cellStyle.IsZero() && !pen.IsZero() {
 				writePending()
-				buf.WriteString(ansi.ResetStyle) //nolint:errcheck
+				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
 			}
 			if !cellStyle.Equal(&pen) {
 				writePending()
 				seq := cellStyle.DiffSequence(pen)
-				buf.WriteString(seq) // nolint:errcheck
+				_, _ = buf.WriteString(seq)
 				pen = cellStyle
 			}
 
 			// Write the URL escape sequence
 			if cellLink != link && link.URL != "" {
 				writePending()
-				buf.WriteString(ansi.ResetHyperlink()) //nolint:errcheck
+				_, _ = buf.WriteString(ansi.ResetHyperlink())
 				link = Link{}
 			}
 			if cellLink != link {
 				writePending()
-				buf.WriteString(ansi.SetHyperlink(cellLink.URL, cellLink.Params)) //nolint:errcheck
+				_, _ = buf.WriteString(ansi.SetHyperlink(cellLink.URL, cellLink.Params))
 				link = cellLink
 			}
 
@@ -174,15 +173,15 @@ func renderLine(buf io.StringWriter, l Line) {
 				pendingWidth += cell.Width
 			} else {
 				writePending()
-				buf.WriteString(cell.String()) //nolint:errcheck
+				_, _ = buf.WriteString(cell.String())
 			}
 		}
 	}
 	if link.URL != "" {
-		buf.WriteString(ansi.ResetHyperlink()) //nolint:errcheck
+		_, _ = buf.WriteString(ansi.ResetHyperlink())
 	}
 	if !pen.IsZero() {
-		buf.WriteString(ansi.ResetStyle) //nolint:errcheck
+		_, _ = buf.WriteString(ansi.ResetStyle)
 	}
 }
 
@@ -217,7 +216,7 @@ func (b *Buffer) String() string {
 	for i, l := range b.Lines {
 		buf.WriteString(l.String())
 		if i < len(b.Lines)-1 {
-			buf.WriteString("\r\n") //nolint:errcheck
+			_, _ = buf.WriteString("\r\n")
 		}
 	}
 	return buf.String()
@@ -230,7 +229,7 @@ func (b *Buffer) Render() string {
 	for i, l := range b.Lines {
 		renderLine(&buf, l)
 		if i < len(b.Lines)-1 {
-			buf.WriteString("\r\n") //nolint:errcheck
+			_, _ = buf.WriteString("\r\n")
 		}
 	}
 	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces

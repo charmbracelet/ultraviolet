@@ -18,8 +18,8 @@ func (l *WinChReceiver) Start() error {
 	if l.File == nil {
 		return fmt.Errorf("no file set")
 	}
-	_, _, err := term.GetSize(l.File.Fd())
-	return err
+	_, _, err := term.GetSize(l.Fd())
+	return err //nolint:wrapcheck
 }
 
 // ReceiveEvents listens for window size changes and sends the new size to the
