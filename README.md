@@ -16,6 +16,10 @@ focus on terminal user interfaces (TUIs). It provides a set of tools and
 abstractions for interactive terminal applications that can handle user input
 and display dynamic, cell-based content.
 
+Ultraviolet is the secret power behind the wonder and majesty of the Charm’s terminal user interface libraries. It is the result of research, development, collaboration and ingenuity.
+
+_So mote it be_.
+
 ## License
 
 [MIT](./LICENSE)
