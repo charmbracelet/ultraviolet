@@ -365,6 +365,21 @@ func (t *Terminal) Touched() int {
 	return t.scr.Touched(t.buf)
 }
 
+// GetMode returns the current state of the given mode in the terminal. This is
+// typically used to check if a specific mode is enabled or disabled on the
+// terminal.
+func (t *Terminal) GetMode(mode ansi.Mode) ansi.ModeSetting {
+	m := t.modes[mode]
+	return m
+}
+
+// SetMode sets the given mode and its setting in the [Terminal]. This is
+// usually used when an [ansi.Mode] was enabled/disabled outside the context of
+// [Terminal].
+func (t *Terminal) SetMode(mode ansi.Mode, setting ansi.ModeSetting) {
+	t.modes[mode] = setting
+}
+
 // EnableMode enables the given modes on the terminal. This is typically used
 // to enable mouse support, bracketed paste mode, and other terminal features.
 //
