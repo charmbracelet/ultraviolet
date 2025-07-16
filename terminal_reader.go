@@ -259,6 +259,7 @@ func (d *TerminalReader) run() {
 		// - "\x1b[" (alt+[ key press)
 		// - "\x1bP" (alt+shift+p key press)
 		// - "\x1bX" (alt+shift+x key press)
+		// - "\x1bO" (alt+shift+o key press)
 		// - "\x1b_" (alt+_ key press)
 		// - "\x1b^" (alt+^ key press)
 		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
