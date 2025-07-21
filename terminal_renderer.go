@@ -1182,7 +1182,11 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		s.clearUpdate(newbuf)
 		s.clear = false
 	} else if touchedLines > 0 {
-		if s.flags.Contains(tAltScreen) {
+		// On Windows, there's a bug with Windows Terminal where [ansi.DECSTBM]
+		// misbehaves and moves the cursor outside of the scrolling region. For
+		// now, we disable the optimizations completely on Windows.
+		// See https://github.com/microsoft/terminal/issues/19016
+		if s.flags.Contains(tAltScreen) && runtime.GOOS != isWindows {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].
