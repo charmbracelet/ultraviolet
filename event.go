@@ -105,6 +105,14 @@ func (s WindowPixelSizeEvent) Bounds() Rectangle {
 	return Size(s).Bounds()
 }
 
+// CellSizeEvent represents the cell size in pixels.
+type CellSizeEvent Size
+
+// Bounds returns the bounds corresponding to the size.
+func (s CellSizeEvent) Bounds() Rectangle {
+	return Size(s).Bounds()
+}
+
 // KeyPressEvent represents a key press event.
 type KeyPressEvent Key
 

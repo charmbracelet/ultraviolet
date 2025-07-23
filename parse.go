@@ -638,7 +638,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 				if !hOk || !wOk {
 					break
 				}
-				return i, WindowSizeEvent{Width: width, Height: height}
+				return i, WindowPixelSizeEvent{Width: width, Height: height}
 			}
 		case 6: // Report Terminal cell size.
 			if paramsLen == 3 {
@@ -647,7 +647,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 				if !hOk || !wOk {
 					break
 				}
-				return i, WindowPixelSizeEvent{Width: width, Height: height}
+				return i, CellSizeEvent{Width: width, Height: height}
 			}
 		case 48: // In band terminal size report.
 			if paramsLen == 5 {
