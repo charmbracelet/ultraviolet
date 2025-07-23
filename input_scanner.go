@@ -1,7 +1,7 @@
 package uv
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -50,14 +50,14 @@ var _ any = win32InputState{
 // ErrReaderNotStarted is returned when the reader has not been started yet.
 var ErrReaderNotStarted = fmt.Errorf("reader not started")
 
-// DefaultEscTimeout is the default timeout at which the [TerminalReader] will
+// DefaultEscTimeout is the default timeout at which the [InputScanner] will
 // process ESC sequences. It is set to 50 milliseconds.
 const DefaultEscTimeout = 50 * time.Millisecond
 
-// TerminalReader represents an input event reader. It reads input events and
+// InputScanner represents an input event reader. It reads input events and
 // parses escape sequences from the terminal input buffer and translates them
 // into human-readable events.
-type TerminalReader struct {
+type InputScanner struct {
 	SequenceParser
 
 	// MouseMode determines whether mouse events are enabled or not. This is a
@@ -86,8 +86,9 @@ type TerminalReader struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	lookup bool   // lookup indicates whether to use the lookup table for key sequences.
-	buf    []byte // buffer to hold the read data.
+	lookup bool    // lookup indicates whether to use the lookup table for key sequences.
+	buf    []byte  // buffer to hold the read data.
+	events []Event // queued events to be sent.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
@@ -95,92 +96,73 @@ type TerminalReader struct {
 
 	// This indicates whether the reader is closed or not. It is used to
 	// prevent	multiple calls to the Close() method.
-	closed    bool
 	started   bool          // started indicates whether the reader has been started.
 	runOnce   sync.Once     // runOnce is used to ensure that the reader is only started once.
-	close     chan struct{} // close is a channel used to signal the reader to close.
+	donec     chan struct{} // close is a channel used to signal the reader to close.
 	closeOnce sync.Once
 	notify    chan []byte // notify is a channel used to notify the reader of new input events.
 	timeout   *time.Timer
 	timedout  atomic.Bool
 	esc       atomic.Bool
-	err       atomic.Value // err is the last error encountered by the reader.
+	err       atomic.Pointer[error] // err is the last error encountered by the reader.
 
 	logger Logger // The logger to use for debugging.
 }
 
 // This is to silence the linter warning about the [win32InputState] not being
 // used.
-var _ any = &TerminalReader{
+var _ any = &InputScanner{
 	keyState: win32InputState{},
 }
 
-// NewTerminalReader returns a new input event reader. The reader reads input
+// NewInputScanner returns a new input event reader. The reader reads input
 // events from the terminal and parses escape sequences into human-readable
 // events. It supports reading Terminfo databases.
 //
-// Use [TerminalReader.UseTerminfo] to use Terminfo defined key sequences.
-// Use [TerminalReader.Legacy] to control legacy key encoding behavior.
+// Use [InputScanner.UseTerminfo] to use Terminfo defined key sequences.
+// Use [InputScanner.Legacy] to control legacy key encoding behavior.
 //
 // Example:
 //
-//	r, _ := input.NewTerminalReader(os.Stdin, os.Getenv("TERM"))
+//	r, _ := input.NewInputScanner(os.Stdin, os.Getenv("TERM"))
 //	defer r.Close()
 //	events, _ := r.ReadEvents()
 //	for _, ev := range events {
 //	  log.Printf("%v", ev)
 //	}
-func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
-	return &TerminalReader{
+func NewInputScanner(r io.Reader, termType string) (*InputScanner, error) {
+	d := &InputScanner{
 		EscTimeout: DefaultEscTimeout,
 		r:          r,
 		term:       termType,
 		lookup:     true, // Use lookup table by default.
 	}
-}
-
-// SetLogger sets the logger to use for debugging. If nil, no logging will be
-// performed.
-func (d *TerminalReader) SetLogger(logger Logger) {
-	d.logger = logger
-}
-
-// Start initializes the reader and prepares it for reading input events. It
-// sets up the cancel reader and the key sequence parser. It also sets up the
-// lookup table for key sequences if it is not already set. This function
-// should be called before reading input events.
-func (d *TerminalReader) Start() (err error) {
-	if d.started {
-		return ErrStarted
-	}
-	d.rd, err = newCancelreader(d.r)
+	rd, err := newCancelreader(d.r)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	d.rd = rd
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
-	d.closed = false
 	d.started = true
 	d.esc.Store(false)
 	d.timeout = time.NewTimer(d.EscTimeout)
 	d.notify = make(chan []byte)
-	d.close = make(chan struct{}, 1)
+	d.donec = make(chan struct{})
 	d.closeOnce = sync.Once{}
 	d.runOnce = sync.Once{}
-	return nil
+	return d, nil
 }
 
-// Read implements [io.Reader].
-func (d *TerminalReader) Read(p []byte) (int, error) {
-	if err := d.Start(); err != nil {
-		return 0, err
-	}
-	return d.rd.Read(p) //nolint:wrapcheck
+// SetLogger sets the logger to use for debugging. If nil, no logging will be
+// performed.
+func (d *InputScanner) SetLogger(logger Logger) {
+	d.logger = logger
 }
 
 // Cancel cancels the underlying reader.
-func (d *TerminalReader) Cancel() bool {
+func (d *InputScanner) Cancel() bool {
 	if d.rd == nil {
 		return false
 	}
@@ -188,84 +170,100 @@ func (d *TerminalReader) Cancel() bool {
 }
 
 // Close closes the underlying reader.
-func (d *TerminalReader) Close() (rErr error) {
-	if d.closed {
-		return nil
-	}
+func (d *InputScanner) Close() (rErr error) {
 	if !d.started {
 		return ErrReaderNotStarted
 	}
+	return d.close() //nolint:wrapcheck
+}
+
+func (d *InputScanner) close() error {
 	if err := d.rd.Close(); err != nil {
 		return fmt.Errorf("failed to close reader: %w", err)
 	}
-	d.closed = true
 	d.started = false
 	d.closeEvents()
-	return nil
+	d.timedout.Store(true)
+	errp := d.err.Load()
+	if errp == nil {
+		return nil
+	}
+	err := *errp
+	if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
+		return nil
+	}
+	return err
 }
 
-func (d *TerminalReader) closeEvents() {
+func (d *InputScanner) closeEvents() {
 	d.closeOnce.Do(func() {
-		close(d.close) // signal the reader to close
+		close(d.donec) // signal the reader to close
 	})
 }
 
-func (d *TerminalReader) receiveEvents(ctx context.Context, events chan<- Event) error {
-	if !d.started {
-		return ErrReaderNotStarted
+// Event returns the last read event from the scanner. It returns nil if no
+// event is available.
+func (d *InputScanner) Event() Event {
+	if len(d.events) == 0 {
+		return nil
 	}
+	ev := d.events[0]
+	return ev
+}
 
+// Err returns the first non-EOF error encountered by the scanner. If no error
+// has been encountered, it returns nil.
+func (d *InputScanner) Err() error {
+	errp := d.err.Load()
+	if errp == nil {
+		return nil // no error encountered
+	}
+	err := *errp
+	return err // return the first non-EOF error
+}
+
+func (d *InputScanner) scan() bool {
 	// Start the reader loop if it hasn't been started yet.
 	d.runOnce.Do(func() {
-		go d.run()
+		go func() {
+			defer d.closeEvents() // ensure we close the events channel when done
+			d.run()
+		}()
 	})
 
-	closingFunc := func() error {
-		// If we're closing, make sure to send any remaining events even if
-		// they are incomplete.
-		d.timedout.Store(true)
-		d.sendEvents(events)
-		err, ok := d.err.Load().(error)
-		if !ok {
-			return nil
-		}
-		return err
+	if len(d.events) > 0 {
+		// Advance the event queue if there are events available.
+		d.events = d.events[1:]
+		return true
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return closingFunc()
-		case <-d.close:
-			return closingFunc()
-		case <-d.timeout.C:
-			d.timedout.Store(true)
-			d.sendEvents(events)
-			d.esc.Store(false)
-		case buf := <-d.notify:
-			d.buf = append(d.buf, buf...)
-			if !d.esc.Load() {
-				d.sendEvents(events)
-				d.timedout.Store(false)
-			}
+	select {
+	case <-d.donec:
+		return false
+	case <-d.timeout.C:
+		d.timedout.Store(true)
+		d.sendEvents()
+		d.esc.Store(false)
+	case buf := <-d.notify:
+		d.buf = append(d.buf, buf...)
+		if !d.esc.Load() {
+			d.sendEvents()
+			d.timedout.Store(false)
 		}
 	}
+
+	return true
 }
 
-func (d *TerminalReader) run() {
+func (d *InputScanner) run() {
 	for {
-		if d.closed {
-			return
-		}
-
 		var readBuf [256]byte
 		n, err := d.rd.Read(readBuf[:])
 		if err != nil {
-			d.err.Store(err)
-			d.closeEvents()
-			return
-		}
-		if d.closed {
+			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
+				return
+			}
+			d.err.Store(&err)
 			return
 		}
 
@@ -288,17 +286,17 @@ func (d *TerminalReader) run() {
 	}
 }
 
-func (d *TerminalReader) resetEsc() {
+func (d *InputScanner) resetEsc() {
 	// Reset the escape sequence state and timer.
 	d.esc.Store(true)
 	d.timeout.Reset(d.EscTimeout)
 }
 
-func (d *TerminalReader) sendEvents(events chan<- Event) {
+func (d *InputScanner) sendEvents() {
 	// Lookup table first
 	if d.lookup && d.timedout.Load() && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
-			events <- KeyPressEvent(k)
+			d.events = append(d.events, KeyPressEvent(k))
 			d.buf = d.buf[:0]
 			return
 		}
@@ -357,7 +355,7 @@ LOOP:
 				d.paste = d.paste[w:]
 			}
 			d.paste = nil // reset the d.buffer
-			events <- PasteEvent(paste)
+			d.events = append(d.events, PasteEvent(paste))
 		}
 
 		if ev != nil {
@@ -369,10 +367,10 @@ LOOP:
 
 			if mevs, ok := ev.(MultiEvent); ok {
 				for _, mev := range mevs {
-					events <- mev
+					d.events = append(d.events, mev)
 				}
 			} else {
-				events <- ev
+				d.events = append(d.events, ev)
 			}
 		}
 
@@ -380,7 +378,7 @@ LOOP:
 	}
 }
 
-func (d *TerminalReader) logf(format string, v ...interface{}) {
+func (d *InputScanner) logf(format string, v ...interface{}) {
 	if d.logger == nil {
 		return
 	}
