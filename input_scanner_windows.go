@@ -4,9 +4,9 @@
 package uv
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 	"unicode"
@@ -19,30 +19,32 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ReceiveEvents reads input events from the terminal and sends them to the
-// given event channel.
-func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
-	for {
-		evs, err := d.handleConInput()
-		if errors.Is(err, errNotConInputReader) {
-			return d.receiveEvents(ctx, events)
-		}
-		if err != nil {
-			return fmt.Errorf("read coninput events: %w", err)
-		}
-		for _, ev := range evs {
-			select {
-			case <-ctx.Done():
-				return nil
-			case events <- ev:
-			}
-		}
+// Scan advances the scanner to the next event and returns whether it was
+// successful. If the scanner is at the end of the input, it returns false.
+func (d *InputScanner) Scan() bool {
+	if len(d.events) > 0 {
+		// Advance the scanner to the next event.
+		d.events = d.events[1:]
+		return true
 	}
+
+	evs, err := d.handleConInput()
+	if errors.Is(err, errNotConInputReader) {
+		return d.scan()
+	}
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, cancelreader.ErrCanceled) {
+			d.err.Store(&err)
+		}
+		return false
+	}
+	d.events = append(d.events, evs...)
+	return true
 }
 
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
 
-func (d *TerminalReader) handleConInput() ([]Event, error) {
+func (d *InputScanner) handleConInput() ([]Event, error) {
 	cc, ok := d.rd.(*conInputReader)
 	if !ok {
 		return nil, errNotConInputReader

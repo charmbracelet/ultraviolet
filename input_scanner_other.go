@@ -3,12 +3,10 @@
 
 package uv
 
-import "context"
-
-// ReceiveEvents reads input events from the terminal and sends them to the
-// given event channel.
-func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
-	return d.receiveEvents(ctx, events)
+// Scan advances the scanner to the next event and returns whether it was
+// successful. If the scanner is at the end of the input, it returns false.
+func (d *InputScanner) Scan() bool {
+	return d.scan()
 }
 
 // parseWin32InputKeyEvent parses a Win32 input key events. This function is
