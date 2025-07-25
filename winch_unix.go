@@ -5,7 +5,6 @@ package uv
 
 import (
 	"context"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -66,41 +65,4 @@ func (n *WindowSizeNotifier) getWindowSize() (cells Size, pixels Size, err error
 		Height: int(winsize.Ypixel),
 	}
 	return cells, pixels, nil
-}
-
-func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch chan<- Event) error {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGWINCH)
-
-	defer signal.Stop(sig)
-
-	sendWinSize := func(w, h int) {
-		select {
-		case <-ctx.Done():
-		case evch <- WindowSizeEvent{w, h}:
-		}
-	}
-
-	sendPixelSize := func(w, h int) {
-		select {
-		case <-ctx.Done():
-		case evch <- WindowPixelSizeEvent{w, h}:
-		}
-	}
-
-	// Listen for window size changes.
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-sig:
-			winsize, err := termios.GetWinsize(int(f.Fd()))
-			if err != nil {
-				return err //nolint:wrapcheck
-			}
-
-			go sendWinSize(int(winsize.Col), int(winsize.Row))
-			go sendPixelSize(int(winsize.Xpixel), int(winsize.Ypixel))
-		}
-	}
 }
