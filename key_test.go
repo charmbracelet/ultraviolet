@@ -97,8 +97,8 @@ func buildBaseSeqTests() []seqTest {
 }
 
 func TestFocus(t *testing.T) {
-	var p SequenceParser
-	_, e := p.parseSequence([]byte("\x1b[I"))
+	var p EventDecoder
+	_, e := p.Decode([]byte("\x1b[I"))
 	switch e.(type) {
 	case FocusEvent:
 		// ok
@@ -108,8 +108,8 @@ func TestFocus(t *testing.T) {
 }
 
 func TestBlur(t *testing.T) {
-	var p SequenceParser
-	_, e := p.parseSequence([]byte("\x1b[O"))
+	var p EventDecoder
+	_, e := p.Decode([]byte("\x1b[O"))
 	switch e.(type) {
 	case BlurEvent:
 		// ok
@@ -530,13 +530,13 @@ func TestParseSequence(t *testing.T) {
 		})
 	}
 
-	var p SequenceParser
+	var p EventDecoder
 	for _, tc := range td {
 		t.Run(fmt.Sprintf("%q", string(tc.seq)), func(t *testing.T) {
 			var events []Event
 			buf := tc.seq
 			for len(buf) > 0 {
-				width, Event := p.parseSequence(buf)
+				width, Event := p.Decode(buf)
 				switch Event := Event.(type) {
 				case MultiEvent:
 					events = append(events, Event...)
@@ -1058,7 +1058,7 @@ func genRandomDataWithSeed(s int64, length int) randTest {
 }
 
 func FuzzParseSequence(f *testing.F) {
-	var p SequenceParser
+	var p EventDecoder
 	for seq := range sequences {
 		f.Add(seq)
 	}
@@ -1067,7 +1067,7 @@ func FuzzParseSequence(f *testing.F) {
 	f.Add("\x1bP>|charm terminal(0.1.2)\x1b\\") // DCS (XTVERSION)
 	f.Add("\x1b_Gi=123\x1b\\")                  // APC
 	f.Fuzz(func(t *testing.T, seq string) {
-		n, _ := p.parseSequence([]byte(seq))
+		n, _ := p.Decode([]byte(seq))
 		if n == 0 && seq != "" {
 			t.Errorf("expected a non-zero width for %q", seq)
 		}
@@ -1077,11 +1077,11 @@ func FuzzParseSequence(f *testing.F) {
 // BenchmarkDetectSequenceMap benchmarks the map-based sequence
 // detector.
 func BenchmarkDetectSequenceMap(b *testing.B) {
-	var p SequenceParser
+	var p EventDecoder
 	td := genRandomDataWithSeed(123, 10000)
 	for i := 0; i < b.N; i++ {
 		for j, w := 0, 0; j < len(td.data); j += w {
-			w, _ = p.parseSequence(td.data[j:])
+			w, _ = p.Decode(td.data[j:])
 		}
 	}
 }

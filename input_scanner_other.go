@@ -11,6 +11,6 @@ func (d *InputScanner) Scan() bool {
 
 // parseWin32InputKeyEvent parses a Win32 input key events. This function is
 // only available on Windows.
-func (p *SequenceParser) parseWin32InputKeyEvent(*win32InputState, uint16, uint16, rune, bool, uint32, uint16, Logger) Event {
+func (p *EventDecoder) parseWin32InputKeyEvent(*win32InputState, uint16, uint16, rune, bool, uint32, uint16, Logger) Event {
 	return nil
 }

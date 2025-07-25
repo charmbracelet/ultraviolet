@@ -100,7 +100,7 @@ func (d *InputScanner) handleConInput() ([]Event, error) {
 	return evs, nil
 }
 
-func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
+func (p *EventDecoder) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
 	switch event.EventType {
 	case xwindows.KEY_EVENT:
 		kevent := event.KeyEvent()
@@ -289,7 +289,7 @@ func peekNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.In
 // an event from win32-input-mode. Otherwise, it's a key event from the Windows
 // Console API and needs a state to decode ANSI escape sequences and utf16
 // runes.
-func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
+func (p *EventDecoder) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
 	defer func() {
 		// Respect the repeat count.
 		if repeatCount > 1 {
@@ -353,7 +353,7 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 				return nil
 			}
 
-			n, event := p.parseSequence(state.ansiBuf[:state.ansiIdx])
+			n, event := p.Decode(state.ansiBuf[:state.ansiIdx])
 			if n == 0 {
 				return nil
 			}
