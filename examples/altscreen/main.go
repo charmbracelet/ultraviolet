@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
-	"github.com/muesli/cancelreader"
 )
 
 func main() {
@@ -58,8 +56,11 @@ func main() {
 		t.Display()
 	}
 
+	evch := make(chan uv.Event)
+	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+
 	var cursorHidden bool
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
 			width, height = ev.Width, ev.Height
@@ -90,10 +91,6 @@ func main() {
 
 	if altScreen {
 		t.ExitAltScreen()
-	}
-
-	if err := t.Err(); err != nil && !errors.Is(err, cancelreader.ErrCanceled) {
-		log.Printf("error: %v", err)
 	}
 
 	if err := t.Shutdown(ctx); err != nil {

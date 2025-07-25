@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
@@ -18,12 +19,6 @@ func main() {
 
 	// Set the terminal title to "Hello World".
 	t.SetTitle("Hello World")
-
-	// We need the terminal to be in raw mode so that we can read input
-	// characters without echoing them to the screen.
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
 
 	w, _, err := t.GetSize()
 	if err != nil {
@@ -91,10 +86,13 @@ func main() {
 
 	display()
 
+	evch := make(chan uv.Event)
+	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+
 	// Events returns an event channel that receives input events from the all
 	// the terminal input sources. It will block until we close the event
 	// channel or cancel the context.
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		// Handle events here
 		switch ev := ev.(type) {
 		case uv.KeyPressEvent:
@@ -119,7 +117,7 @@ func main() {
 	}
 
 	// Gracefully shutdown the program.
-	ctx, cancel = context.WithTimeout(context.Background(), 5)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := t.Shutdown(ctx); err != nil {

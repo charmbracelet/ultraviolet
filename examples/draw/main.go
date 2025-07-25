@@ -151,7 +151,10 @@ Press any key to continue...`
 		t.Display()
 	}
 
-	for ev := range t.Events(ctx) {
+	evch := make(chan uv.Event)
+	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
 			if showingHelp {

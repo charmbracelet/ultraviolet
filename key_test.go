@@ -2,8 +2,6 @@ package uv
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"image/color"
@@ -604,30 +602,22 @@ func TestSplitReads(t *testing.T) {
 		"<0;33;17M\x1b[I",
 	}
 
-	drv := NewTerminalReader(NewStringSliceReader(t, inputs), "dumb")
+	drv := NewInputScanner(NewStringSliceReader(t, inputs), "dumb")
 	drv.SetLogger(TLogger{t})
-	if err := drv.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
+
+	var events []Event
+	for drv.Scan() {
+		if ev := drv.Event(); ev != nil {
+			events = append(events, ev)
+		}
 	}
 
-	var err error
-	var evs []Event
-	events := make(chan Event)
-	go func() {
-		err = drv.ReceiveEvents(context.Background(), events)
-		close(events)
-	}()
-
-	for ev := range events {
-		evs = append(evs, ev)
+	if err := drv.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
 	}
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
-	}
-
-	if !reflect.DeepEqual(expect, evs) {
-		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, evs)
+	if !reflect.DeepEqual(expect, events) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events)
 	}
 }
 
@@ -638,28 +628,17 @@ func TestReadLongInput(t *testing.T) {
 	}
 	input := strings.Repeat("a", 1000)
 	rdr := strings.NewReader(input)
-	drv := NewTerminalReader(rdr, "dumb")
-	if err := drv.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
-	}
+	drv := NewInputScanner(rdr, "dumb")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	var err error
 	var evs []Event
-	events := make(chan Event)
-	go func() {
-		err = drv.ReceiveEvents(ctx, events)
-		close(events)
-	}()
-
-	for ev := range events {
-		evs = append(evs, ev)
+	for drv.Scan() {
+		if ev := drv.Event(); ev != nil {
+			evs = append(evs, ev)
+		}
 	}
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
+	if err := drv.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
 	}
 
 	if !reflect.DeepEqual(expect, evs) {
@@ -972,35 +951,18 @@ func TestReadInput(t *testing.T) {
 }
 
 func testReadInputs(t *testing.T, input io.Reader) []Event {
-	// We'll check that the input reader finishes at the end
-	// without error.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
+	drv := NewInputScanner(input, "dumb")
+	drv.SetLogger(TLogger{t})
 
-	dr := NewTerminalReader(input, "dumb")
-	dr.SetLogger(TLogger{t})
-	if err := dr.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
-	}
-
-	var err error
 	var events []Event
-	eventsc := make(chan Event)
-
-	// Start the reader in the background.
-	go func() {
-		err = dr.ReceiveEvents(ctx, eventsc)
-		close(eventsc)
-	}()
-
-	for ev := range eventsc {
-		if ev != nil {
+	for drv.Scan() {
+		if ev := drv.Event(); ev != nil {
 			events = append(events, ev)
 		}
 	}
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
+	if err := drv.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
 	}
 
 	return events
