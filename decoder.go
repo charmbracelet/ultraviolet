@@ -366,7 +366,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 				return n, k
 			}
 		}
-		return i, UnknownEvent(b[:i-1])
+		return i, UnknownEvent(b[:i])
 	}
 
 	// Add the final byte
