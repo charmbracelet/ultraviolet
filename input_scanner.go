@@ -58,7 +58,7 @@ const DefaultEscTimeout = 50 * time.Millisecond
 // parses escape sequences from the terminal input buffer and translates them
 // into human-readable events.
 type InputScanner struct {
-	SequenceParser
+	EventDecoder
 
 	// MouseMode determines whether mouse events are enabled or not. This is a
 	// platform-specific feature and is only available on Windows. When this is
@@ -285,7 +285,7 @@ func (d *InputScanner) sendEvents() {
 
 LOOP:
 	for len(d.buf) > 0 {
-		nb, ev := d.parseSequence(d.buf)
+		nb, ev := d.Decode(d.buf)
 
 		// Handle bracketed-paste
 		if d.paste != nil {
