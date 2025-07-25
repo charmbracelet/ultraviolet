@@ -22,15 +22,13 @@ import (
 // Scan advances the scanner to the next event and returns whether it was
 // successful. If the scanner is at the end of the input, it returns false.
 func (d *InputScanner) Scan() bool {
-	if len(d.events) > 0 {
-		// Advance the scanner to the next event.
-		d.events = d.events[1:]
-		return true
-	}
+	return d.scan()
+}
 
+func (d *InputScanner) processEvents(expired bool) bool {
 	evs, err := d.handleConInput()
 	if errors.Is(err, errNotConInputReader) {
-		return d.scan()
+		return d.processEventsDefault(expired)
 	}
 	if err != nil {
 		if !errors.Is(err, io.EOF) && !errors.Is(err, cancelreader.ErrCanceled) {
@@ -43,6 +41,56 @@ func (d *InputScanner) Scan() bool {
 }
 
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
+
+func (d *InputScanner) run() {
+	cc, ok := d.r.(*conInputReader)
+	if !ok {
+		panic("not a conInputReader")
+	}
+
+	defer d.closeEvents()
+	for {
+		// Peek up to 256 events, this is to allow for sequences events reported as
+		// key events.
+		events, err := peekNConsoleInputs(cc.conin, 256)
+		if cc.isCanceled() {
+			return
+		}
+		if err != nil {
+			d.err.Store(&err)
+			return
+		}
+		if len(events) > 0 {
+			break
+		}
+
+		// Sleep for a bit to avoid busy waiting.
+		time.Sleep(10 * time.Millisecond)
+
+		events, err = readNConsoleInputs(cc.conin, uint32(len(events))) //nolint:gosec
+		if cc.isCanceled() {
+			return
+		}
+		if err != nil {
+			d.err.Store(&err)
+			return
+		}
+
+		for _, event := range events {
+			if e := d.parseConInputEvent(event, &d.keyState, d.MouseMode, d.logger); e != nil {
+				if multi, ok := e.(MultiEvent); ok {
+					for _, ev := range multi {
+						d.logf("input: %T %v", ev, ev)
+					}
+					d.events = append(d.events, multi...)
+				} else {
+					d.logf("input: %T %v", e, e)
+					d.events = append(d.events, e)
+				}
+			}
+		}
+	}
+}
 
 func (d *InputScanner) handleConInput() ([]Event, error) {
 	cc, ok := d.r.(*conInputReader)

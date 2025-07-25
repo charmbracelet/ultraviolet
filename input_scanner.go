@@ -186,7 +186,7 @@ func (d *InputScanner) Err() error {
 	return *errp
 }
 
-func (d *InputScanner) run() {
+func (d *InputScanner) runDefault() {
 	defer d.closeEvents() // close events channel when done
 	for {
 		var readBuf [256]byte
@@ -272,9 +272,9 @@ func (d *InputScanner) scan() bool {
 	}
 }
 
-// processEvents processes the events in the queue and returns true if an event
+// processEventsDefault processes the events in the queue and returns true if an event
 // was processed.
-func (d *InputScanner) processEvents(expired bool) bool {
+func (d *InputScanner) processEventsDefault(expired bool) bool {
 	// Lookup table first
 	if d.lookup && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {

@@ -14,3 +14,11 @@ func (d *InputScanner) Scan() bool {
 func (p *EventDecoder) parseWin32InputKeyEvent(*win32InputState, uint16, uint16, rune, bool, uint32, uint16, Logger) Event {
 	return nil
 }
+
+func (d *InputScanner) processEvents(expired bool) bool {
+	return d.processEventsDefault(expired)
+}
+
+func (d *InputScanner) run() {
+	d.runDefault()
+}
