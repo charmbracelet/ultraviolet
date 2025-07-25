@@ -1,5 +1,9 @@
 package uv
 
+import "runtime"
+
+var isWindows = runtime.GOOS == "windows"
+
 // Drawable represents a drawable component on a [Screen].
 type Drawable interface {
 	// Draw renders the component on the screen for the given area.

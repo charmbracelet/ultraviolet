@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -19,8 +18,6 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/cancelreader"
 )
-
-const isWindows = "windows"
 
 var (
 	// ErrNotTerminal is returned when one of the I/O streams is not a terminal.
@@ -123,7 +120,7 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 
 	// Create default input receivers.
 	var winchTty term.File
-	if runtime.GOOS == isWindows {
+	if isWindows {
 		// On Windows, we need to use the console output buffer to get the
 		// window size.
 		winchTty = t.outTty
@@ -134,7 +131,7 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 		}
 	}
 	recvs := []InputReceiver{t.rd, &InitialSizeReceiver{winchTty}}
-	if runtime.GOOS != isWindows {
+	if !isWindows {
 		// t.wrdr needs to be started. We handle that in [Terminal.Start].
 		t.wrdr = &WinChReceiver{winchTty}
 		recvs = append(recvs, t.wrdr)
@@ -566,7 +563,7 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 		mode = ButtonMouseMode | DragMouseMode | AllMouseMode
 	}
 	t.mouseMode = mode
-	if runtime.GOOS != isWindows {
+	if !isWindows {
 		modes := []ansi.Mode{}
 		if t.mouseMode&AllMouseMode != 0 {
 			modes = append(modes, ansi.AnyEventMouseMode)
@@ -588,7 +585,7 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 // [Terminal.Display] or [Terminal.Flush] call.
 func (t *Terminal) DisableMouse() {
 	t.mouseMode = 0
-	if runtime.GOOS != isWindows {
+	if !isWindows {
 		var modes []ansi.Mode
 		if t.modes.Get(ansi.AnyEventMouseMode).IsSet() {
 			modes = append(modes, ansi.AnyEventMouseMode)

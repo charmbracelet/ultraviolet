@@ -30,10 +30,19 @@ func TestRendererOutput(t *testing.T) {
 				true,
 				true,
 			},
-			expected: []string{
-				"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
-				"\x1b[?25l\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
-			},
+			expected: func() []string {
+				if isWindows {
+					return []string{
+						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
+						"\x1b[?25l\x1b[Hm dolor si\r\nt amet, co\r\nnsectetur\x1b[K\r\nadipiscing\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
+					}
+				} else {
+					return []string{
+						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
+						"\x1b[?25l\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
+					}
+				}
+			}(),
 			altscreen: true,
 		},
 		{
@@ -46,10 +55,19 @@ func TestRendererOutput(t *testing.T) {
 				true,
 				true,
 			},
-			expected: []string{
-				"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
-				"\x1b[?25l\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
-			},
+			expected: func() []string {
+				if isWindows {
+					return []string{
+						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
+						"\x1b[?25l\x1b[Ht amet, co\r\nnsectetur\x1b[K\r\nadipiscing\r\n elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
+					}
+				} else {
+					return []string{
+						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
+						"\x1b[?25l\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
+					}
+				}
+			}(),
 			altscreen: true,
 		},
 		{
@@ -62,10 +80,19 @@ func TestRendererOutput(t *testing.T) {
 				true,
 				true,
 			},
-			expected: []string{
-				"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JABC\r\nDEF\r\nGHI\x1b[?25h",
-				"\x1b[?25l\r\x1bM\x1b[L\x1b[?25h",
-			},
+			expected: func() []string {
+				if isWindows {
+					return []string{
+						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JABC\r\nDEF\r\nGHI\x1b[?25h",
+						"\x1b[?25l\r\x1bM\x1b[K\nDEF\r\nGHI\x1b[?25h",
+					}
+				} else {
+					return []string{
+						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JABC\r\nDEF\r\nGHI\x1b[?25h",
+						"\x1b[?25l\r\x1bM\x1b[L\x1b[?25h",
+					}
+				}
+			}(),
 			altscreen: true,
 		},
 		{

@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"reflect"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -430,7 +429,7 @@ func TestParseSequence(t *testing.T) {
 		},
 	)
 
-	if runtime.GOOS != isWindows {
+	if !isWindows {
 		// Sadly, utf8.DecodeRune([]byte(0xfe)) returns a valid rune on windows.
 		// This is incorrect, but it makes our test fail if we try it out.
 		td = append(td, seqTest{
