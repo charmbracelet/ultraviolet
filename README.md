@@ -20,6 +20,25 @@ Ultraviolet is the secret power behind the wonder and majesty of the Charm’s t
 
 _So mote it be_.
 
+## Usage
+
+To use Ultraviolet, you can get it with:
+
+```bash
+go get github.com/charmbracelet/ultraviolet
+```
+
+Then import it in your Go code:
+
+```go
+import "github.com/charmbracelet/ultraviolet"
+```
+
+## Tutorial
+
+You can find a simple tutorial on how to create a UV application that displays
+"Hello, World!" on the screen in the [TUTORIAL.md](./TUTORIAL.md) file.
+
 ## Whatcha think?
 
 We’d love to hear your thoughts on this project. Feel free to drop us a note!
