@@ -231,11 +231,11 @@ func TestParseSequence(t *testing.T) {
 			[]Event{KeyPressEvent{Code: KeyBackspace, Mod: ModAlt}},
 		},
 
-		// Xterm report window text area size.
+		// Xterm report window text area size in pixels.
 		seqTest{
 			[]byte("\x1b[4;24;80t"),
 			[]Event{
-				WindowSizeEvent{Width: 80, Height: 24},
+				WindowPixelSizeEvent{Width: 80, Height: 24},
 			},
 		},
 
