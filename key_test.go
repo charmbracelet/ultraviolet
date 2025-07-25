@@ -567,6 +567,7 @@ func TestSplitReads(t *testing.T) {
 		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
 		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
 		FocusEvent{},
+		UnknownEvent("\x1b[12;34;9"),
 	}
 	inputs := []string{
 		"abc",
@@ -600,6 +601,7 @@ func TestSplitReads(t *testing.T) {
 		"\x1b[A\x1b[",
 		"<0;33;17M\x1b[",
 		"<0;33;17M\x1b[I",
+		"\x1b[12;34;9",
 	}
 
 	drv := NewInputScanner(NewStringSliceReader(t, inputs), "dumb")
@@ -1658,6 +1660,42 @@ func TestKeyMatchString(t *testing.T) {
 				t.Errorf("expected %v but got %v", tc.want, got)
 			}
 		})
+	}
+}
+
+func TestReuseScanner(t *testing.T) {
+	input := "abc\x1b[O"
+	r := strings.NewReader(input)
+	expected := []Event{
+		KeyPressEvent{Code: 'a', Text: "a"},
+		KeyPressEvent{Code: 'b', Text: "b"},
+		KeyPressEvent{Code: 'c', Text: "c"},
+		BlurEvent{},
+	}
+	sc := NewInputScanner(r, "dumb")
+	sc.SetLogger(TLogger{t})
+	var events []Event
+	for sc.Scan() {
+		events = append(events, sc.Event())
+	}
+	if err := sc.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
+	}
+
+	if !reflect.DeepEqual(events, expected) {
+		t.Errorf("expected:\n%#v\ngot:\n%#v", expected, events)
+	}
+
+	r = strings.NewReader(input)
+	events = events[:0]
+	sc = NewInputScanner(r, "dumb")
+	sc.SetLogger(TLogger{t})
+	for sc.Scan() {
+		events = append(events, sc.Event())
+	}
+
+	if !reflect.DeepEqual(events, expected) {
+		t.Errorf("expected:\n%#v\ngot:\n%#v", expected, events)
 	}
 }
 
