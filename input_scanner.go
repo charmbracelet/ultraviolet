@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,11 +12,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/cancelreader"
 )
-
-// Logger is a simple logger interface.
-type Logger interface {
-	Printf(format string, v ...interface{})
-}
 
 // win32InputState is a state machine for parsing key events from the Windows
 // Console API into escape sequences and utf8 runes, and keeps track of the last
@@ -85,9 +79,11 @@ type InputScanner struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	lookup bool    // lookup indicates whether to use the lookup table for key sequences.
-	buf    []byte  // buffer to hold the read data.
-	events []Event // queued events to be sent.
+	lookup    bool      // lookup indicates whether to use the lookup table for key sequences.
+	buf       []byte    // buffer to hold the read data.
+	events    []Event   // queued events to be sent.
+	eventsIdx int       // eventsIdx is the index of the next event to be sent.
+	ttimeout  time.Time // ttimeout is the time at which the last input was received.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
@@ -95,14 +91,11 @@ type InputScanner struct {
 
 	// This indicates whether the reader is closed or not. It is used to
 	// prevent	multiple calls to the Close() method.
-	started   bool          // started indicates whether the reader has been started.
-	runOnce   sync.Once     // runOnce is used to ensure that the reader is only started once.
 	donec     chan struct{} // close is a channel used to signal the reader to close.
 	closeOnce sync.Once
+	closed    atomic.Bool // closed indicates whether the scanner has been closed.
 	notify    chan []byte // notify is a channel used to notify the reader of new input events.
 	timeout   *time.Timer
-	timedout  atomic.Bool
-	esc       atomic.Bool
 	err       atomic.Pointer[error] // err is the last error encountered by the reader.
 
 	logger Logger // The logger to use for debugging.
@@ -114,7 +107,7 @@ var _ any = &InputScanner{
 	keyState: win32InputState{},
 }
 
-// NewInputScanner returns a new input event reader. The reader reads input
+// NewInputScanner returns a new input event scanner. The scanner scans input
 // events from the terminal and parses escape sequences into human-readable
 // events. It supports reading Terminfo databases.
 //
@@ -123,12 +116,13 @@ var _ any = &InputScanner{
 //
 // Example:
 //
-//	r, _ := input.NewInputScanner(os.Stdin, os.Getenv("TERM"))
-//	defer r.Close()
-//	events, _ := r.ReadEvents()
-//	for _, ev := range events {
-//	  log.Printf("%v", ev)
+//	```go
+//	var cr cancelreader.CancelReader
+//	sc := NewInputScanner(cr, os.Getenv("TERM"))
+//	for sc.Scan() {
+//	    log.Printf("event: %v", sc.Event())
 //	}
+//	```
 func NewInputScanner(r io.Reader, termType string) *InputScanner {
 	d := &InputScanner{
 		EscTimeout: DefaultEscTimeout,
@@ -140,13 +134,12 @@ func NewInputScanner(r io.Reader, termType string) *InputScanner {
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
-	d.started = true
-	d.esc.Store(false)
 	d.timeout = time.NewTimer(d.EscTimeout)
 	d.notify = make(chan []byte)
 	d.donec = make(chan struct{})
 	d.closeOnce = sync.Once{}
-	d.runOnce = sync.Once{}
+	d.eventsIdx = -1 // indicates that no events have been read yet.
+	go d.run()       // Start the reader loop in a separate goroutine.
 	return d
 }
 
@@ -156,28 +149,20 @@ func (d *InputScanner) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
-// Close closes the underlying reader.
-func (d *InputScanner) Close() (rErr error) {
-	return d.close() //nolint:wrapcheck
-}
-
-func (d *InputScanner) close() error {
-	d.started = false
+// Close closes the scanner loop if it is still running. It also returns the
+// first non-EOF error encountered by the scanner.
+func (d *InputScanner) Close() error {
 	d.closeEvents()
-	d.timedout.Store(true)
 	errp := d.err.Load()
 	if errp == nil {
 		return nil
 	}
-	err := *errp
-	if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
-		return nil
-	}
-	return err
+	return *errp
 }
 
 func (d *InputScanner) closeEvents() {
 	d.closeOnce.Do(func() {
+		d.closed.Store(true)
 		close(d.donec) // signal the reader to close
 	})
 }
@@ -185,11 +170,10 @@ func (d *InputScanner) closeEvents() {
 // Event returns the last read event from the scanner. It returns nil if no
 // event is available.
 func (d *InputScanner) Event() Event {
-	if len(d.events) == 0 {
+	if len(d.events) == 0 || d.eventsIdx >= len(d.events) {
 		return nil
 	}
-	ev := d.events[0]
-	return ev
+	return d.events[d.eventsIdx]
 }
 
 // Err returns the first non-EOF error encountered by the scanner. If no error
@@ -199,48 +183,16 @@ func (d *InputScanner) Err() error {
 	if errp == nil {
 		return nil // no error encountered
 	}
-	err := *errp
-	return err // return the first non-EOF error
-}
-
-func (d *InputScanner) scan() bool {
-	// Start the reader loop if it hasn't been started yet.
-	d.runOnce.Do(func() {
-		go func() {
-			defer d.closeEvents() // ensure we close the events channel when done
-			d.run()
-		}()
-	})
-
-	if len(d.events) > 0 {
-		// Advance the event queue if there are events available.
-		d.events = d.events[1:]
-		return true
-	}
-
-	select {
-	case <-d.donec:
-		return false
-	case <-d.timeout.C:
-		d.timedout.Store(true)
-		d.sendEvents()
-		d.esc.Store(false)
-	case buf := <-d.notify:
-		d.buf = append(d.buf, buf...)
-		if !d.esc.Load() {
-			d.sendEvents()
-			d.timedout.Store(false)
-		}
-	}
-
-	return true
+	return *errp
 }
 
 func (d *InputScanner) run() {
+	defer d.closeEvents() // close events channel when done
 	for {
 		var readBuf [256]byte
 		n, err := d.r.Read(readBuf[:])
 		if err != nil {
+			d.closeEvents() // close the events channel before returning
 			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
 				return
 			}
@@ -258,75 +210,115 @@ func (d *InputScanner) run() {
 		// - "\x1bO" (alt+shift+o key press)
 		// - "\x1b_" (alt+_ key press)
 		// - "\x1b^" (alt+^ key press)
-		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
-		if esc {
-			d.resetEsc()
-		}
-
 		d.notify <- readBuf[:n]
 	}
 }
 
-func (d *InputScanner) resetEsc() {
-	// Reset the escape sequence state and timer.
-	d.esc.Store(true)
-	d.timeout.Reset(d.EscTimeout)
+func (d *InputScanner) scanLast() bool {
+	// Process any remaining events before closing.
+	if len(d.buf) > 0 && d.processEvents(true) {
+		d.eventsIdx++
+		return true
+	}
+	return false
 }
 
-func (d *InputScanner) sendEvents() {
+func (d *InputScanner) scan() bool {
+	for {
+		if d.eventsIdx >= len(d.events) {
+			// Reset the buffer if we have processed all events.
+			d.events = d.events[:0]
+			d.eventsIdx = -1
+		} else if len(d.events) > 0 && d.eventsIdx+1 < len(d.events) {
+			// If there are events available, increment the index and return true.
+			d.eventsIdx++
+			return true
+		} else if d.closed.Load() {
+			return d.scanLast()
+		}
+		select {
+		case <-d.donec:
+			return d.scanLast()
+		case <-d.timeout.C:
+			// Timeout reached process the buffer including any incomplete sequences.
+			hasEvents := len(d.buf) > 0 && time.Now().After(d.ttimeout) && d.processEvents(true)
+			if hasEvents {
+				d.eventsIdx++
+			}
+			if len(d.buf) > 0 {
+				// We haven't processed all events in the buffer, meaning
+				// we have incomplete sequences remaining.
+				d.timeout.Reset(d.EscTimeout)
+			}
+			if hasEvents {
+				return true
+			}
+		case buf := <-d.notify:
+			d.buf = append(d.buf, buf...)
+			d.ttimeout = time.Now().Add(d.EscTimeout)
+			hasEvents := d.processEvents(false)
+			if hasEvents {
+				d.eventsIdx++
+			}
+			if len(d.buf) > 0 {
+				// We haven't processed all events in the buffer, meaning
+				// we have incomplete sequences remaining.
+				d.timeout.Reset(d.EscTimeout)
+			}
+			if hasEvents {
+				return true
+			}
+		}
+	}
+}
+
+// processEvents processes the events in the queue and returns true if an event
+// was processed.
+func (d *InputScanner) processEvents(expired bool) bool {
 	// Lookup table first
-	if d.lookup && d.timedout.Load() && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
+	if d.lookup && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
 			d.events = append(d.events, KeyPressEvent(k))
 			d.buf = d.buf[:0]
-			return
+			return true
 		}
 	}
 
-LOOP:
 	for len(d.buf) > 0 {
-		nb, ev := d.Decode(d.buf)
+		esc := d.buf[0] == ansi.ESC
+		n, event := d.Decode(d.buf)
 
 		// Handle bracketed-paste
 		if d.paste != nil {
-			if _, ok := ev.(PasteEndEvent); !ok {
+			if _, ok := event.(PasteEndEvent); !ok {
 				d.paste = append(d.paste, d.buf[0])
 				d.buf = d.buf[1:]
 				continue
 			}
 		}
 
-		var isUnknownEvent bool
-		switch ev.(type) {
+		var isUnknown bool
+		switch event.(type) {
 		case ignoredEvent:
-			ev = nil // ignore this event
+			// ignore this event
+			event = nil
 		case UnknownEvent:
-			isUnknownEvent = true
-
-			// If the sequence is not recognized by the parser, try looking it up.
-			if k, ok := d.table[string(d.buf[:nb])]; ok {
-				ev = KeyPressEvent(k)
+			isUnknown = true
+			// Try to look up the event in the table.
+			if k, ok := d.table[string(d.buf[:n])]; ok {
+				d.events = append(d.events, KeyPressEvent(k))
+				d.buf = d.buf[n:]
+				return true
 			}
 
-			d.logf("unknown sequence: %q", d.buf[:nb])
-			if !d.timedout.Load() {
-				if nb > 0 {
-					// This handles unknown escape sequences that might be incomplete.
-					if slices.Contains([]byte{
-						ansi.ESC, ansi.CSI, ansi.OSC, ansi.DCS, ansi.APC, ansi.SOS, ansi.PM,
-					}, d.buf[0]) {
-						d.resetEsc()
-					}
-				}
-				// If this is the entire buffer, we can break and assume this
-				// is an incomplete sequence.
-				break LOOP
+			if !expired {
+				return false // wait for more input
 			}
-			d.logf("timed out, skipping unknown sequence: %q", d.buf[:nb])
+
+			d.events = append(d.events, event)
 		case PasteStartEvent:
-			d.paste = []byte{}
+			d.paste = []byte{} // reset the paste buffer
 		case PasteEndEvent:
-			// Decode the captured data into runes.
 			var paste []rune
 			for len(d.paste) > 0 {
 				r, w := utf8.DecodeRune(d.paste)
@@ -335,28 +327,29 @@ LOOP:
 				}
 				d.paste = d.paste[w:]
 			}
-			d.paste = nil // reset the d.buffer
+			d.paste = nil // reset the paste buffer
 			d.events = append(d.events, PasteEvent(paste))
 		}
 
-		if ev != nil {
-			if !isUnknownEvent && d.esc.Load() {
-				// If we are in an escape sequence, and the event is a valid
-				// one, we need to reset the escape state.
-				d.esc.Store(false)
+		if !isUnknown && event != nil {
+			if esc && len(d.buf) <= 2 && !expired {
+				// Wait for more input
+				return false
 			}
 
-			if mevs, ok := ev.(MultiEvent); ok {
-				for _, mev := range mevs {
-					d.events = append(d.events, mev)
-				}
+			if m, ok := event.(MultiEvent); ok {
+				// If the event is a MultiEvent, append all events to the queue.
+				d.events = append(d.events, m...)
 			} else {
-				d.events = append(d.events, ev)
+				// Otherwise, just append the event to the queue.
+				d.events = append(d.events, event)
 			}
 		}
 
-		d.buf = d.buf[nb:]
+		d.buf = d.buf[n:]
 	}
+
+	return len(d.events) > 0
 }
 
 func (d *InputScanner) logf(format string, v ...interface{}) {

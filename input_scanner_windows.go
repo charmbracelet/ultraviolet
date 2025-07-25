@@ -45,7 +45,7 @@ func (d *InputScanner) Scan() bool {
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
 
 func (d *InputScanner) handleConInput() ([]Event, error) {
-	cc, ok := d.rd.(*conInputReader)
+	cc, ok := d.r.(*conInputReader)
 	if !ok {
 		return nil, errNotConInputReader
 	}
