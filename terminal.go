@@ -71,6 +71,7 @@ type Terminal struct {
 	once      sync.Once
 	mouseMode MouseMode // The mouse mode for the terminal.
 	wg        sync.WaitGroup
+	m         sync.RWMutex // Mutex to protect the terminal state.
 
 	logger Logger // The debug logger for I/O.
 }
@@ -200,8 +201,10 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 		return 0, 0, fmt.Errorf("error getting terminal size: %w", err)
 	}
 	// Cache the last known size.
+	t.m.Lock()
 	t.size.Width = w
 	t.size.Height = h
+	t.m.Unlock()
 	return w, h, nil
 }
 
@@ -289,7 +292,9 @@ func (t *Terminal) MoveTo(x, y int) {
 func (t *Terminal) configureRenderer() {
 	t.scr.SetColorProfile(t.profile)
 	if t.useTabs {
+		t.m.RLock()
 		t.scr.SetTabStops(t.size.Width)
+		t.m.RUnlock()
 	}
 	t.scr.SetBackspace(t.useBspace)
 	t.scr.SetRelativeCursor(true) // Initial state is relative cursor movements.
@@ -748,12 +753,10 @@ func (t *Terminal) Start() error {
 	}
 
 	// Store the initial terminal size.
-	initialWidth, initialHeight, err := t.GetSize()
+	_, _, err := t.GetSize()
 	if err != nil {
 		return fmt.Errorf("error getting initial terminal size: %w", err)
 	}
-
-	t.size.Width, t.size.Height = initialWidth, initialHeight
 
 	// Initialize the terminal IO streams.
 	if err := t.makeRaw(); err != nil {
@@ -872,7 +875,9 @@ func (t *Terminal) notifyWindowSizeChange() {
 			return
 		case <-t.winch:
 			cells, pixels, err := t.winchn.GetWindowSize()
+			t.m.Lock()
 			t.size, t.pixSize = cells, pixels // Update the terminal size.
+			t.m.Unlock()
 			if err == nil {
 				select {
 				case <-t.evctx.Done():

@@ -33,15 +33,20 @@ func (n *WindowSizeNotifier) close() error {
 }
 
 func (n *WindowSizeNotifier) shutdown(ctx context.Context) (err error) {
-	go func(err *error) {
-		*err = n.close()
+	wgc := make(chan struct{})
+	go func() {
+		defer close(wgc)
 		n.wg.Wait()
-	}(&err)
+	}()
+
+	if err := n.close(); err != nil {
+		return err
+	}
 
 	select {
 	case <-ctx.Done():
 		return nil
-	case <-n.donec:
+	case <-wgc:
 	}
 
 	return err
