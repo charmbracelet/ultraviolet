@@ -77,7 +77,6 @@ type InputScanner struct {
 	EscTimeout time.Duration
 
 	r     io.Reader
-	rd    cancelreader.CancelReader
 	table map[string]Key // table is a lookup table for key sequences.
 
 	term string // term is the terminal name $TERM.
@@ -130,18 +129,14 @@ var _ any = &InputScanner{
 //	for _, ev := range events {
 //	  log.Printf("%v", ev)
 //	}
-func NewInputScanner(r io.Reader, termType string) (*InputScanner, error) {
+func NewInputScanner(r io.Reader, termType string) *InputScanner {
 	d := &InputScanner{
 		EscTimeout: DefaultEscTimeout,
 		r:          r,
 		term:       termType,
 		lookup:     true, // Use lookup table by default.
 	}
-	rd, err := newCancelreader(d.r)
-	if err != nil {
-		return nil, err
-	}
-	d.rd = rd
+	d.r = r
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
@@ -152,7 +147,7 @@ func NewInputScanner(r io.Reader, termType string) (*InputScanner, error) {
 	d.donec = make(chan struct{})
 	d.closeOnce = sync.Once{}
 	d.runOnce = sync.Once{}
-	return d, nil
+	return d
 }
 
 // SetLogger sets the logger to use for debugging. If nil, no logging will be
@@ -161,26 +156,12 @@ func (d *InputScanner) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
-// Cancel cancels the underlying reader.
-func (d *InputScanner) Cancel() bool {
-	if d.rd == nil {
-		return false
-	}
-	return d.rd.Cancel()
-}
-
 // Close closes the underlying reader.
 func (d *InputScanner) Close() (rErr error) {
-	if !d.started {
-		return ErrReaderNotStarted
-	}
 	return d.close() //nolint:wrapcheck
 }
 
 func (d *InputScanner) close() error {
-	if err := d.rd.Close(); err != nil {
-		return fmt.Errorf("failed to close reader: %w", err)
-	}
 	d.started = false
 	d.closeEvents()
 	d.timedout.Store(true)
@@ -258,7 +239,7 @@ func (d *InputScanner) scan() bool {
 func (d *InputScanner) run() {
 	for {
 		var readBuf [256]byte
-		n, err := d.rd.Read(readBuf[:])
+		n, err := d.r.Read(readBuf[:])
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
 				return

@@ -414,7 +414,10 @@ func main() {
 	// First display.
 	display()
 
-	for ev := range t.Events(ctx) {
+	evch := make(chan uv.Event)
+	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+
+	for ev := range evch {
 		log.Printf("event: %T", ev)
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
