@@ -4,9 +4,9 @@
 package uv
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 	"unicode"
@@ -19,31 +19,33 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ReceiveEvents reads input events from the terminal and sends them to the
-// given event channel.
-func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
-	for {
-		evs, err := d.handleConInput()
-		if errors.Is(err, errNotConInputReader) {
-			return d.receiveEvents(ctx, events)
-		}
-		if err != nil {
-			return fmt.Errorf("read coninput events: %w", err)
-		}
-		for _, ev := range evs {
-			select {
-			case <-ctx.Done():
-				return nil
-			case events <- ev:
-			}
-		}
+// Scan advances the scanner to the next event and returns whether it was
+// successful. If the scanner is at the end of the input, it returns false.
+func (d *InputScanner) Scan() bool {
+	if len(d.events) > 0 {
+		// Advance the scanner to the next event.
+		d.events = d.events[1:]
+		return true
 	}
+
+	evs, err := d.handleConInput()
+	if errors.Is(err, errNotConInputReader) {
+		return d.scan()
+	}
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, cancelreader.ErrCanceled) {
+			d.err.Store(&err)
+		}
+		return false
+	}
+	d.events = append(d.events, evs...)
+	return true
 }
 
 var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
 
-func (d *TerminalReader) handleConInput() ([]Event, error) {
-	cc, ok := d.rd.(*conInputReader)
+func (d *InputScanner) handleConInput() ([]Event, error) {
+	cc, ok := d.r.(*conInputReader)
 	if !ok {
 		return nil, errNotConInputReader
 	}
@@ -98,7 +100,7 @@ func (d *TerminalReader) handleConInput() ([]Event, error) {
 	return evs, nil
 }
 
-func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
+func (p *EventDecoder) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
 	switch event.EventType {
 	case xwindows.KEY_EVENT:
 		kevent := event.KeyEvent()
@@ -287,7 +289,7 @@ func peekNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.In
 // an event from win32-input-mode. Otherwise, it's a key event from the Windows
 // Console API and needs a state to decode ANSI escape sequences and utf16
 // runes.
-func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
+func (p *EventDecoder) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
 	defer func() {
 		// Respect the repeat count.
 		if repeatCount > 1 {
@@ -350,7 +352,7 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 				return nil
 			}
 
-			n, event := p.parseSequence(state.ansiBuf[:state.ansiIdx])
+			n, event := p.Decode(state.ansiBuf[:state.ansiIdx])
 			if n == 0 {
 				return nil
 			}

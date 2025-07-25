@@ -89,6 +89,20 @@ func (e MultiEvent) String() string {
 	return sb.String()
 }
 
+// Size represents the size of the terminal window.
+type Size struct {
+	Width  int
+	Height int
+}
+
+// Bounds returns the bounds corresponding to the size.
+func (s Size) Bounds() Rectangle {
+	return Rectangle{
+		Min: image.Point{X: 0, Y: 0},
+		Max: image.Point{X: s.Width, Y: s.Height},
+	}
+}
+
 // WindowSizeEvent represents the window size in cells.
 type WindowSizeEvent Size
 

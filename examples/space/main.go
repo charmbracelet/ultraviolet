@@ -78,10 +78,12 @@ func main() {
 	var lastWidth, lastHeight int
 	colors := setupColors(area.Dx(), area.Dy())
 
+	evch := make(chan uv.Event)
+	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
 	go t.SendEvent(ctx, tickEvent{})
 
 LOOP:
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.KeyPressEvent:
 			switch ev.String() {

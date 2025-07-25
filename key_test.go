@@ -2,8 +2,6 @@ package uv
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"image/color"
@@ -99,8 +97,8 @@ func buildBaseSeqTests() []seqTest {
 }
 
 func TestFocus(t *testing.T) {
-	var p SequenceParser
-	_, e := p.parseSequence([]byte("\x1b[I"))
+	var p EventDecoder
+	_, e := p.Decode([]byte("\x1b[I"))
 	switch e.(type) {
 	case FocusEvent:
 		// ok
@@ -110,8 +108,8 @@ func TestFocus(t *testing.T) {
 }
 
 func TestBlur(t *testing.T) {
-	var p SequenceParser
-	_, e := p.parseSequence([]byte("\x1b[O"))
+	var p EventDecoder
+	_, e := p.Decode([]byte("\x1b[O"))
 	switch e.(type) {
 	case BlurEvent:
 		// ok
@@ -440,13 +438,13 @@ func TestParseSequence(t *testing.T) {
 		})
 	}
 
-	var p SequenceParser
+	var p EventDecoder
 	for _, tc := range td {
 		t.Run(fmt.Sprintf("%q", string(tc.seq)), func(t *testing.T) {
 			var events []Event
 			buf := tc.seq
 			for len(buf) > 0 {
-				width, Event := p.parseSequence(buf)
+				width, Event := p.Decode(buf)
 				switch Event := Event.(type) {
 				case MultiEvent:
 					events = append(events, Event...)
@@ -477,6 +475,7 @@ func TestSplitReads(t *testing.T) {
 		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
 		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
 		FocusEvent{},
+		UnknownEvent("\x1b[12;34;9"),
 	}
 	inputs := []string{
 		"abc",
@@ -510,32 +509,25 @@ func TestSplitReads(t *testing.T) {
 		"\x1b[A\x1b[",
 		"<0;33;17M\x1b[",
 		"<0;33;17M\x1b[I",
+		"\x1b[12;34;9",
 	}
 
-	drv := NewTerminalReader(NewStringSliceReader(t, inputs), "dumb")
+	drv := NewInputScanner(NewStringSliceReader(t, inputs), "dumb")
 	drv.SetLogger(TLogger{t})
-	if err := drv.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
+
+	var events []Event
+	for drv.Scan() {
+		if ev := drv.Event(); ev != nil {
+			events = append(events, ev)
+		}
 	}
 
-	var err error
-	var evs []Event
-	events := make(chan Event)
-	go func() {
-		err = drv.ReceiveEvents(context.Background(), events)
-		close(events)
-	}()
-
-	for ev := range events {
-		evs = append(evs, ev)
+	if err := drv.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
 	}
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
-	}
-
-	if !reflect.DeepEqual(expect, evs) {
-		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, evs)
+	if !reflect.DeepEqual(expect, events) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events)
 	}
 }
 
@@ -546,28 +538,17 @@ func TestReadLongInput(t *testing.T) {
 	}
 	input := strings.Repeat("a", 1000)
 	rdr := strings.NewReader(input)
-	drv := NewTerminalReader(rdr, "dumb")
-	if err := drv.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
-	}
+	drv := NewInputScanner(rdr, "dumb")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	var err error
 	var evs []Event
-	events := make(chan Event)
-	go func() {
-		err = drv.ReceiveEvents(ctx, events)
-		close(events)
-	}()
-
-	for ev := range events {
-		evs = append(evs, ev)
+	for drv.Scan() {
+		if ev := drv.Event(); ev != nil {
+			evs = append(evs, ev)
+		}
 	}
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
+	if err := drv.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
 	}
 
 	if !reflect.DeepEqual(expect, evs) {
@@ -880,35 +861,18 @@ func TestReadInput(t *testing.T) {
 }
 
 func testReadInputs(t *testing.T, input io.Reader) []Event {
-	// We'll check that the input reader finishes at the end
-	// without error.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
+	drv := NewInputScanner(input, "dumb")
+	drv.SetLogger(TLogger{t})
 
-	dr := NewTerminalReader(input, "dumb")
-	dr.SetLogger(TLogger{t})
-	if err := dr.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
-	}
-
-	var err error
 	var events []Event
-	eventsc := make(chan Event)
-
-	// Start the reader in the background.
-	go func() {
-		err = dr.ReceiveEvents(ctx, eventsc)
-		close(eventsc)
-	}()
-
-	for ev := range eventsc {
-		if ev != nil {
+	for drv.Scan() {
+		if ev := drv.Event(); ev != nil {
 			events = append(events, ev)
 		}
 	}
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
+	if err := drv.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
 	}
 
 	return events
@@ -1004,7 +968,7 @@ func genRandomDataWithSeed(s int64, length int) randTest {
 }
 
 func FuzzParseSequence(f *testing.F) {
-	var p SequenceParser
+	var p EventDecoder
 	for seq := range sequences {
 		f.Add(seq)
 	}
@@ -1013,7 +977,7 @@ func FuzzParseSequence(f *testing.F) {
 	f.Add("\x1bP>|charm terminal(0.1.2)\x1b\\") // DCS (XTVERSION)
 	f.Add("\x1b_Gi=123\x1b\\")                  // APC
 	f.Fuzz(func(t *testing.T, seq string) {
-		n, _ := p.parseSequence([]byte(seq))
+		n, _ := p.Decode([]byte(seq))
 		if n == 0 && seq != "" {
 			t.Errorf("expected a non-zero width for %q", seq)
 		}
@@ -1023,11 +987,11 @@ func FuzzParseSequence(f *testing.F) {
 // BenchmarkDetectSequenceMap benchmarks the map-based sequence
 // detector.
 func BenchmarkDetectSequenceMap(b *testing.B) {
-	var p SequenceParser
+	var p EventDecoder
 	td := genRandomDataWithSeed(123, 10000)
 	for i := 0; i < b.N; i++ {
 		for j, w := 0, 0; j < len(td.data); j += w {
-			w, _ = p.parseSequence(td.data[j:])
+			w, _ = p.Decode(td.data[j:])
 		}
 	}
 }
@@ -1604,6 +1568,42 @@ func TestKeyMatchString(t *testing.T) {
 				t.Errorf("expected %v but got %v", tc.want, got)
 			}
 		})
+	}
+}
+
+func TestReuseScanner(t *testing.T) {
+	input := "abc\x1b[O"
+	r := strings.NewReader(input)
+	expected := []Event{
+		KeyPressEvent{Code: 'a', Text: "a"},
+		KeyPressEvent{Code: 'b', Text: "b"},
+		KeyPressEvent{Code: 'c', Text: "c"},
+		BlurEvent{},
+	}
+	sc := NewInputScanner(r, "dumb")
+	sc.SetLogger(TLogger{t})
+	var events []Event
+	for sc.Scan() {
+		events = append(events, sc.Event())
+	}
+	if err := sc.Err(); err != nil {
+		t.Errorf("error reading input: %v", err)
+	}
+
+	if !reflect.DeepEqual(events, expected) {
+		t.Errorf("expected:\n%#v\ngot:\n%#v", expected, events)
+	}
+
+	r = strings.NewReader(input)
+	events = events[:0]
+	sc = NewInputScanner(r, "dumb")
+	sc.SetLogger(TLogger{t})
+	for sc.Scan() {
+		events = append(events, sc.Event())
+	}
+
+	if !reflect.DeepEqual(events, expected) {
+		t.Errorf("expected:\n%#v\ngot:\n%#v", expected, events)
 	}
 }
 
