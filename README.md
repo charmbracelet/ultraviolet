@@ -20,38 +20,80 @@ Ultraviolet is the secret power behind the wonder and majesty of the Charm’s t
 
 _So mote it be_.
 
-## Inspiration
+## Features
 
-Ultraviolet is inspired by the need for a modern, efficient, and ergonomic way
-to build terminal applications in Go. It draws inspiration from various
-libraries like [ncurses](https://invisible-island.net/ncurses/). It was born
-out of the desire to create a library that simplifies terminal manipulation
-while providing powerful abstractions for rendering and input handling in
-a platform-agnostic way.
+Ultraviolet is built with several key features in mind to make terminal
+application development easier and more efficient:
 
-### Is it a replacement for Bubble Tea and Lip Gloss?
+### Cell-based Rendering
 
-Simply put, no. Ultraviolet is not a replacement for existing libraries like
-[Bubble Tea](https://github.com/charmbracelet/bubbletea) and [Lip Gloss](https://github.com/charmbracelet/lipgloss). Instead, it serves as a
+The cell-based rendering model was inspired by the infamous
+[ncurses](https://invisible-island.net/ncurses/) library, which has been an
+essential part of terminal applications for decades. Ultraviolet takes this
+concept and modernizes it for the Go programming language, providing a more
+ergonomic and efficient way to work with terminal cells without the need for
+archaic technologies like `terminfo` or `termcap` databases.
+
+### Dynamic Content Updates
+
+The built-in terminal renderer efficiently handles content updates by utilizing
+a powerful cell-based diffing algorithm that minimizes the amount of data
+written to the terminal using various ANSI escape sequences to accomplish this.
+This allows applications to update only the parts of the terminal that have
+changed, significantly improving performance and responsiveness.
+
+### Interactive Input Handling
+
+Input handling in terminals can be complex, especially when dealing with
+multiple input sources, different platforms, and ancient terminal baggage.
+Ultraviolet simplifies this by providing a unified interface for handling user
+input, allowing developers to focus on building their applications without
+getting bogged down in the intricacies of terminal input handling.
+
+### Cross-Platform Compatibility
+
+Ultraviolet is designed to work seamlessly across different platforms and
+terminal emulators. It abstracts away the differences in terminal capabilities
+and provides a consistent API for developers to work with, ensuring that
+applications built with Ultraviolet will run smoothly on various systems.
+
+On Windows, it uses the [Windows Console API](https://learn.microsoft.com/en-us/windows/console/console-functions) to
+provide a consistent experience, while on Unix-like systems, it relies on the
+standard Termios API along with ANSI escape sequences to manipulate the
+terminal.
+
+### Extensible Architecture
+
+Ultraviolet is built with extensibility in mind, providing a solid API that can
+be embedded into other applications or used as a foundation for building custom
+terminal user interfaces. It allows developers to create their own components,
+styles, and behaviors, making it a versatile tool for building terminal
+applications.
+
+## What about other Charm libraries?
+
+Ultraviolet is not a replacement for existing libraries like [Bubble Tea](https://github.com/charmbracelet/bubbletea) or [Lip
+Gloss](https://github.com/charmbracelet/lipgloss). Instead, it serves as a
 foundation for both of these libraries and others like them, providing the
-underlying primitives and abstractions needed to build text-based user
-interfaces and applications.
+underlying primitives and abstractions needed to build terminal user interfaces
+applications and frameworks.
 
-### Features
+### How is it different from Bubble Tea?
 
-Ultraviolet is designed to be a versatile and powerful library for building
-text-based user interfaces with a focus on terminal emulators. It provides a
-set of primitive building blocks that can be used to create interactive
-applications, handle user input, and render dynamic content in a terminal
-environment with the most efficient and ergonomic way possible.
+Ultraviolet is a lower-level library that focuses on the core primitives of
+terminal manipulation, rendering, and input handling. It provides the building
+blocks for creating terminal applications, while Bubble Tea is a higher-level
+framework that builds on top of Ultraviolet to provide a more structured and
+opinionated way to build terminal user interfaces.
 
-This includes features like:
+### Is it a replacement for Lip Gloss?
 
-- Cell-based rendering model for efficient terminal content updates
-- Dynamic content updates using a cell-based diffing algorithm
-- Interactive input handling with support for multiple input sources
-- Cross-platform compatibility with a consistent API
-- Extensible architecture for building custom terminal user interfaces
+Simply put, no. Ultraviolet is not a replacement for Lip Gloss. Instead, it
+provides the underlying rendering capabilities that Lip Gloss can use to create
+styled terminal content. Lip Gloss is a higher-level library that builds on top
+of Ultraviolet by utilizing the cell-based rendering model to provide a
+simplified and ergonomic way to create styled terminal content and composition
+of terminal user interfaces.
 
 ## Usage
 
