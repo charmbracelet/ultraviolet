@@ -342,14 +342,15 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 		// Special case for URxvt keys
 		// CSI <number> $ is an invalid sequence, but URxvt uses it for
 		// shift modified keys.
-		if b[i-1] == '$' {
-			n, ev := p.parseCsi(append(b[:i-1], '~'))
+		if intermed == '$' && b[i-1] == '$' {
+			buf := slices.Clone(b[:i-1])
+			n, ev := p.parseCsi(append(buf, '~'))
 			if k, ok := ev.(KeyPressEvent); ok {
 				k.Mod |= ModShift
 				return n, k
 			}
 		}
-		return i, UnknownEvent(b[:i-1])
+		return i, UnknownEvent(b[:i])
 	}
 
 	// Add the final byte

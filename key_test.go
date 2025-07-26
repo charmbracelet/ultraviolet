@@ -123,6 +123,18 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Invalid CSI sequence.
+		seqTest{
+			[]byte("\x1b[?2004;1$y"),
+			[]Event{ModeReportEvent{Mode: ansi.BracketedPasteMode, Value: ansi.ModeSet}},
+		},
+
+		// Invalid CSI sequence.
+		seqTest{
+			[]byte("\x1b[?2004;1$"),
+			[]Event{UnknownEvent("\x1b[?2004;1$")},
+		},
+
 		// Light/dark color scheme reports.
 		seqTest{
 			[]byte("\x1b[?997;1n"),
