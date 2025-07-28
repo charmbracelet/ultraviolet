@@ -15,3 +15,11 @@ func (t *Terminal) optimizeMovements() {}
 
 func (*Terminal) enableWindowsMouse() error  { return ErrPlatformNotSupported }
 func (*Terminal) disableWindowsMouse() error { return ErrPlatformNotSupported }
+
+func supportsHardTabs(uint64) bool {
+	return false
+}
+
+func supportsBackspace(uint64) bool {
+	return false
+}

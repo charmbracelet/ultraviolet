@@ -64,9 +64,13 @@ func (t *Terminal) optimizeMovements() {
 	if state == nil {
 		return
 	}
-	t.useTabs = state.Oflag&unix.TABDLY == unix.TAB0
-	t.useBspace = state.Lflag&unix.BSDLY == unix.BS0
+	t.useTabs = supportsHardTabs(uint64(state.Oflag))    //nolint:unconvert
+	t.useBspace = supportsBackspace(uint64(state.Lflag)) //nolint:unconvert
 }
 
 func (*Terminal) enableWindowsMouse() error  { return nil }
 func (*Terminal) disableWindowsMouse() error { return nil }
+
+func supportsHardTabs(oflag uint64) bool {
+	return oflag&unix.TABDLY == unix.TAB0
+}
