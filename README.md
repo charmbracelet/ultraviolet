@@ -8,39 +8,42 @@
     <a href="https://github.com/charmbracelet/ultraviolet/actions"><img src="https://github.com/charmbracelet/ultraviolet/actions/workflows/build.yml/badge.svg" alt="Build Status"></a>
 </p>
 
+Ultraviolet is a set of primitives for manipulating terminal emulators, with a focus on terminal user interfaces (TUIs). It provides a set of tools and abstractions for interaction that can handle user input and display dynamic, cell-based content. It’s the product of many years of research, development, collaboration and ingenuity.
+
+Ultraviolet is not a framework by design, however it can be used standalone to create powerful terminal applications. It’s in use in production and powers critical portions of [Bubble Tea v2][bbt] and [Lip Gloss v2][lg], and was instrumental in the development of [Crush][crush].
+
+[crush]: https://github.com/charmbracelet/crush
+[bbt]: https://github.com/charmbracelet/lipgloss
+[lg]: https://github.com/charmbracelet/lipgloss
+
 > [!CAUTION]
-> This project is in very early development and may change significantly at any moment. Expect no API guarantees as of now.
-
-Ultraviolet is a set of primitives for manipulating terminal emulators with a
-focus on terminal user interfaces (TUIs). It provides a set of tools and
-abstractions for interactive terminal applications that can handle user input
-and display dynamic, cell-based content.
-
-Ultraviolet is the secret power behind the wonder and majesty of the Charm’s terminal user interface libraries. It is the result of many years of research, development, collaboration and ingenuity.
-
-_So mote it be_.
+> This project currently exists to serve internal use cases. API stability is a goal, but expect no stability guarantees as of now.
 
 ## Features
 
-Ultraviolet is built with several key features in mind to make terminal
-application development easier and more efficient:
+Ultraviolet is built with several core features in mind to make terminal
+application development easy and performant:
 
-### Cell-based Rendering
+### 👺 The Cursed Renderer
 
-The cell-based rendering model was inspired by the infamous
+The cell-based rendering model—called _The Cursed Render_—was inspired by the infamous
 [ncurses](https://invisible-island.net/ncurses/) library, which has been an
 essential part of terminal applications for decades. Ultraviolet takes this
 concept and modernizes it for the Go programming language, providing a more
 ergonomic and efficient way to work with terminal cells without the need for
 archaic technologies like `terminfo` or `termcap` databases.
 
-### Dynamic Content Updates
+Unlike ncurses, it supports both full-window and inline use-cases as we see inline TUIs as important in maintaining user context and flow.
+
+### 🏎️ Speed and Low Bandwidth
 
 The built-in terminal renderer efficiently handles content updates by utilizing
 a powerful cell-based diffing algorithm that minimizes the amount of data
 written to the terminal using various ANSI escape sequences to accomplish this.
 This allows applications to update only the parts of the terminal that have
 changed, significantly improving performance and responsiveness.
+
+In practical terms, Ultraviolet optimizes for fast redraws that use minimal data transfer. This is very important locally and critically important over the network (for example, via SSH).
 
 ### Interactive Input Handling
 
