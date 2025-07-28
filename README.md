@@ -111,8 +111,9 @@ You can find a simple tutorial on how to create a UV application that displays
 We’d love to hear your thoughts on this project. Feel free to drop us a note!
 
 - [Twitter](https://twitter.com/charmcli)
+- [Discord](https://charm.land/discord)
+- [Slack](https://charm.land/slack)
 - [The Fediverse](https://mastodon.social/@charmcli)
-- [Discord](https://charm.sh/chat)
 
 ## License
 
