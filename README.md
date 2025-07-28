@@ -3,7 +3,6 @@
 <img width="400" alt="Charm Ultraviolet" src="https://github.com/user-attachments/assets/3484e4b0-3741-4e8c-bebf-9ea51f5bb49c" />
 
 <p>
-    <a href="https://github.com/charmbracelet/ultraviolet/releases"><img src="https://img.shields.io/github/release/charmbracelet/ultraviolet.svg" alt="Latest Release"></a>
     <a href="https://pkg.go.dev/github.com/charmbracelet/ultraviolet?tab=doc"><img src="https://godoc.org/github.com/charmbracelet/ultraviolet?status.svg" alt="GoDoc"></a>
     <a href="https://github.com/charmbracelet/ultraviolet/actions"><img src="https://github.com/charmbracelet/ultraviolet/actions/workflows/build.yml/badge.svg" alt="Build Status"></a>
 </p>
@@ -35,7 +34,7 @@ archaic technologies like `terminfo` or `termcap` databases.
 
 Unlike ncurses, it supports both full-window and inline use-cases as we see inline TUIs as important in maintaining user context and flow.
 
-### 🏎️ Speed and Low Bandwidth
+### 🏎️ High Speeds and Low Bandwidth
 
 The built-in terminal renderer efficiently handles content updates by utilizing
 a powerful cell-based diffing algorithm that minimizes the amount of data
@@ -45,7 +44,7 @@ changed, significantly improving performance and responsiveness.
 
 In practical terms, Ultraviolet optimizes for fast redraws that use minimal data transfer. This is very important locally and critically important over the network (for example, via SSH).
 
-### Interactive Input Handling
+### 💬 Universal Input
 
 Input handling in terminals can be complex, especially when dealing with
 multiple input sources, different platforms, and ancient terminal baggage.
@@ -53,7 +52,7 @@ Ultraviolet simplifies this by providing a unified interface for handling user
 input, allowing developers to focus on building their applications without
 getting bogged down in the intricacies of terminal input handling.
 
-### Cross-Platform Compatibility
+### 🎮 Cross-Platform Compatibility
 
 Ultraviolet is designed to work seamlessly across different platforms and
 terminal emulators. It abstracts away the differences in terminal capabilities
@@ -65,7 +64,9 @@ provide a consistent experience, while on Unix-like systems, it relies on the
 standard Termios API along with ANSI escape sequences to manipulate the
 terminal.
 
-### Extensible Architecture
+In short: Ultraviolet provides first-class support for both Unix and Windows-based systems.
+
+### 🧩 Extensible Architecture
 
 Ultraviolet is built with extensibility in mind, providing a solid API that can
 be embedded into other applications or used as a foundation for building custom
@@ -73,7 +74,9 @@ terminal user interfaces. It allows developers to create their own components,
 styles, and behaviors, making it a versatile tool for building terminal
 applications.
 
-## What about other Charm libraries?
+## FAQ
+
+### 🐈 What about other Charm libraries?
 
 Ultraviolet is not a replacement for existing libraries like [Bubble Tea](https://github.com/charmbracelet/bubbletea) or [Lip
 Gloss](https://github.com/charmbracelet/lipgloss). Instead, it serves as a
@@ -81,7 +84,7 @@ foundation for both of these libraries and others like them, providing the
 underlying primitives and abstractions needed to build terminal user interfaces
 applications and frameworks.
 
-### How is it different from Bubble Tea?
+## 🛁 How is it different from Bubble Tea?
 
 Ultraviolet is a lower-level library that focuses on the core primitives of
 terminal manipulation, rendering, and input handling. It provides the building
@@ -89,7 +92,7 @@ blocks for creating terminal applications, while Bubble Tea is a higher-level
 framework that builds on top of Ultraviolet to provide a more structured and
 opinionated way to build terminal user interfaces.
 
-### Is it a replacement for Lip Gloss?
+### 💋 Is it a replacement for Lip Gloss?
 
 Simply put, no. Ultraviolet is not a replacement for Lip Gloss. Instead, it
 provides the underlying rendering capabilities that Lip Gloss can use to create
@@ -98,21 +101,7 @@ of Ultraviolet by utilizing the cell-based rendering model to provide a
 simplified and ergonomic way to create styled terminal content and composition
 of terminal user interfaces.
 
-## Usage
-
-To use Ultraviolet, you can get it with:
-
-```bash
-go get github.com/charmbracelet/ultraviolet
-```
-
-Then import it in your Go code:
-
-```go
-import "github.com/charmbracelet/ultraviolet"
-```
-
-## Tutorial
+## ✏️ Tutorial
 
 You can find a simple tutorial on how to create a UV application that displays
 "Hello, World!" on the screen in the [TUTORIAL.md](./TUTORIAL.md) file.
