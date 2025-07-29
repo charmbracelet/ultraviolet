@@ -12,7 +12,7 @@ Ultraviolet is a set of primitives for manipulating terminal emulators, with a f
 Ultraviolet is not a framework by design, however it can be used standalone to create powerful terminal applications. It’s in use in production and powers critical portions of [Bubble Tea v2][bbt] and [Lip Gloss v2][lg], and was instrumental in the development of [Crush][crush].
 
 [crush]: https://github.com/charmbracelet/crush
-[bbt]: https://github.com/charmbracelet/lipgloss
+[bbt]: https://github.com/charmbracelet/bubbletea
 [lg]: https://github.com/charmbracelet/lipgloss
 
 > [!CAUTION]
