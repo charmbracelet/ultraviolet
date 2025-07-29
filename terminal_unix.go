@@ -1,11 +1,10 @@
-//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || aix || zos
-// +build darwin dragonfly freebsd linux netbsd openbsd solaris aix zos
+//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || aix
+// +build darwin dragonfly freebsd linux netbsd openbsd solaris aix
 
 package uv
 
 import (
 	"github.com/charmbracelet/x/term"
-	"golang.org/x/sys/unix"
 )
 
 func (t *Terminal) makeRaw() error {
@@ -70,7 +69,3 @@ func (t *Terminal) optimizeMovements() {
 
 func (*Terminal) enableWindowsMouse() error  { return nil }
 func (*Terminal) disableWindowsMouse() error { return nil }
-
-func supportsHardTabs(oflag uint64) bool {
-	return oflag&unix.TABDLY == unix.TAB0
-}

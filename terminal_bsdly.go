@@ -1,5 +1,5 @@
-//go:build darwin || linux || solaris || aix || zos
-// +build darwin linux solaris aix zos
+//go:build darwin || linux || aix
+// +build darwin linux aix
 
 package uv
 
