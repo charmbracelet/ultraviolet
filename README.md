@@ -80,11 +80,11 @@ applications.
 
 Ultraviolet is not a replacement for existing libraries like [Bubble Tea](https://github.com/charmbracelet/bubbletea) or [Lip
 Gloss](https://github.com/charmbracelet/lipgloss). Instead, it serves as a
-foundation for both of these libraries and others like them, providing the
+foundation for the latest versions of both of these libraries and others like them, providing the
 underlying primitives and abstractions needed to build terminal user interfaces
 applications and frameworks.
 
-## 🛁 How is it different from Bubble Tea?
+### 🛁 How is it different from Bubble Tea?
 
 Ultraviolet is a lower-level library that focuses on the core primitives of
 terminal manipulation, rendering, and input handling. It provides the building
