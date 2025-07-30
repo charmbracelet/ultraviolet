@@ -2,6 +2,7 @@ package uv
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"image/color"
@@ -604,7 +605,8 @@ func TestSplitReads(t *testing.T) {
 		"\x1b[12;34;9",
 	}
 
-	drv := NewInputScanner(NewStringSliceReader(t, inputs), "dumb")
+	r := LimitedReader(strings.NewReader(strings.Join(inputs, "")), 8)
+	drv := NewInputScanner(r, "dumb")
 	drv.SetLogger(TLogger{t})
 
 	var events []Event
@@ -1663,64 +1665,202 @@ func TestKeyMatchString(t *testing.T) {
 	}
 }
 
-func TestReuseScanner(t *testing.T) {
-	input := "abc\x1b[O"
-	r := strings.NewReader(input)
-	expected := []Event{
-		KeyPressEvent{Code: 'a', Text: "a"},
-		KeyPressEvent{Code: 'b', Text: "b"},
-		KeyPressEvent{Code: 'c', Text: "c"},
-		BlurEvent{},
-	}
-	sc := NewInputScanner(r, "dumb")
-	sc.SetLogger(TLogger{t})
-	var events []Event
-	for sc.Scan() {
-		events = append(events, sc.Event())
-	}
-	if err := sc.Err(); err != nil {
-		t.Errorf("error reading input: %v", err)
+// TestSplitSequences tests that string-terminated sequences work correctly
+// when split across multiple read() calls.
+func TestSplitSequences(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks [][]byte
+		want   []Event
+		delay  time.Duration
+		limit  int // limit the number of bytes read at once
+	}{
+		{
+			name: "OSC 11 background color with ST terminator",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1a1a/1b1b/2c2c"),
+				[]byte("\x1b\\"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1a1a/1b1b/2c2c")},
+			},
+		},
+		{
+			name: "OSC 11 background color with BEL terminator",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1a1a/1b1b/2c2c"),
+				[]byte("\x07"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1a1a/1b1b/2c2c")},
+			},
+		},
+		{
+			name: "OSC 10 foreground color split",
+			chunks: [][]byte{
+				[]byte("\x1b]10;rgb:ffff/0000/"),
+				[]byte("0000\x1b\\"),
+			},
+			want: []Event{
+				ForegroundColorEvent{Color: ansi.XParseColor("rgb:ffff/0000/0000")},
+			},
+		},
+		{
+			name: "OSC 12 cursor color split",
+			chunks: [][]byte{
+				[]byte("\x1b]12;rgb:"),
+				[]byte("8080/8080/8080\x07"),
+			},
+			want: []Event{
+				CursorColorEvent{Color: ansi.XParseColor("rgb:8080/8080/8080")},
+			},
+		},
+		{
+			name: "DCS sequence split",
+			chunks: [][]byte{
+				[]byte("\x1bP1$r"),
+				[]byte("test\x1b\\"),
+			},
+			want: []Event{
+				UnknownDcsEvent("\x1bP1$rtest\x1b\\"),
+			},
+		},
+		{
+			name: "long DCS sequence split",
+			chunks: [][]byte{
+				[]byte("\x1bP1$raaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcdef"),
+				[]byte("test\x1b\\"),
+			},
+			want: []Event{
+				UnknownDcsEvent("\x1bP1$raaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcdeftest\x1b\\"),
+			},
+			limit: 256,
+		},
+		{
+			name: "APC sequence split",
+			chunks: [][]byte{
+				[]byte("\x1b_T"),
+				[]byte("test\x1b\\"),
+			},
+			want: []Event{
+				UnknownApcEvent("\x1b_Ttest\x1b\\"),
+			},
+		},
+		{
+			name: "Multiple chunks OSC",
+			chunks: [][]byte{
+				[]byte("\x1b]11;"),
+				[]byte("rgb:1234/"),
+				[]byte("5678/9abc\x07"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1234/5678/9abc")},
+			},
+		},
+		{
+			name: "OSC followed by regular key",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1111/2222/3333"),
+				[]byte("\x07a"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1111/2222/3333")},
+				KeyPressEvent{Code: 'a', Text: "a"},
+			},
+		},
+		{
+			name: "unknown sequence after timeout",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1111/2222/3333"),
+				[]byte("abc"),
+				[]byte("x"),
+				[]byte("x"),
+				[]byte("x"),
+				[]byte("x"),
+			},
+			want: []Event{
+				UnknownEvent("\x1b]11;rgb:1111/2222/3333abcxxx"),
+				KeyPressEvent{Code: 'x', Text: "x"},
+			},
+			delay: 10 * time.Millisecond, // Ensure the timeout is triggered.
+		},
 	}
 
-	if !reflect.DeepEqual(events, expected) {
-		t.Errorf("expected:\n%#v\ngot:\n%#v", expected, events)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rds := make([]io.Reader, len(tt.chunks))
+			for i, chunk := range tt.chunks {
+				rds[i] = bytes.NewReader(chunk)
+			}
+			var r io.Reader
+			limit := 32
+			if tt.limit > 0 {
+				limit = tt.limit
+			}
+			if tt.delay > 0 {
+				r = DelayedLimitedReader(io.MultiReader(rds...), limit, tt.delay)
+			} else {
+				r = LimitedReader(io.MultiReader(rds...), limit)
+			}
+			ir := NewInputScanner(r, "xterm-256color")
+			ir.SetLogger(TLogger{TB: t})
+			var got []Event
 
-	r = strings.NewReader(input)
-	events = events[:0]
-	sc = NewInputScanner(r, "dumb")
-	sc.SetLogger(TLogger{t})
-	for sc.Scan() {
-		events = append(events, sc.Event())
-	}
+			for ir.Scan() {
+				if ev := ir.Event(); ev != nil {
+					got = append(got, ev)
+				}
+			}
 
-	if !reflect.DeepEqual(events, expected) {
-		t.Errorf("expected:\n%#v\ngot:\n%#v", expected, events)
+			err := ir.Err()
+			if err != nil && !errors.Is(err, io.EOF) {
+				t.Errorf("unexpected error receiving events: %v", err)
+			}
+
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d events, want %d: %#v", len(got), len(tt.want), got)
+			}
+
+			for i, want := range tt.want {
+				if !reflect.DeepEqual(got[i], want) {
+					t.Errorf("event %d: got %#v, want %#v", i, got[i], want)
+				}
+			}
+		})
 	}
 }
 
-type stringSliceReader struct {
-	t testing.TB
-	s []string
+// limitedSleepReader is a simple io.Reader that limits the number of bytes
+// read on each Read call and simulates a delay to mimic terminal input
+// behavior.
+type limitedSleepReader struct {
+	r io.Reader
+	n int
+	d time.Duration
 	i int
 }
 
-func NewStringSliceReader(t testing.TB, s []string) io.Reader {
-	return &stringSliceReader{t: t, s: s}
+func DelayedLimitedReader(r io.Reader, n int, d time.Duration) io.Reader {
+	return &limitedSleepReader{r: r, n: n, d: d}
 }
 
-func (r *stringSliceReader) Read(p []byte) (n int, err error) {
-	if r.i >= len(r.s) {
+func LimitedReader(r io.Reader, n int) io.Reader {
+	return &limitedSleepReader{r: r, n: n}
+}
+
+func (r *limitedSleepReader) Read(p []byte) (n int, err error) {
+	if r.i > 0 && r.d > 0 {
+		time.Sleep(r.d)
+	}
+	if r.n <= 0 {
 		return 0, io.EOF
 	}
-	// Simulate a read from terminal input.
-	n = copy(p, r.s[r.i])
-	r.i++
-	if n < len(r.s[r.i-1]) {
-		return n, nil
+	if len(p) > r.n {
+		p = p[0:r.n]
 	}
-	// time.Sleep(time.Duration(rand.Intn(99)) * time.Millisecond)
-	return n, nil
+	n, err = r.r.Read(p)
+	r.i++
+	return n, err
 }
 
 type TLogger struct{ testing.TB }
