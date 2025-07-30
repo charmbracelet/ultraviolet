@@ -440,9 +440,11 @@ func TestRendererCapabilities(t *testing.T) {
 				if !r.caps.Contains(capVPA) {
 					t.Error("expected xterm to support VPA")
 				}
-				if !r.caps.Contains(capHPA) {
-					t.Error("expected xterm to support HPA")
-				}
+				// NOTE: We have disabled HPA for xterm due to some terminals
+				// not supporting it correctly i.e. Konsole.
+				// if !r.caps.Contains(capHPA) {
+				// 	t.Error("expected xterm to support HPA")
+				// }
 			},
 		},
 		{
