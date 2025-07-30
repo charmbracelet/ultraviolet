@@ -225,7 +225,11 @@ func (d *InputScanner) scanLast() bool {
 }
 
 func (d *InputScanner) scan() bool {
-	d.runOnce.Do(func() { go d.run() })
+	d.runOnce.Do(func() {
+		go d.run()
+		d.timeout.Reset(d.EscTimeout)
+		d.ttimeout = time.Now().Add(d.EscTimeout)
+	})
 	for {
 		if d.eventsIdx >= len(d.events) {
 			// Reset the buffer if we have processed all events.
@@ -243,31 +247,20 @@ func (d *InputScanner) scan() bool {
 			return d.scanLast()
 		case <-d.timeout.C:
 			// Timeout reached process the buffer including any incomplete sequences.
-			hasEvents := len(d.buf) > 0 && time.Now().After(d.ttimeout) && d.processEvents(true)
-			if hasEvents {
+			if len(d.buf) > 0 && d.processEvents(true) {
 				d.eventsIdx++
-			}
-			if len(d.buf) > 0 {
-				// We haven't processed all events in the buffer, meaning
-				// we have incomplete sequences remaining.
 				d.timeout.Reset(d.EscTimeout)
-			}
-			if hasEvents {
 				return true
 			}
+
 		case buf := <-d.notify:
+			pending := len(d.buf) > 0
+			expired := time.Now().After(d.ttimeout)
 			d.buf = append(d.buf, buf...)
-			d.ttimeout = time.Now().Add(d.EscTimeout)
-			hasEvents := d.processEvents(false)
-			if hasEvents {
+			if d.processEvents(pending && expired) {
 				d.eventsIdx++
-			}
-			if len(d.buf) > 0 {
-				// We haven't processed all events in the buffer, meaning
-				// we have incomplete sequences remaining.
 				d.timeout.Reset(d.EscTimeout)
-			}
-			if hasEvents {
+				d.ttimeout = time.Now().Add(d.EscTimeout)
 				return true
 			}
 		}
@@ -307,14 +300,14 @@ func (d *InputScanner) processEventsDefault(expired bool) bool {
 		case UnknownEvent:
 			isUnknown = true
 			// Try to look up the event in the table.
+			if !expired {
+				return false // wait for more input
+			}
+
 			if k, ok := d.table[string(d.buf[:n])]; ok {
 				d.events = append(d.events, KeyPressEvent(k))
 				d.buf = d.buf[n:]
 				return true
-			}
-
-			if !expired {
-				return false // wait for more input
 			}
 
 			d.events = append(d.events, event)
