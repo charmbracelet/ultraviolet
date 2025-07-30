@@ -1,5 +1,5 @@
-//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || aix || zos
-// +build darwin dragonfly freebsd linux netbsd openbsd solaris aix zos
+//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || aix
+// +build darwin dragonfly freebsd linux netbsd openbsd solaris aix
 
 package uv
 
