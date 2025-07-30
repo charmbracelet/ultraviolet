@@ -1567,9 +1567,14 @@ func xtermCaps(termtype string) (v capabilities) {
 		"rio",
 		"st",
 		"tmux",
-		"wezterm",
-		"xterm":
+		"wezterm":
 		v = allCaps
+	case "xterm":
+		// NOTE: We exclude capHPA from allCaps because terminals like Konsole
+		// don't support it. We should find a way to detect this at runtime and add
+		// it to the capabilities if supported.
+		v = allCaps
+		v &^= capHPA
 	case "alacritty":
 		v = allCaps
 		v &^= capCHT // NOTE: alacritty added support for [ansi.CHT] in 2024-12-28 #62d5b13.
