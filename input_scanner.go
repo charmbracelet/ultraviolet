@@ -84,6 +84,7 @@ type InputScanner struct {
 	events    []Event   // queued events to be sent.
 	eventsIdx int       // eventsIdx is the index of the next event to be sent.
 	ttimeout  time.Time // ttimeout is the time at which the last input was received.
+	runOnce   sync.Once // runOnce is used to ensure that the reader is only started once.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
@@ -138,8 +139,8 @@ func NewInputScanner(r io.Reader, termType string) *InputScanner {
 	d.notify = make(chan []byte)
 	d.donec = make(chan struct{})
 	d.closeOnce = sync.Once{}
+	d.runOnce = sync.Once{}
 	d.eventsIdx = -1 // indicates that no events have been read yet.
-	go d.run()       // Start the reader loop in a separate goroutine.
 	return d
 }
 
@@ -224,6 +225,7 @@ func (d *InputScanner) scanLast() bool {
 }
 
 func (d *InputScanner) scan() bool {
+	d.runOnce.Do(func() { go d.run() })
 	for {
 		if d.eventsIdx >= len(d.events) {
 			// Reset the buffer if we have processed all events.
