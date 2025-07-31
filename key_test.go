@@ -123,6 +123,26 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Kitty printable keys with lock modifiers.
+		seqTest{
+			[]byte("\x1b[97;65u" + // caps lock on
+				"\x1b[97;2u" + // shift pressed
+				"\x1b[97;65u" + // caps lock on
+				"\x1b[97;66u" + // caps lock on and shift pressed
+				"\x1b[97;129u" + // num lock on
+				"\x1b[97;130u" + // num lock on and shift pressed
+				"\x1b[97;194u"), // num lock on and caps lock on and shift pressed
+			[]Event{
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModCapsLock},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModShift},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModCapsLock},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModCapsLock | ModShift},
+				KeyPressEvent{Code: 'a', Text: "a", Mod: ModNumLock},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModNumLock | ModShift},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModNumLock | ModCapsLock | ModShift},
+			},
+		},
+
 		// Kitty NumPad keys.
 		seqTest{
 			[]byte("\x1b[57399u" +

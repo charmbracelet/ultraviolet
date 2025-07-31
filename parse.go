@@ -1459,9 +1459,15 @@ func parseKittyKeyboard(params ansi.Params) (Event Event) {
 		}
 	}
 
-	printMod := key.Mod <= ModShift || key.Mod == ModCapsLock || key.Mod == ModShift|ModCapsLock
+	keyMod := key.Mod
+
+	// Remove these lock modifiers from now on since they don't affect the text.
+	keyMod &^= ModNumLock
+	// keyMod &^= ModScrollLock // Kitty doesn't support scroll lock
+
+	printMod := keyMod <= ModShift || keyMod == ModCapsLock || keyMod == (ModShift|ModCapsLock)
 	printKeyPad := key.Code >= KeyKpEqual && key.Code <= KeyKpSep
-	if len(key.Text) == 0 && printKeyPad && (printMod) {
+	if len(key.Text) == 0 && printKeyPad && printMod {
 		switch {
 		case key.Code >= KeyKp0 && key.Code <= KeyKp9:
 			key.Text = string('0' + key.Code - KeyKp0)
@@ -1484,11 +1490,11 @@ func parseKittyKeyboard(params ansi.Params) (Event Event) {
 
 	//nolint:nestif
 	if len(key.Text) == 0 && unicode.IsPrint(key.Code) && printMod {
-		if key.Mod == 0 {
+		if keyMod == 0 {
 			key.Text = string(key.Code)
 		} else {
 			desiredCase := unicode.ToLower
-			if key.Mod.Contains(ModShift) || key.Mod.Contains(ModCapsLock) {
+			if keyMod.Contains(ModShift) || keyMod.Contains(ModCapsLock) {
 				desiredCase = unicode.ToUpper
 			}
 			if key.ShiftedCode != 0 {
