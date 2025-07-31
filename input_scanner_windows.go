@@ -4,9 +4,9 @@
 package uv
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 	"unicode"
@@ -19,31 +19,81 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ReceiveEvents reads input events from the terminal and sends them to the
-// given event channel.
-func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
+// Scan advances the scanner to the next event and returns whether it was
+// successful. If the scanner is at the end of the input, it returns false.
+func (d *InputScanner) Scan() bool {
+	return d.scan()
+}
+
+func (d *InputScanner) processEvents(expired bool) bool {
+	evs, err := d.handleConInput()
+	if errors.Is(err, errNotConInputReader) {
+		return d.processEventsDefault(expired)
+	}
+	if err != nil {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, cancelreader.ErrCanceled) {
+			d.err.Store(&err)
+		}
+		return false
+	}
+	d.events = append(d.events, evs...)
+	return true
+}
+
+var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
+
+func (d *InputScanner) run() {
+	cc, ok := d.r.(*conInputReader)
+	if !ok {
+		panic("not a conInputReader")
+	}
+
+	defer d.closeEvents()
 	for {
-		evs, err := d.handleConInput()
-		if errors.Is(err, errNotConInputReader) {
-			return d.receiveEvents(ctx, events)
+		// Peek up to 256 events, this is to allow for sequences events reported as
+		// key events.
+		events, err := peekNConsoleInputs(cc.conin, 256)
+		if cc.isCanceled() {
+			return
 		}
 		if err != nil {
-			return fmt.Errorf("read coninput events: %w", err)
+			d.err.Store(&err)
+			return
 		}
-		for _, ev := range evs {
-			select {
-			case <-ctx.Done():
-				return nil
-			case events <- ev:
+		if len(events) > 0 {
+			break
+		}
+
+		// Sleep for a bit to avoid busy waiting.
+		time.Sleep(10 * time.Millisecond)
+
+		events, err = readNConsoleInputs(cc.conin, uint32(len(events))) //nolint:gosec
+		if cc.isCanceled() {
+			return
+		}
+		if err != nil {
+			d.err.Store(&err)
+			return
+		}
+
+		for _, event := range events {
+			if e := d.parseConInputEvent(event, &d.keyState, d.MouseMode, d.logger); e != nil {
+				if multi, ok := e.(MultiEvent); ok {
+					for _, ev := range multi {
+						d.logf("input: %T %v", ev, ev)
+					}
+					d.events = append(d.events, multi...)
+				} else {
+					d.logf("input: %T %v", e, e)
+					d.events = append(d.events, e)
+				}
 			}
 		}
 	}
 }
 
-var errNotConInputReader = fmt.Errorf("handleConInput: not a conInputReader")
-
-func (d *TerminalReader) handleConInput() ([]Event, error) {
-	cc, ok := d.rd.(*conInputReader)
+func (d *InputScanner) handleConInput() ([]Event, error) {
+	cc, ok := d.r.(*conInputReader)
 	if !ok {
 		return nil, errNotConInputReader
 	}
@@ -98,7 +148,7 @@ func (d *TerminalReader) handleConInput() ([]Event, error) {
 	return evs, nil
 }
 
-func (p *SequenceParser) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
+func (p *EventDecoder) parseConInputEvent(event xwindows.InputRecord, keyState *win32InputState, mouseMode *MouseMode, logger Logger) Event {
 	switch event.EventType {
 	case xwindows.KEY_EVENT:
 		kevent := event.KeyEvent()
@@ -287,7 +337,7 @@ func peekNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.In
 // an event from win32-input-mode. Otherwise, it's a key event from the Windows
 // Console API and needs a state to decode ANSI escape sequences and utf16
 // runes.
-func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
+func (p *EventDecoder) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16, logger Logger) (event Event) {
 	defer func() {
 		// Respect the repeat count.
 		if repeatCount > 1 {
@@ -350,7 +400,7 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 				return nil
 			}
 
-			n, event := p.parseSequence(state.ansiBuf[:state.ansiIdx])
+			n, event := p.Decode(state.ansiBuf[:state.ansiIdx])
 			if n == 0 {
 				return nil
 			}

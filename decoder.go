@@ -192,10 +192,10 @@ func (l LegacyKeyEncoding) FKeys(v bool) LegacyKeyEncoding {
 	return l
 }
 
-// SequenceParser parses unicode, control, and escape sequences into events. It
-// is used to parse input events from the terminal input buffer and generate
-// events that can be used by the application.
-type SequenceParser struct {
+// EventDecoder decodes terminal input events from a byte buffer. Terminal
+// input events are typically encoded as Unicode or ASCII characters, control
+// codes, or ANSI escape sequences.
+type EventDecoder struct {
 	// Legacy is the legacy key encoding flags. These flags control the
 	// behavior of legacy terminal key encodings. See [LegacyKeyEncoding] for
 	// more details.
@@ -206,12 +206,29 @@ type SequenceParser struct {
 	UseTerminfo bool
 }
 
-// parseSequence finds the first recognized event sequence and returns it along
+// Decode finds the first recognized event sequence and returns it along
 // with its length.
 //
 // It will return zero and nil no sequence is recognized or when the buffer is
-// empty. If a sequence is not supported, an UnknownEvent is returned.
-func (p *SequenceParser) parseSequence(buf []byte) (n int, Event Event) {
+// empty. If a sequence is not supported, an [UnknownEvent] is returned.
+//
+// Example:
+//
+//	```go
+//	var decoder EventDecoder
+//	var events []Event
+//	buf := []byte("\x00" + // Ctrl+Space
+//	    "\x1b[A" + // Up arrow
+//	    "Hello") // Text input
+//	for len(buf) > 0 {
+//	    n, ev := decoder.Decode(buf)
+//	    if ev != nil {
+//	        events = append(events, ev)
+//	    }
+//	    buf = buf[n:]
+//	}
+//	```
+func (p *EventDecoder) Decode(buf []byte) (n int, Event Event) {
 	if len(buf) == 0 {
 		return 0, nil
 	}
@@ -239,7 +256,7 @@ func (p *SequenceParser) parseSequence(buf []byte) (n int, Event Event) {
 		case 'X': // Esc-prefixed SOS
 			return p.parseStTerminated(ansi.SOS, 'X', nil)(buf)
 		default:
-			n, e := p.parseSequence(buf[1:])
+			n, e := p.Decode(buf[1:])
 			if k, ok := e.(KeyPressEvent); ok {
 				k.Text = ""
 				k.Mod |= ModAlt
@@ -278,7 +295,7 @@ func (p *SequenceParser) parseSequence(buf []byte) (n int, Event Event) {
 	}
 }
 
-func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
+func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+[ key
 		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
@@ -684,7 +701,7 @@ func (p *SequenceParser) parseCsi(b []byte) (int, Event) {
 
 // parseSs3 parses a SS3 sequence.
 // See https://vt100.net/docs/vt220-rm/chapter4.html#S4.4.4.2
-func (p *SequenceParser) parseSs3(b []byte) (int, Event) {
+func (p *EventDecoder) parseSs3(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+O key
 		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
@@ -748,7 +765,7 @@ func (p *SequenceParser) parseSs3(b []byte) (int, Event) {
 	return i, k
 }
 
-func (p *SequenceParser) parseOsc(b []byte) (int, Event) {
+func (p *EventDecoder) parseOsc(b []byte) (int, Event) {
 	defaultKey := func() KeyPressEvent {
 		return KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
 	}
@@ -851,7 +868,7 @@ func (p *SequenceParser) parseOsc(b []byte) (int, Event) {
 }
 
 // parseStTerminated parses a control sequence that gets terminated by a ST character.
-func (p *SequenceParser) parseStTerminated(intro8, intro7 byte, fn func([]byte) Event) func([]byte) (int, Event) {
+func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Event) func([]byte) (int, Event) {
 	defaultKey := func(b []byte) (int, Event) {
 		switch intro8 {
 		case ansi.SOS:
@@ -929,7 +946,7 @@ func (p *SequenceParser) parseStTerminated(intro8, intro7 byte, fn func([]byte) 
 	}
 }
 
-func (p *SequenceParser) parseDcs(b []byte) (int, Event) {
+func (p *EventDecoder) parseDcs(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+P key
 		return 2, KeyPressEvent{Code: 'p', Mod: ModShift | ModAlt}
@@ -1043,7 +1060,7 @@ func (p *SequenceParser) parseDcs(b []byte) (int, Event) {
 	return i, UnknownDcsEvent(b[:i])
 }
 
-func (p *SequenceParser) parseApc(b []byte) (int, Event) {
+func (p *EventDecoder) parseApc(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+_ key
 		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
@@ -1070,7 +1087,7 @@ func (p *SequenceParser) parseApc(b []byte) (int, Event) {
 	})(b)
 }
 
-func (p *SequenceParser) parseUtf8(b []byte) (int, Event) {
+func (p *EventDecoder) parseUtf8(b []byte) (int, Event) {
 	if len(b) == 0 {
 		return 0, nil
 	}
@@ -1111,7 +1128,7 @@ func (p *SequenceParser) parseUtf8(b []byte) (int, Event) {
 	return len(cluster), KeyPressEvent{Code: code, Text: text}
 }
 
-func (p *SequenceParser) parseControl(b byte) Event {
+func (p *EventDecoder) parseControl(b byte) Event {
 	switch b {
 	case ansi.NUL:
 		if p.Legacy&flagCtrlAt != 0 {

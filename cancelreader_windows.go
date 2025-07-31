@@ -22,7 +22,9 @@ type conInputReader struct {
 
 var _ cancelreader.CancelReader = &conInputReader{}
 
-func newCancelreader(r io.Reader) (cancelreader.CancelReader, error) {
+// NewCancelreader creates a new [cancelreader.CancelReader] that provides a
+// cancelable reader interface that can be used to cancel reads.
+func NewCancelreader(r io.Reader) (cancelreader.CancelReader, error) {
 	fallback := func(io.Reader) (cancelreader.CancelReader, error) {
 		return cancelreader.NewReader(r)
 	}

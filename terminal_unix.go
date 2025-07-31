@@ -51,13 +51,22 @@ func (t *Terminal) optimizeMovements() {
 	// Try both inTty and outTty to get the size.
 	var state *term.State
 	var err error
-	for _, f := range []term.File{t.inTty, t.outTty} {
-		if f == nil {
+	for _, s := range []*term.State{t.inTtyState, t.outTtyState} {
+		if s == nil {
 			continue
 		}
-		state, err = term.GetState(f.Fd())
-		if err == nil {
-			break
+		state = s
+		break
+	}
+	if state == nil {
+		for _, f := range []term.File{t.inTty, t.outTty} {
+			if f == nil {
+				continue
+			}
+			state, err = term.GetState(f.Fd())
+			if err == nil {
+				break
+			}
 		}
 	}
 	if state == nil {
