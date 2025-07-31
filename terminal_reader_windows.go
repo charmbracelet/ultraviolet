@@ -323,6 +323,7 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 	}
 
 	var baseCode rune
+	var text string
 	switch {
 	case vkc == 0:
 		// Zero means this event is either an escape code or a unicode
@@ -457,18 +458,25 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 		baseCode = KeyMenu
 	case vkc >= xwindows.VK_NUMPAD0 && vkc <= xwindows.VK_NUMPAD9:
 		baseCode = rune(vkc-xwindows.VK_NUMPAD0) + KeyKp0
+		text = string('0' + (rune(vkc) - xwindows.VK_NUMPAD0))
 	case vkc == xwindows.VK_MULTIPLY:
 		baseCode = KeyKpMultiply
+		text = "*"
 	case vkc == xwindows.VK_ADD:
 		baseCode = KeyKpPlus
+		text = "+"
 	case vkc == xwindows.VK_SEPARATOR:
 		baseCode = KeyKpComma
+		text = ","
 	case vkc == xwindows.VK_SUBTRACT:
 		baseCode = KeyKpMinus
+		text = "-"
 	case vkc == xwindows.VK_DECIMAL:
 		baseCode = KeyKpDecimal
+		text = "."
 	case vkc == xwindows.VK_DIVIDE:
 		baseCode = KeyKpDivide
+		text = "/"
 	case vkc >= xwindows.VK_F1 && vkc <= xwindows.VK_F24:
 		baseCode = rune(vkc-xwindows.VK_F1) + KeyF1
 	case vkc == xwindows.VK_NUMLOCK:
@@ -538,7 +546,6 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 	// XXX: Should this be a KeyMod?
 	altGr := cks&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_ALT_PRESSED) == xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_ALT_PRESSED
 
-	var text string
 	keyCode := baseCode
 	if isCc := unicode.IsControl(r); vkc == 0 && isCc {
 		return p.parseControl(byte(r))
