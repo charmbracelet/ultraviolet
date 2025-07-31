@@ -1459,9 +1459,31 @@ func parseKittyKeyboard(params ansi.Params) (Event Event) {
 		}
 	}
 
+	printMod := key.Mod <= ModShift || key.Mod == ModCapsLock || key.Mod == ModShift|ModCapsLock
+	printKeyPad := key.Code >= KeyKpEqual && key.Code <= KeyKpSep
+	if len(key.Text) == 0 && printKeyPad && (printMod) {
+		switch {
+		case key.Code >= KeyKp0 && key.Code <= KeyKp9:
+			key.Text = string('0' + key.Code - KeyKp0)
+		case key.Code == KeyKpEqual:
+			key.Text = "="
+		case key.Code == KeyKpMultiply:
+			key.Text = "*"
+		case key.Code == KeyKpPlus:
+			key.Text = "+"
+		case key.Code == KeyKpMinus:
+			key.Text = "-"
+		case key.Code == KeyKpDecimal:
+			key.Text = "."
+		case key.Code == KeyKpDivide:
+			key.Text = "/"
+		case key.Code == KeyKpSep:
+			key.Text = ","
+		}
+	}
+
 	//nolint:nestif
-	if len(key.Text) == 0 && unicode.IsPrint(key.Code) &&
-		(key.Mod <= ModShift || key.Mod == ModCapsLock || key.Mod == ModShift|ModCapsLock) {
+	if len(key.Text) == 0 && unicode.IsPrint(key.Code) && printMod {
 		if key.Mod == 0 {
 			key.Text = string(key.Code)
 		} else {
