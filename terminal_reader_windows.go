@@ -546,20 +546,20 @@ func (p *SequenceParser) parseWin32InputKeyEvent(state *win32InputState, vkc uin
 	// XXX: Should this be a KeyMod?
 	altGr := cks&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_ALT_PRESSED) == xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_ALT_PRESSED
 
-	// Remove all lock keys from the control key state from now on.
+	// Remove these lock keys from the control key state from now on.
+	cks &^= xwindows.NUMLOCK_ON
+	cks &^= xwindows.SCROLLLOCK_ON
 	keyCode := baseCode
 	if isCc := unicode.IsControl(r); vkc == 0 && isCc {
 		return p.parseControl(byte(r))
 	} else if !isCc {
 		rw := utf8.EncodeRune(utf8Buf[:], r)
 		keyCode, _ = utf8.DecodeRune(utf8Buf[:rw])
-		cks := cks
-		cks &^= xwindows.NUMLOCK_ON
-		cks &^= xwindows.CAPSLOCK_ON
-		cks &^= xwindows.SCROLLLOCK_ON
-		if unicode.IsPrint(keyCode) && (cks == 0 ||
-			cks == xwindows.SHIFT_PRESSED ||
-			altGr) {
+		if unicode.IsPrint(keyCode) && (cks == 0 || // no modifiers pressed
+			cks == xwindows.SHIFT_PRESSED || // shift pressed
+			cks == xwindows.CAPSLOCK_ON || // caps lock on
+			cks == (xwindows.SHIFT_PRESSED|xwindows.CAPSLOCK_ON) || // Shift + caps lock pressed
+			altGr) { // AltGr pressed
 			// If the control key state is 0, shift is pressed, or caps lock
 			// then the key event is a printable event i.e. [text] is not empty.
 			text = string(keyCode)
