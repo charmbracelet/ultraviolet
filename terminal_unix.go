@@ -63,8 +63,8 @@ func (t *Terminal) optimizeMovements() {
 	if state == nil {
 		return
 	}
-	t.useTabs = supportsHardTabs(uint64(state.Oflag))    //nolint:unconvert
-	t.useBspace = supportsBackspace(uint64(state.Lflag)) //nolint:unconvert
+	t.useTabs = supportsHardTabs(uint64(state.Oflag))    //nolint:unconvert,nolintlint
+	t.useBspace = supportsBackspace(uint64(state.Lflag)) //nolint:unconvert,nolintlint
 }
 
 func (*Terminal) enableWindowsMouse() error  { return nil }
