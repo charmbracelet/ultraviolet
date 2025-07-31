@@ -123,6 +123,86 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Kitty printable keys with lock modifiers.
+		seqTest{
+			[]byte("\x1b[97;65u" + // caps lock on
+				"\x1b[97;2u" + // shift pressed
+				"\x1b[97;65u" + // caps lock on
+				"\x1b[97;66u" + // caps lock on and shift pressed
+				"\x1b[97;129u" + // num lock on
+				"\x1b[97;130u" + // num lock on and shift pressed
+				"\x1b[97;194u"), // num lock on and caps lock on and shift pressed
+			[]Event{
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModCapsLock},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModShift},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModCapsLock},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModCapsLock | ModShift},
+				KeyPressEvent{Code: 'a', Text: "a", Mod: ModNumLock},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModNumLock | ModShift},
+				KeyPressEvent{Code: 'a', Text: "A", Mod: ModNumLock | ModCapsLock | ModShift},
+			},
+		},
+
+		// Kitty NumPad keys.
+		seqTest{
+			[]byte("\x1b[57399u" +
+				"\x1b[57400u" +
+				"\x1b[57401u" +
+				"\x1b[57402u" +
+				"\x1b[57403u" +
+				"\x1b[57404u" +
+				"\x1b[57405u" +
+				"\x1b[57406u" +
+				"\x1b[57407u" +
+				"\x1b[57408u" +
+				"\x1b[57409u" +
+				"\x1b[57410u" +
+				"\x1b[57411u" +
+				"\x1b[57412u" +
+				"\x1b[57413u" +
+				"\x1b[57414u" +
+				"\x1b[57415u" +
+				"\x1b[57416u" +
+				"\x1b[57417u" +
+				"\x1b[57418u" +
+				"\x1b[57419u" +
+				"\x1b[57420u" +
+				"\x1b[57421u" +
+				"\x1b[57422u" +
+				"\x1b[57423u" +
+				"\x1b[57424u" +
+				"\x1b[57425u"),
+			[]Event{
+				KeyPressEvent{Code: KeyKp0, Text: "0"},
+				KeyPressEvent{Code: KeyKp1, Text: "1"},
+				KeyPressEvent{Code: KeyKp2, Text: "2"},
+				KeyPressEvent{Code: KeyKp3, Text: "3"},
+				KeyPressEvent{Code: KeyKp4, Text: "4"},
+				KeyPressEvent{Code: KeyKp5, Text: "5"},
+				KeyPressEvent{Code: KeyKp6, Text: "6"},
+				KeyPressEvent{Code: KeyKp7, Text: "7"},
+				KeyPressEvent{Code: KeyKp8, Text: "8"},
+				KeyPressEvent{Code: KeyKp9, Text: "9"},
+				KeyPressEvent{Code: KeyKpDecimal, Text: "."},
+				KeyPressEvent{Code: KeyKpDivide, Text: "/"},
+				KeyPressEvent{Code: KeyKpMultiply, Text: "*"},
+				KeyPressEvent{Code: KeyKpMinus, Text: "-"},
+				KeyPressEvent{Code: KeyKpPlus, Text: "+"},
+				KeyPressEvent{Code: KeyKpEnter},
+				KeyPressEvent{Code: KeyKpEqual, Text: "="},
+				KeyPressEvent{Code: KeyKpSep, Text: ","},
+				KeyPressEvent{Code: KeyKpLeft},
+				KeyPressEvent{Code: KeyKpRight},
+				KeyPressEvent{Code: KeyKpUp},
+				KeyPressEvent{Code: KeyKpDown},
+				KeyPressEvent{Code: KeyKpPgUp},
+				KeyPressEvent{Code: KeyKpPgDown},
+				KeyPressEvent{Code: KeyKpHome},
+				KeyPressEvent{Code: KeyKpEnd},
+				KeyPressEvent{Code: KeyKpInsert},
+			},
+		},
+
 		// Invalid CSI sequence.
 		seqTest{
 			[]byte("\x1b[?2004;1$y"),
