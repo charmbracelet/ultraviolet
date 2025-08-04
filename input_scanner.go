@@ -190,10 +190,9 @@ func (d *InputScanner) Err() error {
 func (d *InputScanner) runDefault() {
 	defer d.closeEvents() // close events channel when done
 	for {
-		var readBuf [256]byte
+		var readBuf [4096]byte
 		n, err := d.r.Read(readBuf[:])
 		if err != nil {
-			d.closeEvents() // close the events channel before returning
 			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
 				return
 			}
@@ -247,20 +246,48 @@ func (d *InputScanner) scan() bool {
 			return d.scanLast()
 		case <-d.timeout.C:
 			// Timeout reached process the buffer including any incomplete sequences.
-			if len(d.buf) > 0 && d.processEvents(true) {
-				d.eventsIdx++
+			var hasEvents bool
+			if len(d.buf) > 0 {
+				if time.Now().After(d.ttimeout) {
+					hasEvents = d.processEvents(true)
+				}
+			}
+
+			if len(d.buf) > 0 {
+				if !d.timeout.Stop() {
+					// drain the channel if it was already running
+					select {
+					case <-d.timeout.C:
+					default:
+					}
+				}
+
 				d.timeout.Reset(d.EscTimeout)
+			}
+
+			if hasEvents {
+				d.eventsIdx++
 				return true
 			}
 
 		case buf := <-d.notify:
-			pending := len(d.buf) > 0
-			expired := time.Now().After(d.ttimeout)
 			d.buf = append(d.buf, buf...)
-			if d.processEvents(pending && expired) {
-				d.eventsIdx++
+			d.ttimeout = time.Now().Add(d.EscTimeout)
+			hasEvents := d.processEvents(false)
+			if !d.timeout.Stop() {
+				// drain the channel if it was already running
+				select {
+				case <-d.timeout.C:
+				default:
+				}
+			}
+
+			if len(d.buf) > 0 {
 				d.timeout.Reset(d.EscTimeout)
-				d.ttimeout = time.Now().Add(d.EscTimeout)
+			}
+
+			if hasEvents {
+				d.eventsIdx++
 				return true
 			}
 		}
@@ -327,7 +354,7 @@ func (d *InputScanner) processEventsDefault(expired bool) bool {
 		}
 
 		if !isUnknown && event != nil {
-			if esc && len(d.buf) <= 2 && !expired {
+			if esc && n <= 2 && !expired {
 				// Wait for more input
 				return false
 			}
