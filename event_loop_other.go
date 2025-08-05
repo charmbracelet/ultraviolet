@@ -5,7 +5,7 @@ package uv
 
 // Scan advances the scanner to the next event and returns whether it was
 // successful. If the scanner is at the end of the input, it returns false.
-func (d *InputScanner) Scan() bool {
+func (d *EventLoop) Scan() bool {
 	return d.scan()
 }
 
@@ -15,10 +15,10 @@ func (p *EventDecoder) parseWin32InputKeyEvent(*win32InputState, uint16, uint16,
 	return nil
 }
 
-func (d *InputScanner) processEvents(expired bool) bool {
+func (d *EventLoop) processEvents(expired bool) bool {
 	return d.processEventsDefault(expired)
 }
 
-func (d *InputScanner) run() {
+func (d *EventLoop) run() {
 	d.runDefault()
 }

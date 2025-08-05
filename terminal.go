@@ -62,7 +62,7 @@ type Terminal struct {
 
 	// Terminal input stream.
 	cr        cancelreader.CancelReader
-	rd        *InputScanner
+	rd        *EventLoop
 	winch     chan struct{}       // Channel for window size changes.
 	winchn    *WindowSizeNotifier // The window size notifier for the terminal.
 	evch      chan Event
@@ -772,7 +772,7 @@ func (t *Terminal) Start() error {
 		return fmt.Errorf("error creating cancel reader: %w", err)
 	}
 	t.cr = cr
-	t.rd = NewInputScanner(t.cr, t.termtype)
+	t.rd = NewEventLoop(t.cr, t.termtype)
 	t.rd.MouseMode = &t.mouseMode
 	t.rd.SetLogger(t.logger)
 

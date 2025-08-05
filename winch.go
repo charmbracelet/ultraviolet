@@ -29,6 +29,35 @@ func NewWindowSizeNotifier(f term.File) *WindowSizeNotifier {
 	}
 }
 
+// StreamEvents reads the terminal size change events and sends them to the
+// given channel. It stops when the context is done.
+func (n *WindowSizeNotifier) StreamEvents(ctx context.Context, ch chan<- Event) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-n.sig:
+			cells, pixels, err := n.GetWindowSize()
+			if err != nil {
+				return err
+			}
+
+			select {
+			case <-ctx.Done():
+				return nil
+			case ch <- WindowSizeEvent(cells):
+			}
+			if pixels.Width > 0 && pixels.Height > 0 {
+				select {
+				case <-ctx.Done():
+					return nil
+				case ch <- WindowPixelSizeEvent(pixels):
+				}
+			}
+		}
+	}
+}
+
 // Notify starts a goroutine that listens for window size changes and notifies
 // the given channel when a change occurs.
 func (n *WindowSizeNotifier) Notify(ch chan<- struct{}) {

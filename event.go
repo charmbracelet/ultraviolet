@@ -1,6 +1,7 @@
 package uv
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -12,6 +13,15 @@ import (
 
 // Event represents an input event that can be received from an input source.
 type Event interface{}
+
+// EventStreamer is an interface that defines a method to stream events from an
+// input source. It takes a context and a channel to send events to. The
+// streamer should block until the context is done or an error occurs. The
+// channel should never be closed by the streamer, as it is the responsibility
+// of the consumer to close it when done.
+type EventStreamer interface {
+	StreamEvents(ctx context.Context, ch chan<- Event) error
+}
 
 // UnknownEvent represents an unknown event.
 type UnknownEvent string

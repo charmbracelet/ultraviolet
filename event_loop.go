@@ -1,6 +1,7 @@
 package uv
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -44,14 +45,14 @@ var _ any = win32InputState{
 // ErrReaderNotStarted is returned when the reader has not been started yet.
 var ErrReaderNotStarted = fmt.Errorf("reader not started")
 
-// DefaultEscTimeout is the default timeout at which the [InputScanner] will
+// DefaultEscTimeout is the default timeout at which the [EventLoop] will
 // process ESC sequences. It is set to 50 milliseconds.
 const DefaultEscTimeout = 50 * time.Millisecond
 
-// InputScanner represents an input event reader. It reads input events and
-// parses escape sequences from the terminal input buffer and translates them
-// into human-readable events.
-type InputScanner struct {
+// EventLoop represents an input event loop that reads input events from
+// a reader and parses them into human-readable events. It supports
+// reading escape sequences, mouse events, and bracketed paste mode.
+type EventLoop struct {
 	EventDecoder
 
 	// MouseMode determines whether mouse events are enabled or not. This is a
@@ -79,12 +80,15 @@ type InputScanner struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	lookup    bool      // lookup indicates whether to use the lookup table for key sequences.
-	buf       []byte    // buffer to hold the read data.
-	events    []Event   // queued events to be sent.
-	eventsIdx int       // eventsIdx is the index of the next event to be sent.
-	ttimeout  time.Time // ttimeout is the time at which the last input was received.
-	runOnce   sync.Once // runOnce is used to ensure that the reader is only started once.
+	ctx       context.Context    // ctx controls the reader's loop.
+	cancel    context.CancelFunc // cancel can be used to cancel the reader's loop.
+	eventc    chan Event         // eventc is a channel for sending events to.
+	lookup    bool               // lookup indicates whether to use the lookup table for key sequences.
+	buf       []byte             // buffer to hold the read data.
+	events    []Event            // queued events to be sent.
+	eventsIdx int                // eventsIdx is the index of the next event to be sent.
+	ttimeout  time.Time          // ttimeout is the time at which the last input was received.
+	runOnce   sync.Once          // runOnce is used to ensure that the reader is only started once.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
@@ -104,28 +108,28 @@ type InputScanner struct {
 
 // This is to silence the linter warning about the [win32InputState] not being
 // used.
-var _ any = &InputScanner{
+var _ any = &EventLoop{
 	keyState: win32InputState{},
 }
 
-// NewInputScanner returns a new input event scanner. The scanner scans input
+// NewEventLoop returns a new input event scanner. The scanner scans input
 // events from the terminal and parses escape sequences into human-readable
 // events. It supports reading Terminfo databases.
 //
-// Use [InputScanner.UseTerminfo] to use Terminfo defined key sequences.
-// Use [InputScanner.Legacy] to control legacy key encoding behavior.
+// Use [EventLoop.UseTerminfo] to use Terminfo defined key sequences.
+// Use [EventLoop.Legacy] to control legacy key encoding behavior.
 //
 // Example:
 //
 //	```go
 //	var cr cancelreader.CancelReader
-//	sc := NewInputScanner(cr, os.Getenv("TERM"))
+//	sc := NewEventLoop(cr, os.Getenv("TERM"))
 //	for sc.Scan() {
 //	    log.Printf("event: %v", sc.Event())
 //	}
 //	```
-func NewInputScanner(r io.Reader, termType string) *InputScanner {
-	d := &InputScanner{
+func NewEventLoop(r io.Reader, termType string) *EventLoop {
+	d := &EventLoop{
 		EscTimeout: DefaultEscTimeout,
 		r:          r,
 		term:       termType,
@@ -135,6 +139,7 @@ func NewInputScanner(r io.Reader, termType string) *InputScanner {
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
+	d.eventc = make(chan Event)
 	d.timeout = time.NewTimer(d.EscTimeout)
 	d.notify = make(chan []byte)
 	d.donec = make(chan struct{})
@@ -144,15 +149,75 @@ func NewInputScanner(r io.Reader, termType string) *InputScanner {
 	return d
 }
 
+// Events returns a channel that receives events from the scanner.
+// This channel is never closed, so it is safe to use in a loop.
+func (d *EventLoop) Events() chan Event {
+	return d.eventc
+}
+
+// Start starts the event loop. It returns an error if the event loop has
+// already been started.
+func (d *EventLoop) Start() error {
+	d.ctx, d.cancel = context.WithCancel(context.Background())
+	go func() {
+		for {
+			select {
+			case <-d.ctx.Done():
+				return
+			default:
+				var readBuf [4096]byte
+				n, err := d.r.Read(readBuf[:])
+				if err != nil {
+					if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
+						return
+					}
+					d.err.Store(&err)
+					return
+				}
+
+				d.logf("input: %q", readBuf[:n])
+				// This handles small inputs that start with an ESC like:
+				// - "\x1b" (escape key press)
+				// - "\x1b\x1b" (alt+escape key press)
+				// - "\x1b[" (alt+[ key press)
+				// - "\x1bP" (alt+shift+p key press)
+				// - "\x1bX" (alt+shift+x key press)
+				// - "\x1bO" (alt+shift+o key press)
+				// - "\x1b_" (alt+_ key press)
+				// - "\x1b^" (alt+^ key press)
+				select {
+				case <-d.ctx.Done():
+					return
+				case d.notify <- readBuf[:n]:
+				}
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-d.ctx.Done():
+				return
+			}
+		}
+	}()
+
+	d.timeout.Reset(d.EscTimeout)
+	d.ttimeout = time.Now().Add(d.EscTimeout)
+
+	return nil
+}
+
 // SetLogger sets the logger to use for debugging. If nil, no logging will be
 // performed.
-func (d *InputScanner) SetLogger(logger Logger) {
+func (d *EventLoop) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
 // Close closes the scanner loop if it is still running. It also returns the
 // first non-EOF error encountered by the scanner.
-func (d *InputScanner) Close() error {
+func (d *EventLoop) Close() error {
 	d.closeEvents()
 	errp := d.err.Load()
 	if errp == nil {
@@ -161,7 +226,7 @@ func (d *InputScanner) Close() error {
 	return *errp
 }
 
-func (d *InputScanner) closeEvents() {
+func (d *EventLoop) closeEvents() {
 	d.closeOnce.Do(func() {
 		d.closed.Store(true)
 		close(d.donec) // signal the reader to close
@@ -170,7 +235,7 @@ func (d *InputScanner) closeEvents() {
 
 // Event returns the last read event from the scanner. It returns nil if no
 // event is available.
-func (d *InputScanner) Event() Event {
+func (d *EventLoop) Event() Event {
 	if len(d.events) == 0 || d.eventsIdx >= len(d.events) {
 		return nil
 	}
@@ -179,7 +244,7 @@ func (d *InputScanner) Event() Event {
 
 // Err returns the first non-EOF error encountered by the scanner. If no error
 // has been encountered, it returns nil.
-func (d *InputScanner) Err() error {
+func (d *EventLoop) Err() error {
 	errp := d.err.Load()
 	if errp == nil {
 		return nil // no error encountered
@@ -187,7 +252,7 @@ func (d *InputScanner) Err() error {
 	return *errp
 }
 
-func (d *InputScanner) runDefault() {
+func (d *EventLoop) runDefault() {
 	defer d.closeEvents() // close events channel when done
 	for {
 		var readBuf [4096]byte
@@ -214,7 +279,7 @@ func (d *InputScanner) runDefault() {
 	}
 }
 
-func (d *InputScanner) scanLast() bool {
+func (d *EventLoop) scanLast() bool {
 	// Process any remaining events before closing.
 	if len(d.buf) > 0 && d.processEvents(true) {
 		d.eventsIdx++
@@ -223,7 +288,7 @@ func (d *InputScanner) scanLast() bool {
 	return false
 }
 
-func (d *InputScanner) scan() bool {
+func (d *EventLoop) scan() bool {
 	d.runOnce.Do(func() {
 		go d.run()
 		d.timeout.Reset(d.EscTimeout)
@@ -296,7 +361,7 @@ func (d *InputScanner) scan() bool {
 
 // processEventsDefault processes the events in the queue and returns true if an event
 // was processed.
-func (d *InputScanner) processEventsDefault(expired bool) bool {
+func (d *EventLoop) processEventsDefault(expired bool) bool {
 	// Lookup table first
 	if d.lookup && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
@@ -374,7 +439,7 @@ func (d *InputScanner) processEventsDefault(expired bool) bool {
 	return len(d.events) > 0
 }
 
-func (d *InputScanner) logf(format string, v ...interface{}) {
+func (d *EventLoop) logf(format string, v ...interface{}) {
 	if d.logger == nil {
 		return
 	}

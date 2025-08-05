@@ -606,7 +606,7 @@ func TestSplitReads(t *testing.T) {
 	}
 
 	r := LimitedReader(strings.NewReader(strings.Join(inputs, "")), 8)
-	drv := NewInputScanner(r, "dumb")
+	drv := NewEventLoop(r, "dumb")
 	drv.SetLogger(TLogger{t})
 
 	var events []Event
@@ -632,7 +632,7 @@ func TestReadLongInput(t *testing.T) {
 	}
 	input := strings.Repeat("a", 1000)
 	rdr := strings.NewReader(input)
-	drv := NewInputScanner(rdr, "dumb")
+	drv := NewEventLoop(rdr, "dumb")
 
 	var evs []Event
 	for drv.Scan() {
@@ -955,7 +955,7 @@ func TestReadInput(t *testing.T) {
 }
 
 func testReadInputs(t *testing.T, input io.Reader) []Event {
-	drv := NewInputScanner(input, "dumb")
+	drv := NewEventLoop(input, "dumb")
 	drv.SetLogger(TLogger{t})
 
 	var events []Event
@@ -1802,7 +1802,7 @@ func TestSplitSequences(t *testing.T) {
 			} else {
 				r = LimitedReader(io.MultiReader(rds...), limit)
 			}
-			ir := NewInputScanner(r, "xterm-256color")
+			ir := NewEventLoop(r, "xterm-256color")
 			ir.SetLogger(TLogger{TB: t})
 			var got []Event
 
