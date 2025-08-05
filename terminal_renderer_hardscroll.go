@@ -205,11 +205,7 @@ func (s *TerminalRenderer) scrollUp(newbuf *Buffer, n, top, bot, minY, maxY int,
 		s.buf.WriteString(ansi.DeleteLine(1))
 	} else if top == minY && bot == maxY {
 		supportsSU := s.caps.Contains(capSU)
-		if supportsSU {
-			s.move(newbuf, 0, bot)
-		} else {
-			s.move(newbuf, 0, top)
-		}
+		s.move(newbuf, 0, bot)
 		s.updatePen(blank)
 		if supportsSU {
 			s.buf.WriteString(ansi.ScrollUp(n))
