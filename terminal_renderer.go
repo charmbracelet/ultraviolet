@@ -22,6 +22,8 @@ const (
 	capVPA capabilities = 1 << iota
 	// Horizontal Position Absolute [ansi.HPA].
 	capHPA
+	// Cursor Horizontal Absolute [ansi.CHA].
+	capCHA
 	// Cursor Horizontal Tab [ansi.CHT].
 	capCHT
 	// Cursor Backward Tab [ansi.CBT].
@@ -36,18 +38,15 @@ const (
 	capSD
 	// Scroll Up [ansi.SU].
 	capSU
-
 	// These capabilities depend on the tty termios settings and are not
 	// enabled by default.
-
 	// Tabulation [ansi.HT].
 	capHT
 	// Backspace [ansi.BS].
 	capBS
 
 	noCaps  capabilities = 0
-	allCaps              = capVPA | capHPA | capCHT | capCBT | capREP | capECH | capICH |
-		capSD | capSU
+	allCaps              = capVPA | capHPA | capCHA | capCHT | capCBT | capREP | capECH | capICH | capSD | capSU
 )
 
 // Set sets the given capabilities.
@@ -1363,8 +1362,12 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 
 	if tx != fx { //nolint:nestif
 		var xseq string
-		if s.caps.Contains(capHPA) && !s.flags.Contains(tRelativeCursor) {
-			xseq = ansi.HorizontalPositionAbsolute(tx + 1)
+		if !s.flags.Contains(tRelativeCursor) {
+			if s.caps.Contains(capHPA) {
+				xseq = ansi.HorizontalPositionAbsolute(tx + 1)
+			} else if s.caps.Contains(capCHA) {
+				xseq = ansi.CursorHorizontalAbsolute(tx + 1)
+			}
 		}
 
 		if tx > fx {
@@ -1570,11 +1573,25 @@ func xtermCaps(termtype string) (v capabilities) {
 		"wezterm":
 		v = allCaps
 	case "xterm":
-		// NOTE: We exclude capHPA from allCaps because terminals like Konsole
-		// don't support it. We should find a way to detect this at runtime and add
-		// it to the capabilities if supported.
-		v = allCaps
-		v &^= capHPA
+		if len(parts) > 1 {
+			// These terminals can be defined as xterm- variants for
+			// compatibility with applications that check for xterm.
+			switch parts[1] {
+			case
+				"ghostty",
+				"kitty",
+				"rio":
+				v = allCaps
+			}
+		} else {
+			// NOTE: We exclude capHPA from allCaps because terminals like
+			// Konsole don't support it. Xterm terminfo defines HPA as CHA
+			// which means we can use CHA instead of HPA.
+			v = allCaps
+			v &^= capHPA
+			v &^= capCHT
+			v &^= capREP
+		}
 	case "alacritty":
 		v = allCaps
 		v &^= capCHT // NOTE: alacritty added support for [ansi.CHT] in 2024-12-28 #62d5b13.
@@ -1584,7 +1601,7 @@ func xtermCaps(termtype string) (v capabilities) {
 		v &^= capREP
 	case "linux":
 		// See https://man7.org/linux/man-pages/man4/console_codes.4.html
-		v = capVPA | capHPA | capECH | capICH
+		v = capVPA | capCHA | capHPA | capECH | capICH
 	}
 
 	return v
