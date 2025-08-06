@@ -4,7 +4,6 @@
 package uv
 
 import (
-	"context"
 	"os/signal"
 	"syscall"
 
@@ -19,37 +18,15 @@ func (n *WindowSizeNotifier) start() error {
 		return ErrNotTerminal
 	}
 
-	n.donec = make(chan struct{})
 	signal.Notify(n.sig, syscall.SIGWINCH)
 	return nil
 }
 
-func (n *WindowSizeNotifier) close() error {
+func (n *WindowSizeNotifier) stop() error {
 	n.m.Lock()
 	signal.Stop(n.sig)
-	close(n.donec)
 	n.m.Unlock()
 	return nil
-}
-
-func (n *WindowSizeNotifier) shutdown(ctx context.Context) (err error) {
-	wgc := make(chan struct{})
-	go func() {
-		defer close(wgc)
-		n.wg.Wait()
-	}()
-
-	if err := n.close(); err != nil {
-		return err
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case <-wgc:
-	}
-
-	return err
 }
 
 func (n *WindowSizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {

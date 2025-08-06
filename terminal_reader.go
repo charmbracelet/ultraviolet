@@ -1,12 +1,11 @@
 package uv
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"sync"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -80,28 +79,12 @@ type TerminalReader struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	ctx       context.Context    // ctx controls the reader's loop.
-	cancel    context.CancelFunc // cancel can be used to cancel the reader's loop.
-	eventc    chan Event         // eventc is a channel for sending events to.
-	lookup    bool               // lookup indicates whether to use the lookup table for key sequences.
-	buf       []byte             // buffer to hold the read data.
-	events    []Event            // queued events to be sent.
-	eventsIdx int                // eventsIdx is the index of the next event to be sent.
-	ttimeout  time.Time          // ttimeout is the time at which the last input was received.
-	runOnce   sync.Once          // runOnce is used to ensure that the reader is only started once.
+	lookup bool   // lookup indicates whether to use the lookup table for key sequences.
+	buf    []byte // buffer to hold the read data.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
 	keyState win32InputState
-
-	// This indicates whether the reader is closed or not. It is used to
-	// prevent	multiple calls to the Close() method.
-	donec     chan struct{} // close is a channel used to signal the reader to close.
-	closeOnce sync.Once
-	closed    atomic.Bool // closed indicates whether the scanner has been closed.
-	notify    chan []byte // notify is a channel used to notify the reader of new input events.
-	timeout   *time.Timer
-	err       atomic.Pointer[error] // err is the last error encountered by the reader.
 
 	logger Logger // The logger to use for debugging.
 }
@@ -139,74 +122,111 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	if d.table == nil {
 		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
-	d.eventc = make(chan Event)
-	d.timeout = time.NewTimer(d.EscTimeout)
-	d.notify = make(chan []byte)
-	d.donec = make(chan struct{})
-	d.closeOnce = sync.Once{}
-	d.runOnce = sync.Once{}
-	d.eventsIdx = -1 // indicates that no events have been read yet.
 	return d
 }
 
-// Events returns a channel that receives events from the scanner.
-// This channel is never closed, so it is safe to use in a loop.
-func (d *TerminalReader) Events() chan Event {
-	return d.eventc
+// readBufSize is the size of the read buffer used to read input events at a time.
+const readBufSize = 4096
+
+// sendBytes reads data from the reader and sends it to the provided channel.
+// It stops when an error occurs or when the context is closed.
+func (d *TerminalReader) sendBytes(ctx context.Context, readc chan []byte) error {
+	for {
+		var readBuf [readBufSize]byte
+		n, err := d.r.Read(readBuf[:])
+		if err != nil {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case readc <- readBuf[:n]:
+		}
+	}
 }
 
-// Start starts the event loop. It returns an error if the event loop has
-// already been started.
-func (d *TerminalReader) Start() error {
-	d.ctx, d.cancel = context.WithCancel(context.Background())
+// StreamEvents sends events to the provided channel. It stops when the context
+// is closed or when an error occurs.
+func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) error {
+	var buf bytes.Buffer
+	errc := make(chan error, 1)
+	readc := make(chan []byte)
+	recordc := make(chan []inputRecord)
+	timeout := time.NewTimer(d.EscTimeout)
+	ttimeout := time.Now().Add(d.EscTimeout)
+
 	go func() {
-		for {
-			select {
-			case <-d.ctx.Done():
+		if err := d.streamData(ctx, readc, recordc); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
+				errc <- nil
 				return
-			default:
-				var readBuf [4096]byte
-				n, err := d.r.Read(readBuf[:])
-				if err != nil {
-					if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
-						return
+			}
+			errc <- err
+			return
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.sendEvents(buf.Bytes(), true, eventc)
+			return nil
+		case err := <-errc:
+			d.sendEvents(buf.Bytes(), true, eventc)
+			return err // return the first error encountered
+		case <-timeout.C:
+			d.logf("timeout reached")
+
+			// Timeout reached process the buffer including any incomplete sequences.
+			var n int // n is the number of bytes processed
+			if buf.Len() > 0 {
+				if time.Now().After(ttimeout) {
+					d.logf("timeout expired, processing buffer")
+					n = d.sendEvents(buf.Bytes(), true, eventc)
+				}
+			}
+
+			if buf.Len() > 0 {
+				if !timeout.Stop() {
+					// drain the channel if it was already running
+					select {
+					case <-timeout.C:
+					default:
 					}
-					d.err.Store(&err)
-					return
 				}
 
-				d.logf("input: %q", readBuf[:n])
-				// This handles small inputs that start with an ESC like:
-				// - "\x1b" (escape key press)
-				// - "\x1b\x1b" (alt+escape key press)
-				// - "\x1b[" (alt+[ key press)
-				// - "\x1bP" (alt+shift+p key press)
-				// - "\x1bX" (alt+shift+x key press)
-				// - "\x1bO" (alt+shift+o key press)
-				// - "\x1b_" (alt+_ key press)
-				// - "\x1b^" (alt+^ key press)
+				d.logf("resetting timeout for remaining buffer")
+				timeout.Reset(d.EscTimeout)
+			}
+
+			if n > 0 {
+				buf.Next(n)
+			}
+
+		case read := <-readc:
+			d.logf("input: %q", read)
+			buf.Write(read)
+			ttimeout = time.Now().Add(d.EscTimeout)
+			n := d.sendEvents(buf.Bytes(), false, eventc)
+			if !timeout.Stop() {
+				// drain the channel if it was already running
 				select {
-				case <-d.ctx.Done():
-					return
-				case d.notify <- readBuf[:n]:
+				case <-timeout.C:
+				default:
 				}
 			}
-		}
-	}()
 
-	go func() {
-		for {
-			select {
-			case <-d.ctx.Done():
-				return
+			if len(d.buf) > 0 {
+				d.logf("resetting timeout for remaining buffer after parse")
+				timeout.Reset(d.EscTimeout)
+			}
+
+			if n > 0 {
+				buf.Next(n)
 			}
 		}
-	}()
-
-	d.timeout.Reset(d.EscTimeout)
-	d.ttimeout = time.Now().Add(d.EscTimeout)
-
-	return nil
+	}
 }
 
 // SetLogger sets the logger to use for debugging. If nil, no logging will be
@@ -215,171 +235,27 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
-// Close closes the scanner loop if it is still running. It also returns the
-// first non-EOF error encountered by the scanner.
-func (d *TerminalReader) Close() error {
-	d.closeEvents()
-	errp := d.err.Load()
-	if errp == nil {
-		return nil
-	}
-	return *errp
-}
-
-func (d *TerminalReader) closeEvents() {
-	d.closeOnce.Do(func() {
-		d.closed.Store(true)
-		close(d.donec) // signal the reader to close
-	})
-}
-
-// Event returns the last read event from the scanner. It returns nil if no
-// event is available.
-func (d *TerminalReader) Event() Event {
-	if len(d.events) == 0 || d.eventsIdx >= len(d.events) {
-		return nil
-	}
-	return d.events[d.eventsIdx]
-}
-
-// Err returns the first non-EOF error encountered by the scanner. If no error
-// has been encountered, it returns nil.
-func (d *TerminalReader) Err() error {
-	errp := d.err.Load()
-	if errp == nil {
-		return nil // no error encountered
-	}
-	return *errp
-}
-
-func (d *TerminalReader) runDefault() {
-	defer d.closeEvents() // close events channel when done
-	for {
-		var readBuf [4096]byte
-		n, err := d.r.Read(readBuf[:])
-		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
-				return
-			}
-			d.err.Store(&err)
-			return
-		}
-
-		d.logf("input: %q", readBuf[:n])
-		// This handles small inputs that start with an ESC like:
-		// - "\x1b" (escape key press)
-		// - "\x1b\x1b" (alt+escape key press)
-		// - "\x1b[" (alt+[ key press)
-		// - "\x1bP" (alt+shift+p key press)
-		// - "\x1bX" (alt+shift+x key press)
-		// - "\x1bO" (alt+shift+o key press)
-		// - "\x1b_" (alt+_ key press)
-		// - "\x1b^" (alt+^ key press)
-		d.notify <- readBuf[:n]
-	}
-}
-
-func (d *TerminalReader) scanLast() bool {
-	// Process any remaining events before closing.
-	if len(d.buf) > 0 && d.processEvents(true) {
-		d.eventsIdx++
-		return true
-	}
-	return false
-}
-
-func (d *TerminalReader) scan() bool {
-	d.runOnce.Do(func() {
-		go d.run()
-		d.timeout.Reset(d.EscTimeout)
-		d.ttimeout = time.Now().Add(d.EscTimeout)
-	})
-	for {
-		if d.eventsIdx >= len(d.events) {
-			// Reset the buffer if we have processed all events.
-			d.events = d.events[:0]
-			d.eventsIdx = -1
-		} else if len(d.events) > 0 && d.eventsIdx+1 < len(d.events) {
-			// If there are events available, increment the index and return true.
-			d.eventsIdx++
-			return true
-		} else if d.closed.Load() {
-			return d.scanLast()
-		}
-		select {
-		case <-d.donec:
-			return d.scanLast()
-		case <-d.timeout.C:
-			// Timeout reached process the buffer including any incomplete sequences.
-			var hasEvents bool
-			if len(d.buf) > 0 {
-				if time.Now().After(d.ttimeout) {
-					hasEvents = d.processEvents(true)
-				}
-			}
-
-			if len(d.buf) > 0 {
-				if !d.timeout.Stop() {
-					// drain the channel if it was already running
-					select {
-					case <-d.timeout.C:
-					default:
-					}
-				}
-
-				d.timeout.Reset(d.EscTimeout)
-			}
-
-			if hasEvents {
-				d.eventsIdx++
-				return true
-			}
-
-		case buf := <-d.notify:
-			d.buf = append(d.buf, buf...)
-			d.ttimeout = time.Now().Add(d.EscTimeout)
-			hasEvents := d.processEvents(false)
-			if !d.timeout.Stop() {
-				// drain the channel if it was already running
-				select {
-				case <-d.timeout.C:
-				default:
-				}
-			}
-
-			if len(d.buf) > 0 {
-				d.timeout.Reset(d.EscTimeout)
-			}
-
-			if hasEvents {
-				d.eventsIdx++
-				return true
-			}
-		}
-	}
-}
-
-// processEventsDefault processes the events in the queue and returns true if an event
-// was processed.
-func (d *TerminalReader) processEventsDefault(expired bool) bool {
+func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Event) int {
 	// Lookup table first
-	if d.lookup && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
+	if d.lookup && len(buf) > 2 && buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
-			d.events = append(d.events, KeyPressEvent(k))
-			d.buf = d.buf[:0]
-			return true
+			eventc <- KeyPressEvent(k)
+			return len(buf)
 		}
 	}
 
-	for len(d.buf) > 0 {
-		esc := d.buf[0] == ansi.ESC
-		n, event := d.Decode(d.buf)
+	// total is the total number of bytes processed
+	var total int
+	for len(buf) > 0 {
+		esc := buf[0] == ansi.ESC
+		n, event := d.Decode(buf)
 
 		// Handle bracketed-paste
 		if d.paste != nil {
 			if _, ok := event.(PasteEndEvent); !ok {
-				d.paste = append(d.paste, d.buf[0])
-				d.buf = d.buf[1:]
+				d.paste = append(d.paste, buf[0])
+				buf = buf[1:]
+				total++
 				continue
 			}
 		}
@@ -393,16 +269,15 @@ func (d *TerminalReader) processEventsDefault(expired bool) bool {
 			isUnknown = true
 			// Try to look up the event in the table.
 			if !expired {
-				return false // wait for more input
+				return total
 			}
 
-			if k, ok := d.table[string(d.buf[:n])]; ok {
-				d.events = append(d.events, KeyPressEvent(k))
-				d.buf = d.buf[n:]
-				return true
+			if k, ok := d.table[string(buf[:n])]; ok {
+				eventc <- KeyPressEvent(k)
+				return total + n
 			}
 
-			d.events = append(d.events, event)
+			eventc <- event
 		case PasteStartEvent:
 			d.paste = []byte{} // reset the paste buffer
 		case PasteEndEvent:
@@ -415,28 +290,31 @@ func (d *TerminalReader) processEventsDefault(expired bool) bool {
 				d.paste = d.paste[w:]
 			}
 			d.paste = nil // reset the paste buffer
-			d.events = append(d.events, PasteEvent(paste))
+			eventc <- PasteEvent(paste)
 		}
 
 		if !isUnknown && event != nil {
 			if esc && n <= 2 && !expired {
 				// Wait for more input
-				return false
+				return total
 			}
 
 			if m, ok := event.(MultiEvent); ok {
 				// If the event is a MultiEvent, append all events to the queue.
-				d.events = append(d.events, m...)
+				for _, e := range m {
+					eventc <- e
+				}
 			} else {
 				// Otherwise, just append the event to the queue.
-				d.events = append(d.events, event)
+				eventc <- event
 			}
 		}
 
-		d.buf = d.buf[n:]
+		buf = buf[n:]
+		total += n
 	}
 
-	return len(d.events) > 0
+	return total
 }
 
 func (d *TerminalReader) logf(format string, v ...interface{}) {

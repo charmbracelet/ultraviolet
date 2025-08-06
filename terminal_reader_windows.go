@@ -4,6 +4,7 @@
 package uv
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,10 +20,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Scan advances the scanner to the next event and returns whether it was
-// successful. If the scanner is at the end of the input, it returns false.
-func (d *InputScanner) Scan() bool {
-	return d.scan()
+type inputRecord = xwindows.InputRecord
+
+// streamData sends data from the input stream to the event channel.
+func (p *TerminalReader) streamData(ctx context.Context, readc chan []byte, _ []inputRecord) error {
+	return p.sendBytes(ctx, readc)
 }
 
 func (d *InputScanner) processEvents(expired bool) bool {

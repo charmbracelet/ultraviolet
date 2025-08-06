@@ -2,7 +2,7 @@ package uv
 
 import (
 	"bytes"
-	"errors"
+	"context"
 	"flag"
 	"fmt"
 	"image/color"
@@ -609,15 +609,17 @@ func TestSplitReads(t *testing.T) {
 	drv := NewTerminalReader(r, "dumb")
 	drv.SetLogger(TLogger{t})
 
-	var events []Event
-	for drv.Scan() {
-		if ev := drv.Event(); ev != nil {
-			events = append(events, ev)
+	eventc := make(chan Event)
+	go func(t testing.TB) {
+		defer close(eventc)
+		if err := drv.StreamEvents(t.Context(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
 		}
-	}
+	}(t)
 
-	if err := drv.Err(); err != nil {
-		t.Errorf("error reading input: %v", err)
+	var events []Event
+	for ev := range eventc {
+		events = append(events, ev)
 	}
 
 	if !reflect.DeepEqual(expect, events) {
@@ -634,19 +636,21 @@ func TestReadLongInput(t *testing.T) {
 	rdr := strings.NewReader(input)
 	drv := NewTerminalReader(rdr, "dumb")
 
-	var evs []Event
-	for drv.Scan() {
-		if ev := drv.Event(); ev != nil {
-			evs = append(evs, ev)
+	eventc := make(chan Event)
+	go func(t testing.TB) {
+		defer close(eventc)
+		if err := drv.StreamEvents(context.TODO(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
 		}
+	}(t)
+
+	var events []Event
+	for ev := range eventc {
+		events = append(events, ev)
 	}
 
-	if err := drv.Err(); err != nil {
-		t.Errorf("error reading input: %v", err)
-	}
-
-	if !reflect.DeepEqual(expect, evs) {
-		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, evs)
+	if !reflect.DeepEqual(expect, events) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events)
 	}
 }
 
@@ -958,15 +962,17 @@ func testReadInputs(t *testing.T, input io.Reader) []Event {
 	drv := NewTerminalReader(input, "dumb")
 	drv.SetLogger(TLogger{t})
 
-	var events []Event
-	for drv.Scan() {
-		if ev := drv.Event(); ev != nil {
-			events = append(events, ev)
+	eventc := make(chan Event)
+	go func(t testing.TB) {
+		defer close(eventc)
+		if err := drv.StreamEvents(context.TODO(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
 		}
-	}
+	}(t)
 
-	if err := drv.Err(); err != nil {
-		t.Errorf("error reading input: %v", err)
+	var events []Event
+	for ev := range eventc {
+		events = append(events, ev)
 	}
 
 	return events
@@ -1804,26 +1810,27 @@ func TestSplitSequences(t *testing.T) {
 			}
 			ir := NewTerminalReader(r, "xterm-256color")
 			ir.SetLogger(TLogger{TB: t})
-			var got []Event
 
-			for ir.Scan() {
-				if ev := ir.Event(); ev != nil {
-					got = append(got, ev)
+			eventc := make(chan Event)
+			go func(t testing.TB) {
+				defer close(eventc)
+				if err := ir.StreamEvents(t.Context(), eventc); err != nil {
+					t.Errorf("error streaming events: %v", err)
 				}
+			}(t)
+
+			var events []Event
+			for ev := range eventc {
+				events = append(events, ev)
 			}
 
-			err := ir.Err()
-			if err != nil && !errors.Is(err, io.EOF) {
-				t.Errorf("unexpected error receiving events: %v", err)
-			}
-
-			if len(got) != len(tt.want) {
-				t.Fatalf("got %d events, want %d: %#v", len(got), len(tt.want), got)
+			if len(events) != len(tt.want) {
+				t.Fatalf("got %d events, want %d: %#v", len(events), len(tt.want), events)
 			}
 
 			for i, want := range tt.want {
-				if !reflect.DeepEqual(got[i], want) {
-					t.Errorf("event %d: got %#v, want %#v", i, got[i], want)
+				if !reflect.DeepEqual(events[i], want) {
+					t.Errorf("event %d: got %#v, want %#v", i, events[i], want)
 				}
 			}
 		})

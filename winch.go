@@ -11,11 +11,10 @@ import (
 // WindowSizeNotifier represents a notifier that listens for window size
 // changes using the SIGWINCH signal and notifies the given channel.
 type WindowSizeNotifier struct {
-	f     term.File
-	sig   chan os.Signal
-	donec chan struct{}
-	wg    sync.WaitGroup
-	m     sync.Mutex
+	f   term.File
+	sig chan os.Signal
+	wg  sync.WaitGroup
+	m   sync.Mutex
 }
 
 // NewWindowSizeNotifier creates a new WindowSizeNotifier with the given file.
@@ -58,42 +57,16 @@ func (n *WindowSizeNotifier) StreamEvents(ctx context.Context, ch chan<- Event) 
 	}
 }
 
-// Notify starts a goroutine that listens for window size changes and notifies
-// the given channel when a change occurs.
-func (n *WindowSizeNotifier) Notify(ch chan<- struct{}) {
-	n.wg.Add(1)
-	go func(donec chan struct{}) {
-		defer n.wg.Done()
-		for {
-			select {
-			case <-donec:
-				return
-			case <-n.sig:
-				n.m.Lock()
-				select {
-				case <-donec:
-					return
-				case ch <- struct{}{}:
-				}
-				n.m.Unlock()
-			}
-		}
-	}(n.donec)
-}
-
-// Start starts the notifier by registering for the SIGWINCH signal.
+// Start starts the notifier by registering for the SIGWINCH signal. It must be
+// called before using [WindowSizeNotifier.Notify] or
+// [WindowSizeNotifier.StreamEvents].
 func (n *WindowSizeNotifier) Start() error {
 	return n.start()
 }
 
-// Close closes the notifier and stops listening for window size changes.
-func (n *WindowSizeNotifier) Close() error {
-	return n.close()
-}
-
-// Shutdown stops the notifier and cleans up resources.
-func (n *WindowSizeNotifier) Shutdown(ctx context.Context) error {
-	return n.shutdown(ctx)
+// Stop stops the notifier and cleans up resources.
+func (n *WindowSizeNotifier) Stop() error {
+	return n.stop()
 }
 
 // GetWindowSize returns the current size of the terminal window.

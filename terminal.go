@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/cancelreader"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -63,7 +64,6 @@ type Terminal struct {
 	// Terminal input stream.
 	cr        cancelreader.CancelReader
 	rd        *TerminalReader
-	winch     chan struct{}       // Channel for window size changes.
 	winchn    *WindowSizeNotifier // The window size notifier for the terminal.
 	evch      chan Event
 	evctx     context.Context    // The context for the event channel.
@@ -121,7 +121,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 
 	// Window size changes only for non-Windows platforms.
 	if !isWindows {
-		t.winch = make(chan struct{})
 		// Create default input receivers.
 		winchTty := t.inTty
 		if winchTty == nil {
@@ -777,33 +776,36 @@ func (t *Terminal) Start() error {
 	t.rd.SetLogger(t.logger)
 
 	// Start the window size notifier if it is available.
-	if t.winch != nil {
+	if t.winchn != nil {
 		if err := t.winchn.Start(); err != nil {
 			return fmt.Errorf("error starting window size notifier: %w", err)
 		}
-		t.winchn.Notify(t.winch)
 	}
 
 	// Send the initial window size to the event channel.
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
-		select {
-		case <-t.evctx.Done():
-		case t.winch <- struct{}{}:
+
+		var cells, pixels Size
+		if t.winchn != nil {
+			cells, pixels, _ = t.winchn.GetWindowSize()
+		} else {
+			w, h, _ := t.GetSize()
+			cells = Size{Width: w, Height: h}
+		}
+
+		for _, c := range []Event{
+			WindowSizeEvent(cells),
+			WindowPixelSizeEvent(pixels),
+		} {
+			select {
+			case <-t.evctx.Done():
+				return
+			case t.evch <- c:
+			}
 		}
 	}()
-
-	for _, fn := range []func(){
-		t.notifyWindowSizeChange,
-		t.sendEvents,
-	} {
-		t.wg.Add(1)
-		go func() {
-			defer t.wg.Done()
-			fn()
-		}()
-	}
 
 	if t.buf.Width() == 0 && t.buf.Height() == 0 {
 		// If the buffer is not initialized, set it to the terminal size.
@@ -858,42 +860,58 @@ func (t *Terminal) Start() error {
 	return nil
 }
 
-func (t *Terminal) sendEvents() {
-	for t.rd.Scan() {
-		select {
-		case <-t.evctx.Done():
-			return
-		case t.evch <- t.rd.Event():
-		}
-	}
-}
+// StreamEvents streams input events from the terminal to the event channel.
+func (t *Terminal) StreamEvents(ctx context.Context, evch chan<- Event) error {
+	errg, ctx := errgroup.WithContext(ctx)
 
-func (t *Terminal) notifyWindowSizeChange() {
-	for {
-		select {
-		case <-t.evctx.Done():
-			return
-		case <-t.winch:
-			cells, pixels, err := t.winchn.GetWindowSize()
-			t.m.Lock()
-			t.size, t.pixSize = cells, pixels // Update the terminal size.
-			t.m.Unlock()
-			if err == nil {
-				select {
-				case <-t.evctx.Done():
-					return
-				case t.evch <- WindowSizeEvent(cells):
+	winchc := make(chan Event)
+	errg.Go(func() error { return t.winchn.StreamEvents(ctx, winchc) })
+	errg.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case ev := <-winchc:
+				// We need to intercept window size events to update the
+				// terminal size. We use the size to help us determine the
+				// terminal window width so that we can truncate long lines
+				// when using inline mode.
+				switch ev := ev.(type) {
+				case WindowSizeEvent:
+					t.m.Lock()
+					t.size = Size(ev)
+					t.m.Unlock()
+				case WindowPixelSizeEvent:
+					t.m.Lock()
+					t.pixSize = Size(ev)
+					t.m.Unlock()
 				}
-				if pixels.Width > 0 && pixels.Height > 0 {
-					select {
-					case <-t.evctx.Done():
-						return
-					case t.evch <- WindowPixelSizeEvent(pixels):
-					}
+				select {
+				case <-ctx.Done():
+					return nil
+				case evch <- ev:
 				}
 			}
 		}
-	}
+	})
+
+	errg.Go(func() error { return t.rd.StreamEvents(ctx, t.evch) })
+	errg.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case ev := <-t.evch:
+				select {
+				case <-ctx.Done():
+					return nil
+				case evch <- ev:
+				}
+			}
+		}
+	})
+
+	return errg.Wait()
 }
 
 // Restore restores the terminal to its original state. This can be called
@@ -987,7 +1005,7 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 
 	var winchErr error
 	if t.winchn != nil {
-		winchErr = t.winchn.Shutdown(ctx)
+		winchErr = t.winchn.Stop()
 	}
 
 	if !t.altscreen {
@@ -1046,32 +1064,6 @@ func (t *Terminal) Close() error {
 // receive and send events from the terminal.
 func (t *Terminal) Events() chan Event {
 	return t.evch
-}
-
-// ReceiveEvents starts receiving events from the terminal sending them to the
-// provided channel. If the context is done or an error occurs, it will stop
-// receiving events and close the channel.
-func (t *Terminal) ReceiveEvents(ctx context.Context, evch chan<- Event) {
-	defer close(evch)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.evctx.Done():
-			return
-		case ev := <-t.evch:
-			if ev == nil {
-				continue
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.evctx.Done():
-				return
-			case evch <- ev:
-			}
-		}
-	}
 }
 
 // SendEvent is a helper function to send an event to the event channel. It

@@ -3,19 +3,11 @@
 
 package uv
 
-import (
-	"context"
-)
-
 func (n *WindowSizeNotifier) start() error {
 	return ErrPlatformNotSupported
 }
 
-func (n *WindowSizeNotifier) close() error {
-	return ErrPlatformNotSupported
-}
-
-func (n *WindowSizeNotifier) shutdown(context.Context) error {
+func (n *WindowSizeNotifier) stop() error {
 	return ErrPlatformNotSupported
 }
 
