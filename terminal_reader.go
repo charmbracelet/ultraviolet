@@ -45,14 +45,14 @@ var _ any = win32InputState{
 // ErrReaderNotStarted is returned when the reader has not been started yet.
 var ErrReaderNotStarted = fmt.Errorf("reader not started")
 
-// DefaultEscTimeout is the default timeout at which the [EventLoop] will
+// DefaultEscTimeout is the default timeout at which the [TerminalReader] will
 // process ESC sequences. It is set to 50 milliseconds.
 const DefaultEscTimeout = 50 * time.Millisecond
 
-// EventLoop represents an input event loop that reads input events from
+// TerminalReader represents an input event loop that reads input events from
 // a reader and parses them into human-readable events. It supports
 // reading escape sequences, mouse events, and bracketed paste mode.
-type EventLoop struct {
+type TerminalReader struct {
 	EventDecoder
 
 	// MouseMode determines whether mouse events are enabled or not. This is a
@@ -108,28 +108,28 @@ type EventLoop struct {
 
 // This is to silence the linter warning about the [win32InputState] not being
 // used.
-var _ any = &EventLoop{
+var _ any = &TerminalReader{
 	keyState: win32InputState{},
 }
 
-// NewEventLoop returns a new input event scanner. The scanner scans input
+// NewTerminalReader returns a new input event scanner. The scanner scans input
 // events from the terminal and parses escape sequences into human-readable
 // events. It supports reading Terminfo databases.
 //
-// Use [EventLoop.UseTerminfo] to use Terminfo defined key sequences.
-// Use [EventLoop.Legacy] to control legacy key encoding behavior.
+// Use [TerminalReader.UseTerminfo] to use Terminfo defined key sequences.
+// Use [TerminalReader.Legacy] to control legacy key encoding behavior.
 //
 // Example:
 //
 //	```go
 //	var cr cancelreader.CancelReader
-//	sc := NewEventLoop(cr, os.Getenv("TERM"))
+//	sc := NewTerminalReader(cr, os.Getenv("TERM"))
 //	for sc.Scan() {
 //	    log.Printf("event: %v", sc.Event())
 //	}
 //	```
-func NewEventLoop(r io.Reader, termType string) *EventLoop {
-	d := &EventLoop{
+func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
+	d := &TerminalReader{
 		EscTimeout: DefaultEscTimeout,
 		r:          r,
 		term:       termType,
@@ -151,13 +151,13 @@ func NewEventLoop(r io.Reader, termType string) *EventLoop {
 
 // Events returns a channel that receives events from the scanner.
 // This channel is never closed, so it is safe to use in a loop.
-func (d *EventLoop) Events() chan Event {
+func (d *TerminalReader) Events() chan Event {
 	return d.eventc
 }
 
 // Start starts the event loop. It returns an error if the event loop has
 // already been started.
-func (d *EventLoop) Start() error {
+func (d *TerminalReader) Start() error {
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 	go func() {
 		for {
@@ -211,13 +211,13 @@ func (d *EventLoop) Start() error {
 
 // SetLogger sets the logger to use for debugging. If nil, no logging will be
 // performed.
-func (d *EventLoop) SetLogger(logger Logger) {
+func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
 // Close closes the scanner loop if it is still running. It also returns the
 // first non-EOF error encountered by the scanner.
-func (d *EventLoop) Close() error {
+func (d *TerminalReader) Close() error {
 	d.closeEvents()
 	errp := d.err.Load()
 	if errp == nil {
@@ -226,7 +226,7 @@ func (d *EventLoop) Close() error {
 	return *errp
 }
 
-func (d *EventLoop) closeEvents() {
+func (d *TerminalReader) closeEvents() {
 	d.closeOnce.Do(func() {
 		d.closed.Store(true)
 		close(d.donec) // signal the reader to close
@@ -235,7 +235,7 @@ func (d *EventLoop) closeEvents() {
 
 // Event returns the last read event from the scanner. It returns nil if no
 // event is available.
-func (d *EventLoop) Event() Event {
+func (d *TerminalReader) Event() Event {
 	if len(d.events) == 0 || d.eventsIdx >= len(d.events) {
 		return nil
 	}
@@ -244,7 +244,7 @@ func (d *EventLoop) Event() Event {
 
 // Err returns the first non-EOF error encountered by the scanner. If no error
 // has been encountered, it returns nil.
-func (d *EventLoop) Err() error {
+func (d *TerminalReader) Err() error {
 	errp := d.err.Load()
 	if errp == nil {
 		return nil // no error encountered
@@ -252,7 +252,7 @@ func (d *EventLoop) Err() error {
 	return *errp
 }
 
-func (d *EventLoop) runDefault() {
+func (d *TerminalReader) runDefault() {
 	defer d.closeEvents() // close events channel when done
 	for {
 		var readBuf [4096]byte
@@ -279,7 +279,7 @@ func (d *EventLoop) runDefault() {
 	}
 }
 
-func (d *EventLoop) scanLast() bool {
+func (d *TerminalReader) scanLast() bool {
 	// Process any remaining events before closing.
 	if len(d.buf) > 0 && d.processEvents(true) {
 		d.eventsIdx++
@@ -288,7 +288,7 @@ func (d *EventLoop) scanLast() bool {
 	return false
 }
 
-func (d *EventLoop) scan() bool {
+func (d *TerminalReader) scan() bool {
 	d.runOnce.Do(func() {
 		go d.run()
 		d.timeout.Reset(d.EscTimeout)
@@ -361,7 +361,7 @@ func (d *EventLoop) scan() bool {
 
 // processEventsDefault processes the events in the queue and returns true if an event
 // was processed.
-func (d *EventLoop) processEventsDefault(expired bool) bool {
+func (d *TerminalReader) processEventsDefault(expired bool) bool {
 	// Lookup table first
 	if d.lookup && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
 		if k, ok := d.table[string(d.buf)]; ok {
@@ -439,7 +439,7 @@ func (d *EventLoop) processEventsDefault(expired bool) bool {
 	return len(d.events) > 0
 }
 
-func (d *EventLoop) logf(format string, v ...interface{}) {
+func (d *TerminalReader) logf(format string, v ...interface{}) {
 	if d.logger == nil {
 		return
 	}
