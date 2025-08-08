@@ -513,6 +513,8 @@ func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
 	}
 
 	s.updatePen(cell)
+	// NOTE: On Windows, Go handles converting from UTF-8 to UTF-16LE when
+	// writing to the underlying file handle.
 	_, _ = s.buf.WriteString(cell.Content)
 
 	s.cur.X += cell.Width
