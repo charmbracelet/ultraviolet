@@ -795,10 +795,13 @@ func (t *Terminal) Start() error {
 			cells = Size{Width: w, Height: h}
 		}
 
-		for _, c := range []Event{
+		events := []Event{
 			WindowSizeEvent(cells),
-			WindowPixelSizeEvent(pixels),
-		} {
+		}
+		if pixels.Width > 0 && pixels.Height > 0 {
+			events = append(events, WindowPixelSizeEvent(pixels))
+		}
+		for _, c := range events {
 			select {
 			case <-t.evctx.Done():
 				return
@@ -864,36 +867,39 @@ func (t *Terminal) Start() error {
 func (t *Terminal) StreamEvents(ctx context.Context, evch chan<- Event) error {
 	errg, ctx := errgroup.WithContext(ctx)
 
-	winchc := make(chan Event)
-	errg.Go(func() error { return t.winchn.StreamEvents(ctx, winchc) })
-	errg.Go(func() error {
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case ev := <-winchc:
-				// We need to intercept window size events to update the
-				// terminal size. We use the size to help us determine the
-				// terminal window width so that we can truncate long lines
-				// when using inline mode.
-				switch ev := ev.(type) {
-				case WindowSizeEvent:
-					t.m.Lock()
-					t.size = Size(ev)
-					t.m.Unlock()
-				case WindowPixelSizeEvent:
-					t.m.Lock()
-					t.pixSize = Size(ev)
-					t.m.Unlock()
-				}
+	if t.winchn != nil {
+		// Windows does not support SIGWINCH.
+		winchc := make(chan Event)
+		errg.Go(func() error { return t.winchn.StreamEvents(ctx, winchc) })
+		errg.Go(func() error {
+			for {
 				select {
 				case <-ctx.Done():
 					return nil
-				case evch <- ev:
+				case ev := <-winchc:
+					// We need to intercept window size events to update the
+					// terminal size. We use the size to help us determine the
+					// terminal window width so that we can truncate long lines
+					// when using inline mode.
+					switch ev := ev.(type) {
+					case WindowSizeEvent:
+						t.m.Lock()
+						t.size = Size(ev)
+						t.m.Unlock()
+					case WindowPixelSizeEvent:
+						t.m.Lock()
+						t.pixSize = Size(ev)
+						t.m.Unlock()
+					}
+					select {
+					case <-ctx.Done():
+						return nil
+					case evch <- ev:
+					}
 				}
 			}
-		}
-	})
+		})
+	}
 
 	errg.Go(func() error { return t.rd.StreamEvents(ctx, t.evch) })
 	errg.Go(func() error {
