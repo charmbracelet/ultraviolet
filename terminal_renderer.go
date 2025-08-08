@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/text/encoding"
 )
 
 // ErrInvalidDimensions is returned when the dimensions of a window are invalid
@@ -142,6 +143,7 @@ type TerminalRenderer struct {
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
 	logger           Logger       // The logger used for debugging.
 	laterFlush       bool         // whether this is the first flush of the renderer
+	enc              encoding.Encoding
 
 	// profile is the color profile to use when downsampling colors. This is
 	// used to determine the appropriate color the terminal can display.
@@ -171,6 +173,13 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.scrollHeight = 0
 	s.oldhash, s.newhash = nil, nil
 	return
+}
+
+// SetEncoding sets the encoding to use when writing to the terminal. If nil,
+// is passed, the [TerminalRenderer] will write the output as it was given
+// mostly in UTF-8.
+func (s *TerminalRenderer) SetEncoding(enc encoding.Encoding) {
+	s.enc = enc
 }
 
 // SetLogger sets the logger to use for debugging. If nil, no logging will be
@@ -511,7 +520,18 @@ func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
 	}
 
 	s.updatePen(cell)
-	_, _ = s.buf.WriteString(cell.Content)
+	switch {
+	case s.enc != nil && cell.Width > 0:
+		encoded, err := s.enc.NewEncoder().String(cell.Content)
+		if err == nil {
+			_, _ = s.buf.WriteString(encoded)
+			break
+		}
+		fallthrough
+	default:
+		// Fallback to UTF-8 if encoding fails.
+		_, _ = s.buf.WriteString(cell.Content)
+	}
 
 	s.cur.X += cell.Width
 	if s.cur.X >= newbuf.Width() {

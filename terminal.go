@@ -17,6 +17,8 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/cancelreader"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/unicode"
 )
 
 var (
@@ -71,7 +73,8 @@ type Terminal struct {
 	once      sync.Once
 	mouseMode MouseMode // The mouse mode for the terminal.
 	wg        sync.WaitGroup
-	m         sync.RWMutex // Mutex to protect the terminal state.
+	m         sync.RWMutex      // Mutex to protect the terminal state.
+	enc       encoding.Encoding // the encoding to use for reading input from the terminal.
 
 	logger Logger // The debug logger for I/O.
 }
@@ -118,6 +121,23 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.SetColorProfile(colorprofile.Detect(out, env))
 	t.evch = make(chan Event)
 	t.once = sync.Once{}
+
+	if isWindows {
+		// Windows always uses UTF-16 Little Endian with BOM.
+		t.enc = unicode.UTF16(unicode.LittleEndian, unicode.UseBOM)
+	} else {
+		// Detect the encoding from the locale.
+		locale := LocaleFromEnv(env)
+		if locale == "" {
+			locale = "UTF-8" // Default to UTF-8 if no locale is set.
+		}
+		t.enc, _ = DetectLocaleEncoding(locale)
+		if t.enc == nil {
+			t.enc = unicode.UTF8 // Fallback to UTF-8 if encoding cannot be detected.
+		}
+	}
+
+	t.scr.SetEncoding(t.enc)
 
 	// Window size changes only for non-Windows platforms.
 	if !isWindows {
@@ -774,6 +794,7 @@ func (t *Terminal) Start() error {
 	t.rd = NewTerminalReader(t.cr, t.termtype)
 	t.rd.MouseMode = &t.mouseMode
 	t.rd.SetLogger(t.logger)
+	t.rd.SetEncoding(t.enc)
 
 	// Start the window size notifier if it is available.
 	if t.winchn != nil {

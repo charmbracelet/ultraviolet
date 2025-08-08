@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/cancelreader"
+	"golang.org/x/text/encoding"
 )
 
 // win32InputState is a state machine for parsing key events from the Windows
@@ -71,7 +72,8 @@ type TerminalReader struct {
 	EscTimeout time.Duration
 
 	r     io.Reader
-	table map[string]Key // table is a lookup table for key sequences.
+	table map[string]Key    // table is a lookup table for key sequences.
+	enc   encoding.Encoding // enc is the encoding used to decode input.
 
 	term string // term is the terminal name $TERM.
 
@@ -124,6 +126,12 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	return d
 }
 
+// SetEncoding sets the encoding used to decode input bytes. If not set, the
+// input will be treated as UTF-8.
+func (d *TerminalReader) SetEncoding(enc encoding.Encoding) {
+	d.enc = enc
+}
+
 // readBufSize is the size of the read buffer used to read input events at a time.
 const readBufSize = 4096
 
@@ -137,10 +145,20 @@ func (d *TerminalReader) sendBytes(ctx context.Context, readc chan []byte) error
 			return err
 		}
 
+		buf := readBuf[:n]
+		if d.enc != nil {
+			// Decode the input bytes using the specified encoding.
+			decoded, err := d.enc.NewDecoder().Bytes(buf)
+			if err != nil {
+				return fmt.Errorf("failed to decode input: %w", err)
+			}
+			buf = decoded
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil
-		case readc <- readBuf[:n]:
+		case readc <- buf:
 		}
 	}
 }
