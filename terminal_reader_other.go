@@ -9,9 +9,8 @@ import (
 
 type inputRecord = struct{}
 
-func (p *TerminalReader) processRecords(records []inputRecord, eventc chan<- Event) error {
+func (p *TerminalReader) processRecords([]inputRecord, chan<- Event) {
 	// This is a no-op on non-Windows platforms.
-	return nil
 }
 
 // streamData sends data from the input stream to the event channel.
