@@ -16,6 +16,8 @@ func Pos(x, y int) Position {
 	return Position{X: x, Y: y}
 }
 
+var zeroPos Position
+
 // Rectangle represents a rectangular area.
 type Rectangle = image.Rectangle
 

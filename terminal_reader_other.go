@@ -3,16 +3,17 @@
 
 package uv
 
-import "context"
+import (
+	"context"
+)
 
-// ReceiveEvents reads input events from the terminal and sends them to the
-// given event channel.
-func (d *TerminalReader) ReceiveEvents(ctx context.Context, events chan<- Event) error {
-	return d.receiveEvents(ctx, events)
+type inputRecord = struct{}
+
+func (p *TerminalReader) processRecords([]inputRecord, chan<- Event) {
+	// This is a no-op on non-Windows platforms.
 }
 
-// parseWin32InputKeyEvent parses a Win32 input key events. This function is
-// only available on Windows.
-func (p *SequenceParser) parseWin32InputKeyEvent(*win32InputState, uint16, uint16, rune, bool, uint32, uint16, Logger) Event {
-	return nil
+// streamData sends data from the input stream to the event channel.
+func (p *TerminalReader) streamData(ctx context.Context, readc chan []byte, _ chan []inputRecord) error {
+	return p.sendBytes(ctx, readc)
 }
