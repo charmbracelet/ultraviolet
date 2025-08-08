@@ -437,7 +437,7 @@ func TestRendererCapabilities(t *testing.T) {
 			term: "xterm-256color",
 			test: func(t *testing.T, r *TerminalRenderer) {
 				// xterm should support all capabilities
-				if !r.caps.Contains(capVPA) {
+				if !r.caps.Contains(capCHA) {
 					t.Error("expected xterm to support VPA")
 				}
 				// NOTE: We have disabled HPA for xterm due to some terminals

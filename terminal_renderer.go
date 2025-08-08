@@ -1573,17 +1573,16 @@ func xtermCaps(termtype string) (v capabilities) {
 		"wezterm":
 		v = allCaps
 	case "xterm":
-		if len(parts) > 1 {
+		switch {
+		case len(parts) > 1 && parts[1] == "ghostty":
+			fallthrough
+		case len(parts) > 1 && parts[1] == "kitty":
+			fallthrough
+		case len(parts) > 1 && parts[1] == "rio":
 			// These terminals can be defined as xterm- variants for
 			// compatibility with applications that check for xterm.
-			switch parts[1] {
-			case
-				"ghostty",
-				"kitty",
-				"rio":
-				v = allCaps
-			}
-		} else {
+			v = allCaps
+		default:
 			// NOTE: We exclude capHPA from allCaps because terminals like
 			// Konsole don't support it. Xterm terminfo defines HPA as CHA
 			// which means we can use CHA instead of HPA.
