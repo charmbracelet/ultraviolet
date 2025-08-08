@@ -4,13 +4,12 @@
 package uv
 
 import (
-	"bytes"
 	"context"
 )
 
 type inputRecord = struct{}
 
-func (p *TerminalReader) processRecords(records []inputRecord, buf *bytes.Buffer, eventc chan<- Event) error {
+func (p *TerminalReader) processRecords(records []inputRecord, eventc chan<- Event) error {
 	// This is a no-op on non-Windows platforms.
 	return nil
 }
