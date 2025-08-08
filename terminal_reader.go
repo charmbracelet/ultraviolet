@@ -95,7 +95,7 @@ var _ any = &TerminalReader{
 	keyState: win32InputState{},
 }
 
-// NewTerminalReader returns a new input event scanner. The scanner scans input
+// NewTerminalReader returns a new input event reader. The reader streams input
 // events from the terminal and parses escape sequences into human-readable
 // events. It supports reading Terminfo databases.
 //
@@ -106,10 +106,9 @@ var _ any = &TerminalReader{
 //
 //	```go
 //	var cr cancelreader.CancelReader
+//	var evc chan Event
 //	sc := NewTerminalReader(cr, os.Getenv("TERM"))
-//	for sc.Scan() {
-//	    log.Printf("event: %v", sc.Event())
-//	}
+//	go sc.StreamEvents(ctx, evc)
 //	```
 func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	d := &TerminalReader{
