@@ -203,7 +203,8 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			if n > 0 {
 				buf.Next(n)
 			}
-
+		case records := <-recordc:
+			d.processRecords(records, eventc)
 		case read := <-readc:
 			d.logf("input: %q", read)
 			buf.Write(read)
@@ -253,9 +254,9 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 		// Handle bracketed-paste
 		if d.paste != nil {
 			if _, ok := event.(PasteEndEvent); !ok {
-				d.paste = append(d.paste, buf[0])
-				buf = buf[1:]
-				total++
+				d.paste = append(d.paste, buf[:n]...)
+				buf = buf[n:]
+				total += n
 				continue
 			}
 		}

@@ -10,10 +10,12 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/parser"
+	xwindows "github.com/charmbracelet/x/windows"
 	"github.com/rivo/uniseg"
 )
 
@@ -204,6 +206,17 @@ type EventDecoder struct {
 	// Terminfo database to map escape sequences to key events. This will
 	// override the default key sequences handled by the parser.
 	UseTerminfo bool
+
+	win32Buf bytes.Buffer // a buffer that holds escape sequences encoded by the Win32-Input-Mode protocol waiting to be processed and decoded.
+
+	// these variables keep track of the current Windows Console API key events
+	// state. They are used to decode utf16 sequences and track the last
+	// control key state, mouse button state, and window size changes.
+	utf16Buf                   [2]rune
+	utf16Half                  bool
+	lastCks                    uint32 // the last control key state for the previous event
+	lastMouseBtns              uint32 // the last mouse button state for the previous event
+	lastWinsizeX, lastWinsizeY int16  // the last window size for the previous event to prevent multiple size events from firing
 }
 
 // Decode finds the first recognized event sequence and returns it along
@@ -539,14 +552,12 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		kd, _, _ := pa.Param(3, 0)
 		cs, _, _ := pa.Param(4, 0)
 		event := p.parseWin32InputKeyEvent(
-			nil,
 			uint16(vk), //nolint:gosec // Vk wVirtualKeyCode
 			uint16(sc), //nolint:gosec // Sc wVirtualScanCode
 			rune(uc),   // Uc UnicodeChar
 			kd == 1,    // Kd bKeyDown
 			uint32(cs), //nolint:gosec // Cs dwControlKeyState
 			rc,         // Rc wRepeatCount
-			nil,
 		)
 
 		if event == nil {
@@ -1811,4 +1822,311 @@ func parseTermcap(data []byte) CapabilityEvent {
 	}
 
 	return CapabilityEvent(tc.String())
+}
+
+// parseWin32InputKeyEvent parses a single key event from either the Windows
+// Console API or win32-input-mode events. When state is nil, it means this is
+// an event from win32-input-mode. Otherwise, it's a key event from the Windows
+// Console API and needs a state to decode ANSI escape sequences and utf16
+// runes.
+func (p *EventDecoder) parseWin32InputKeyEvent(vkc uint16, _ uint16, r rune, keyDown bool, cks uint32, repeatCount uint16) (event Event) {
+	defer func() {
+		// Respect the repeat count.
+		if repeatCount > 1 {
+			var multi MultiEvent
+			for i := 0; i < int(repeatCount); i++ {
+				multi = append(multi, event)
+			}
+			event = multi
+		}
+	}()
+	defer func() {
+		p.lastCks = cks
+	}()
+
+	var utf8Buf [utf8.UTFMax]byte
+	var key Key
+	if p.utf16Half {
+		p.utf16Half = false
+		p.utf16Buf[1] = r
+		codepoint := utf16.DecodeRune(p.utf16Buf[0], p.utf16Buf[1])
+		rw := utf8.EncodeRune(utf8Buf[:], codepoint)
+		r, _ = utf8.DecodeRune(utf8Buf[:rw])
+		key.Code = r
+		key.Text = string(r)
+		key.Mod = translateControlKeyState(cks)
+		key = ensureKeyCase(key, cks)
+		if keyDown {
+			return KeyPressEvent(key)
+		}
+		return KeyReleaseEvent(key)
+	}
+
+	var baseCode rune
+	var text string
+	switch {
+	case vkc == 0:
+		// Zero means this event is either an escape code or a unicode
+		// codepoint.
+		if p.win32Buf.Len() == 0 && r != ansi.ESC {
+			// This is a unicode codepoint.
+			baseCode = r
+			break
+		}
+
+		// Collect ANSI escape code.
+		p.win32Buf.WriteRune(r)
+		// We don't handle escape sequences here and it's the responsibility
+		// of the caller to handle them.
+		return nil
+	case vkc == xwindows.VK_BACK:
+		baseCode = KeyBackspace
+	case vkc == xwindows.VK_TAB:
+		baseCode = KeyTab
+	case vkc == xwindows.VK_RETURN:
+		baseCode = KeyEnter
+	case vkc == xwindows.VK_SHIFT:
+		//nolint:nestif
+		if cks&xwindows.SHIFT_PRESSED != 0 {
+			if cks&xwindows.ENHANCED_KEY != 0 {
+				baseCode = KeyRightShift
+			} else {
+				baseCode = KeyLeftShift
+			}
+		} else if p.lastCks&xwindows.SHIFT_PRESSED != 0 {
+			if p.lastCks&xwindows.ENHANCED_KEY != 0 {
+				baseCode = KeyRightShift
+			} else {
+				baseCode = KeyLeftShift
+			}
+		}
+	case vkc == xwindows.VK_CONTROL:
+		if cks&xwindows.LEFT_CTRL_PRESSED != 0 {
+			baseCode = KeyLeftCtrl
+		} else if cks&xwindows.RIGHT_CTRL_PRESSED != 0 {
+			baseCode = KeyRightCtrl
+		} else if p.lastCks&xwindows.LEFT_CTRL_PRESSED != 0 {
+			baseCode = KeyLeftCtrl
+		} else if p.lastCks&xwindows.RIGHT_CTRL_PRESSED != 0 {
+			baseCode = KeyRightCtrl
+		}
+	case vkc == xwindows.VK_MENU:
+		if cks&xwindows.LEFT_ALT_PRESSED != 0 {
+			baseCode = KeyLeftAlt
+		} else if cks&xwindows.RIGHT_ALT_PRESSED != 0 {
+			baseCode = KeyRightAlt
+		} else if p.lastCks&xwindows.LEFT_ALT_PRESSED != 0 {
+			baseCode = KeyLeftAlt
+		} else if p.lastCks&xwindows.RIGHT_ALT_PRESSED != 0 {
+			baseCode = KeyRightAlt
+		}
+	case vkc == xwindows.VK_PAUSE:
+		baseCode = KeyPause
+	case vkc == xwindows.VK_CAPITAL:
+		baseCode = KeyCapsLock
+	case vkc == xwindows.VK_ESCAPE:
+		baseCode = KeyEscape
+	case vkc == xwindows.VK_SPACE:
+		baseCode = KeySpace
+	case vkc == xwindows.VK_PRIOR:
+		baseCode = KeyPgUp
+	case vkc == xwindows.VK_NEXT:
+		baseCode = KeyPgDown
+	case vkc == xwindows.VK_END:
+		baseCode = KeyEnd
+	case vkc == xwindows.VK_HOME:
+		baseCode = KeyHome
+	case vkc == xwindows.VK_LEFT:
+		baseCode = KeyLeft
+	case vkc == xwindows.VK_UP:
+		baseCode = KeyUp
+	case vkc == xwindows.VK_RIGHT:
+		baseCode = KeyRight
+	case vkc == xwindows.VK_DOWN:
+		baseCode = KeyDown
+	case vkc == xwindows.VK_SELECT:
+		baseCode = KeySelect
+	case vkc == xwindows.VK_SNAPSHOT:
+		baseCode = KeyPrintScreen
+	case vkc == xwindows.VK_INSERT:
+		baseCode = KeyInsert
+	case vkc == xwindows.VK_DELETE:
+		baseCode = KeyDelete
+	case vkc >= '0' && vkc <= '9':
+		baseCode = rune(vkc)
+	case vkc >= 'A' && vkc <= 'Z':
+		// Convert to lowercase.
+		baseCode = rune(vkc) + 32
+	case vkc == xwindows.VK_LWIN:
+		baseCode = KeyLeftSuper
+	case vkc == xwindows.VK_RWIN:
+		baseCode = KeyRightSuper
+	case vkc == xwindows.VK_APPS:
+		baseCode = KeyMenu
+	case vkc >= xwindows.VK_NUMPAD0 && vkc <= xwindows.VK_NUMPAD9:
+		baseCode = rune(vkc-xwindows.VK_NUMPAD0) + KeyKp0
+		text = string('0' + (rune(vkc) - xwindows.VK_NUMPAD0))
+	case vkc == xwindows.VK_MULTIPLY:
+		baseCode = KeyKpMultiply
+		text = "*"
+	case vkc == xwindows.VK_ADD:
+		baseCode = KeyKpPlus
+		text = "+"
+	case vkc == xwindows.VK_SEPARATOR:
+		baseCode = KeyKpComma
+		text = ","
+	case vkc == xwindows.VK_SUBTRACT:
+		baseCode = KeyKpMinus
+		text = "-"
+	case vkc == xwindows.VK_DECIMAL:
+		baseCode = KeyKpDecimal
+		text = "."
+	case vkc == xwindows.VK_DIVIDE:
+		baseCode = KeyKpDivide
+		text = "/"
+	case vkc >= xwindows.VK_F1 && vkc <= xwindows.VK_F24:
+		baseCode = rune(vkc-xwindows.VK_F1) + KeyF1
+	case vkc == xwindows.VK_NUMLOCK:
+		baseCode = KeyNumLock
+	case vkc == xwindows.VK_SCROLL:
+		baseCode = KeyScrollLock
+	case vkc == xwindows.VK_LSHIFT:
+		baseCode = KeyLeftShift
+	case vkc == xwindows.VK_RSHIFT:
+		baseCode = KeyRightShift
+	case vkc == xwindows.VK_LCONTROL:
+		baseCode = KeyLeftCtrl
+	case vkc == xwindows.VK_RCONTROL:
+		baseCode = KeyRightCtrl
+	case vkc == xwindows.VK_LMENU:
+		baseCode = KeyLeftAlt
+	case vkc == xwindows.VK_RMENU:
+		baseCode = KeyRightAlt
+	case vkc == xwindows.VK_VOLUME_MUTE:
+		baseCode = KeyMute
+	case vkc == xwindows.VK_VOLUME_DOWN:
+		baseCode = KeyLowerVol
+	case vkc == xwindows.VK_VOLUME_UP:
+		baseCode = KeyRaiseVol
+	case vkc == xwindows.VK_MEDIA_NEXT_TRACK:
+		baseCode = KeyMediaNext
+	case vkc == xwindows.VK_MEDIA_PREV_TRACK:
+		baseCode = KeyMediaPrev
+	case vkc == xwindows.VK_MEDIA_STOP:
+		baseCode = KeyMediaStop
+	case vkc == xwindows.VK_MEDIA_PLAY_PAUSE:
+		baseCode = KeyMediaPlayPause
+	case vkc == xwindows.VK_OEM_1:
+		baseCode = ';'
+	case vkc == xwindows.VK_OEM_PLUS:
+		baseCode = '+'
+	case vkc == xwindows.VK_OEM_COMMA:
+		baseCode = ','
+	case vkc == xwindows.VK_OEM_MINUS:
+		baseCode = '-'
+	case vkc == xwindows.VK_OEM_PERIOD:
+		baseCode = '.'
+	case vkc == xwindows.VK_OEM_2:
+		baseCode = '/'
+	case vkc == xwindows.VK_OEM_3:
+		baseCode = '`'
+	case vkc == xwindows.VK_OEM_4:
+		baseCode = '['
+	case vkc == xwindows.VK_OEM_5:
+		baseCode = '\\'
+	case vkc == xwindows.VK_OEM_6:
+		baseCode = ']'
+	case vkc == xwindows.VK_OEM_7:
+		baseCode = '\''
+	}
+
+	if utf16.IsSurrogate(r) {
+		p.utf16Buf[0] = r
+		p.utf16Half = true
+		return nil
+	}
+
+	// AltGr is left ctrl + right alt. On non-US keyboards, this is used to type
+	// special characters and produce printable events.
+	// XXX: Should this be a KeyMod?
+	altGr := cks&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_ALT_PRESSED) == xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_ALT_PRESSED
+
+	// Remove these lock keys from the control key state from now on.
+	cks &^= xwindows.NUMLOCK_ON
+	cks &^= xwindows.SCROLLLOCK_ON
+	keyCode := baseCode
+	if isCc := unicode.IsControl(r); vkc == 0 && isCc {
+		return p.parseControl(byte(r))
+	} else if !isCc {
+		rw := utf8.EncodeRune(utf8Buf[:], r)
+		keyCode, _ = utf8.DecodeRune(utf8Buf[:rw])
+		if unicode.IsPrint(keyCode) && (cks == 0 || // no modifiers pressed
+			cks == xwindows.SHIFT_PRESSED || // shift pressed
+			cks == xwindows.CAPSLOCK_ON || // caps lock on
+			cks == (xwindows.SHIFT_PRESSED|xwindows.CAPSLOCK_ON) || // Shift + caps lock pressed
+			altGr) { // AltGr pressed
+			// If the control key state is 0, shift is pressed, or caps lock
+			// then the key event is a printable event i.e. [text] is not empty.
+			text = string(keyCode)
+		}
+	}
+
+	key.Code = keyCode
+	key.Text = text
+	key.Mod = translateControlKeyState(cks)
+	key.BaseCode = baseCode
+	key = ensureKeyCase(key, cks)
+	if keyDown {
+		return KeyPressEvent(key)
+	}
+
+	return KeyReleaseEvent(key)
+}
+
+// ensureKeyCase ensures that the key's text is in the correct case based on the
+// control key state.
+func ensureKeyCase(key Key, cks uint32) Key {
+	if len(key.Text) == 0 {
+		return key
+	}
+
+	hasShift := cks&xwindows.SHIFT_PRESSED != 0
+	hasCaps := cks&xwindows.CAPSLOCK_ON != 0
+	if hasShift || hasCaps {
+		if unicode.IsLower(key.Code) {
+			key.ShiftedCode = unicode.ToUpper(key.Code)
+			key.Text = string(key.ShiftedCode)
+		}
+	} else {
+		if unicode.IsUpper(key.Code) {
+			key.ShiftedCode = unicode.ToLower(key.Code)
+			key.Text = string(key.ShiftedCode)
+		}
+	}
+
+	return key
+}
+
+// translateControlKeyState translates the control key state from the Windows
+// Console API into a Mod bitmask.
+func translateControlKeyState(cks uint32) (m KeyMod) {
+	if cks&xwindows.LEFT_CTRL_PRESSED != 0 || cks&xwindows.RIGHT_CTRL_PRESSED != 0 {
+		m |= ModCtrl
+	}
+	if cks&xwindows.LEFT_ALT_PRESSED != 0 || cks&xwindows.RIGHT_ALT_PRESSED != 0 {
+		m |= ModAlt
+	}
+	if cks&xwindows.SHIFT_PRESSED != 0 {
+		m |= ModShift
+	}
+	if cks&xwindows.CAPSLOCK_ON != 0 {
+		m |= ModCapsLock
+	}
+	if cks&xwindows.NUMLOCK_ON != 0 {
+		m |= ModNumLock
+	}
+	if cks&xwindows.SCROLLLOCK_ON != 0 {
+		m |= ModScrollLock
+	}
+	return
 }

@@ -3,17 +3,19 @@
 
 package uv
 
-import "context"
+import (
+	"bytes"
+	"context"
+)
 
 type inputRecord = struct{}
+
+func (p *TerminalReader) processRecords(records []inputRecord, buf *bytes.Buffer, eventc chan<- Event) error {
+	// This is a no-op on non-Windows platforms.
+	return nil
+}
 
 // streamData sends data from the input stream to the event channel.
 func (p *TerminalReader) streamData(ctx context.Context, readc chan []byte, _ chan []inputRecord) error {
 	return p.sendBytes(ctx, readc)
-}
-
-// parseWin32InputKeyEvent parses a Win32 input key events. This function is
-// only available on Windows.
-func (p *EventDecoder) parseWin32InputKeyEvent(*win32InputState, uint16, uint16, rune, bool, uint32, uint16, Logger) Event {
-	return nil
 }
