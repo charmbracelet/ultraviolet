@@ -3,6 +3,7 @@ package uv
 import (
 	"bytes"
 	"errors"
+	"hash/maphash"
 	"io"
 	"strings"
 
@@ -130,6 +131,7 @@ type TerminalRenderer struct {
 	buf              *bytes.Buffer // buffer for writing to the screen
 	curbuf           *Buffer       // the current buffer
 	tabs             *TabStops
+	hasher           maphash.Hash
 	oldhash, newhash []uint64     // the old and new hash values for each line
 	hashtab          []hashmap    // the hashmap table
 	oldnum           []int        // old indices from previous hash

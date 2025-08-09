@@ -1,14 +1,16 @@
 package uv
 
-import "unicode/utf8"
+import "hash/maphash"
 
 // hash returns the hash value of a [Line].
-func hash(l Line) (h uint64) {
+func hash(h *maphash.Hash, l Line) uint64 {
+	h.Reset()
 	for _, c := range l {
-		r, _ := utf8.DecodeRuneInString(c.Content)
-		h += (h << 5) + uint64(r)
+		// maphash writes can not fail
+		_, _ = h.WriteString(c.Content)
 	}
-	return
+
+	return h.Sum64()
 }
 
 // hashmap represents a single [Line] hash.
@@ -32,8 +34,8 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 				// TODO: Investigate why this is needed. If we remove this
 				// line, scroll optimization does not work correctly. This
 				// should happen else where.
-				s.oldhash[i] = hash(s.curbuf.Line(i))
-				s.newhash[i] = hash(newbuf.Line(i))
+				s.oldhash[i] = hash(&s.hasher, s.curbuf.Line(i))
+				s.newhash[i] = hash(&s.hasher, newbuf.Line(i))
 			}
 		}
 	} else {
@@ -45,8 +47,8 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 			s.newhash = make([]uint64, height)
 		}
 		for i := range height {
-			s.oldhash[i] = hash(s.curbuf.Line(i))
-			s.newhash[i] = hash(newbuf.Line(i))
+			s.oldhash[i] = hash(&s.hasher, s.curbuf.Line(i))
+			s.newhash[i] = hash(&s.hasher, newbuf.Line(i))
 		}
 	}
 
@@ -135,14 +137,14 @@ func (s *TerminalRenderer) scrollOldhash(n, top, bot int) {
 		copy(s.oldhash[top:], s.oldhash[top+n:top+n+size])
 		// Recalculate hashes for newly shifted-in lines
 		for i := bot; i > bot-n; i-- {
-			s.oldhash[i] = hash(s.curbuf.Line(i))
+			s.oldhash[i] = hash(&s.hasher, s.curbuf.Line(i))
 		}
 	} else {
 		// Move existing hashes down
 		copy(s.oldhash[top-n:], s.oldhash[top:top+size])
 		// Recalculate hashes for newly shifted-in lines
 		for i := top; i < top-n; i++ {
-			s.oldhash[i] = hash(s.curbuf.Line(i))
+			s.oldhash[i] = hash(&s.hasher, s.curbuf.Line(i))
 		}
 	}
 }
