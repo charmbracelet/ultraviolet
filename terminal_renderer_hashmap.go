@@ -27,7 +27,7 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
-		for i := 0; i < height; i++ {
+		for i := range height {
 			if newbuf.Touched == nil || newbuf.Touched[i] != nil {
 				// TODO: Investigate why this is needed. If we remove this
 				// line, scroll optimization does not work correctly. This
@@ -44,14 +44,14 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		if len(s.newhash) != height {
 			s.newhash = make([]uint64, height)
 		}
-		for i := 0; i < height; i++ {
+		for i := range height {
 			s.oldhash[i] = hash(s.curbuf.Line(i))
 			s.newhash[i] = hash(newbuf.Line(i))
 		}
 	}
 
 	s.hashtab = make([]hashmap, (height+1)*2)
-	for i := 0; i < height; i++ {
+	for i := range height {
 		hashval := s.oldhash[i]
 
 		// Find matching hash or empty slot
@@ -66,7 +66,7 @@ func (s *TerminalRenderer) updateHashmap(newbuf *Buffer) {
 		s.hashtab[idx].oldcount++
 		s.hashtab[idx].oldindex = i
 	}
-	for i := 0; i < height; i++ {
+	for i := range height {
 		hashval := s.newhash[i]
 
 		// Find matching hash or empty slot
