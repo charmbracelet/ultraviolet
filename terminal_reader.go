@@ -79,8 +79,7 @@ type TerminalReader struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	lookup bool   // lookup indicates whether to use the lookup table for key sequences.
-	buf    []byte // buffer to hold the read data.
+	lookup bool // lookup indicates whether to use the lookup table for key sequences.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
@@ -179,11 +178,14 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 
 			// Timeout reached process the buffer including any incomplete sequences.
 			var n int // n is the number of bytes processed
-			if buf.Len() > 0 {
-				if time.Now().After(ttimeout) {
-					d.logf("timeout expired, processing buffer")
-					n = d.sendEvents(buf.Bytes(), true, eventc)
-				}
+			timedout := time.Now().After(ttimeout)
+			if buf.Len() > 0 && timedout {
+				d.logf("timeout expired, processing buffer")
+				n = d.sendEvents(buf.Bytes(), true, eventc)
+			}
+
+			if n > 0 {
+				buf.Next(n)
 			}
 
 			if buf.Len() > 0 {
@@ -197,10 +199,6 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 
 				d.logf("resetting timeout for remaining buffer")
 				timeout.Reset(d.EscTimeout)
-			}
-
-			if n > 0 {
-				buf.Next(n)
 			}
 		case records := <-recordc:
 			d.processRecords(records, eventc)
@@ -217,13 +215,13 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 				}
 			}
 
-			if len(d.buf) > 0 {
-				d.logf("resetting timeout for remaining buffer after parse")
-				timeout.Reset(d.EscTimeout)
-			}
-
 			if n > 0 {
 				buf.Next(n)
+			}
+
+			if buf.Len() > 0 {
+				d.logf("resetting timeout for remaining buffer after parse")
+				timeout.Reset(d.EscTimeout)
 			}
 		}
 	}
@@ -238,7 +236,7 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Event) int {
 	// Lookup table first
 	if d.lookup && len(buf) > 2 && buf[0] == ansi.ESC {
-		if k, ok := d.table[string(d.buf)]; ok {
+		if k, ok := d.table[string(buf)]; ok {
 			eventc <- KeyPressEvent(k)
 			return len(buf)
 		}

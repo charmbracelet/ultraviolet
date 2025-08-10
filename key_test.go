@@ -1785,10 +1785,16 @@ func TestSplitSequences(t *testing.T) {
 				[]byte("x"),
 			},
 			want: []Event{
-				UnknownEvent("\x1b]11;rgb:1111/2222/3333abcxxx"),
+				UnknownEvent("\x1b]11;rgb:1111/2222/3333"),
+				KeyPressEvent{Code: 'a', Text: "a"},
+				KeyPressEvent{Code: 'b', Text: "b"},
+				KeyPressEvent{Code: 'c', Text: "c"},
+				KeyPressEvent{Code: 'x', Text: "x"},
+				KeyPressEvent{Code: 'x', Text: "x"},
+				KeyPressEvent{Code: 'x', Text: "x"},
 				KeyPressEvent{Code: 'x', Text: "x"},
 			},
-			delay: 10 * time.Millisecond, // Ensure the timeout is triggered.
+			delay: 50 * time.Millisecond, // Ensure the timeout is triggered.
 		},
 	}
 
