@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -16,6 +18,7 @@ func main() {
 	// Create a new default terminal that uses [os.Stdin] and [os.Stdout] for
 	// I/O.
 	t := uv.DefaultTerminal()
+	t.SetLogger(log.Default())
 
 	// Set the terminal title to "Hello World".
 	t.SetTitle("Hello World")
@@ -87,7 +90,10 @@ func main() {
 	display()
 
 	evch := make(chan uv.Event)
-	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+	go func() {
+		defer close(evch)
+		t.StreamEvents(ctx, evch)
+	}()
 
 	// Events returns an event channel that receives input events from the all
 	// the terminal input sources. It will block until we close the event
@@ -99,8 +105,6 @@ func main() {
 			switch {
 			case ev.MatchStrings("q", "ctrl+c"):
 				cancel()
-			case ev.MatchStrings("A"):
-				t.PrependString("Shift + A pressed")
 			}
 
 			st = st.Background(ansi.BasicColor(rand.Intn(16)))
@@ -122,5 +126,17 @@ func main() {
 
 	if err := t.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
+	}
+}
+
+func init() {
+	if os.Getenv("UV_DEBUG") == "" {
+		log.SetOutput(io.Discard)
+		return
+	}
+	f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err == nil {
+		log.SetOutput(f)
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 }
