@@ -717,7 +717,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 func (p *EventDecoder) parseSs3(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+O key
-		return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
+		return 2, KeyPressEvent{Code: unicode.ToLower(rune(b[1])), Mod: ModShift | ModAlt}
 	}
 
 	var i int
@@ -885,7 +885,7 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 	defaultKey := func(b []byte) (int, Event) {
 		switch intro8 {
 		case ansi.SOS:
-			return 2, KeyPressEvent{Code: 'x', Mod: ModShift | ModAlt}
+			return 2, KeyPressEvent{Code: unicode.ToLower(rune(b[1])), Mod: ModShift | ModAlt}
 		case ansi.PM, ansi.APC:
 			return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
 		}
@@ -962,7 +962,7 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 func (p *EventDecoder) parseDcs(b []byte) (int, Event) {
 	if len(b) == 2 && b[0] == ansi.ESC {
 		// short cut if this is an alt+P key
-		return 2, KeyPressEvent{Code: 'p', Mod: ModShift | ModAlt}
+		return 2, KeyPressEvent{Code: unicode.ToLower(rune(b[1])), Mod: ModShift | ModAlt}
 	}
 
 	var params [16]ansi.Param
