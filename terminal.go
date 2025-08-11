@@ -766,7 +766,7 @@ func (t *Terminal) Start() error {
 	t.evctx, t.evcancel = context.WithCancel(context.Background())
 
 	// Initialize input.
-	cr, err := NewCancelreader(t.in)
+	cr, err := NewCancelReader(t.in)
 	if err != nil {
 		return fmt.Errorf("error creating cancel reader: %w", err)
 	}
