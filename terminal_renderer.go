@@ -3,7 +3,7 @@ package uv
 import (
 	"bytes"
 	"errors"
-	"hash/maphash"
+	"github.com/cespare/xxhash/v2"
 	"io"
 	"strings"
 
@@ -131,7 +131,7 @@ type TerminalRenderer struct {
 	buf              *bytes.Buffer // buffer for writing to the screen
 	curbuf           *Buffer       // the current buffer
 	tabs             *TabStops
-	hasher           maphash.Hash
+	hasher           *xxhash.Digest
 	oldhash, newhash []uint64     // the old and new hash values for each line
 	hashtab          []hashmap    // the hashmap table
 	oldnum           []int        // old indices from previous hash
@@ -172,6 +172,7 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.saved = s.cur
 	s.scrollHeight = 0
 	s.oldhash, s.newhash = nil, nil
+	s.hasher = xxhash.New()
 	return
 }
 
