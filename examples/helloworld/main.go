@@ -90,7 +90,7 @@ START:
 		display()
 	}
 
-	if err := t.Shutdown(ctx); err != nil {
+	if err := t.Shutdown(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 }
