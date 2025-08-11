@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
@@ -10,10 +11,6 @@ import (
 
 func main() {
 	t := uv.DefaultTerminal()
-
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
 
 	width, height, err := t.GetSize()
 	if err != nil {
@@ -57,7 +54,10 @@ func main() {
 	}
 
 	evch := make(chan uv.Event)
-	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
 
 	var cursorHidden bool
 	for ev := range evch {
@@ -86,12 +86,8 @@ func main() {
 	}
 
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(context.Background(), 5)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	if altScreen {
-		t.ExitAltScreen()
-	}
 
 	if err := t.Shutdown(ctx); err != nil {
 		log.Fatalf("failed to shutdown program: %v", err)

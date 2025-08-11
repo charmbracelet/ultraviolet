@@ -55,7 +55,10 @@ START:
 	defer cancel()
 
 	evch := make(chan uv.Event)
-	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
 
 	// This will block until we close the events
 	// channel or cancel the context.

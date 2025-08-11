@@ -10,20 +10,19 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+type tickEvent struct{}
+
 func main() {
-	term := uv.DefaultTerminal()
-	if err := term.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
-	if err := term.Start(); err != nil {
+	t := uv.DefaultTerminal()
+	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start terminal: %v", err)
 	}
 
-	term.EnterAltScreen()
+	t.EnterAltScreen()
 
 	defer func() {
 		if r := recover(); r != nil {
-			_ = term.Restore()
+			_ = t.Restore()
 			log.Printf("recovered from panic: %v", r)
 			debug.PrintStack()
 		}
@@ -32,6 +31,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	evch := make(chan uv.Event)
 	counter := 5
 	ticker := time.NewTicker(time.Second)
 	go func() {
@@ -39,24 +39,28 @@ func main() {
 			select {
 			case <-ctx.Done():
 				return
-			case t := <-ticker.C:
-				term.SendEvent(ctx, t)
+			case <-ticker.C:
+				t.SendEvent(ctx, tickEvent{})
 			}
 		}
 	}()
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
 
 OUT:
-	for ev := range term.Events(ctx) {
+	for ev := range evch {
 		switch e := ev.(type) {
 		case uv.WindowSizeEvent:
-			term.Resize(e.Width, e.Height)
+			t.Resize(e.Width, e.Height)
 		case uv.KeyPressEvent:
 			switch {
 			case e.MatchStrings("q", "ctrl+c"):
 				cancel()
 				break OUT
 			}
-		case time.Time: // ticker event
+		case tickEvent: // ticker event
 			counter--
 			if counter < 0 {
 				panic("Time's up!")
@@ -64,14 +68,14 @@ OUT:
 		}
 
 		view := fmt.Sprintf("Panicing after %d seconds...\nPress 'q' or 'Ctrl+C' to exit.", counter)
-		uv.NewStyledString(view).Draw(term, term.Bounds())
-		if err := term.Display(); err != nil {
+		uv.NewStyledString(view).Draw(t, t.Bounds())
+		if err := t.Display(); err != nil {
 			log.Fatalf("failed to display terminal: %v", err)
 		}
 	}
 
 	ctx = context.Background()
-	if err := term.Shutdown(ctx); err != nil {
+	if err := t.Shutdown(ctx); err != nil {
 		log.Fatalf("failed to shutdown terminal: %v", err)
 	}
 }

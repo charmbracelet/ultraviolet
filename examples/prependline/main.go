@@ -33,7 +33,6 @@ func main() {
 
 	// We want to display the program in alternate screen mode.
 	// t.EnterAltScreen()
-	// defer t.LeaveAltScreen()
 
 	// Without starting the program, we cannot display anything on the screen.
 	if err := t.Start(); err != nil {

@@ -49,9 +49,6 @@ type tickEvent struct{}
 
 func main() {
 	t := uv.DefaultTerminal()
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
 
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start terminal: %v", err)
@@ -79,7 +76,11 @@ func main() {
 	colors := setupColors(area.Dx(), area.Dy())
 
 	evch := make(chan uv.Event)
-	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
 	go t.SendEvent(ctx, tickEvent{})
 
 LOOP:

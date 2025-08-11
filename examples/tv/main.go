@@ -28,9 +28,6 @@ var (
 
 func main() {
 	t := uv.DefaultTerminal()
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("Error making terminal raw: %v", err)
-	}
 	if err := t.Start(); err != nil {
 		log.Fatalf("Error starting terminal: %v", err)
 	}
@@ -126,7 +123,10 @@ func main() {
 	}
 
 	evch := make(chan uv.Event)
-	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
 
 	for ev := range evch {
 		switch ev := ev.(type) {

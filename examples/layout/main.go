@@ -367,9 +367,6 @@ func main() {
 
 	t := uv.DefaultTerminal()
 	// Set terminal to raw mode to read input events.
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("making raw: %v", err)
-	}
 	if err := t.Start(); err != nil {
 		log.Fatalf("starting program: %v", err)
 	}
@@ -387,7 +384,6 @@ func main() {
 
 	// Use altscreen mode.
 	t.EnterAltScreen()
-	defer t.ExitAltScreen()
 
 	// Enable mouse events.
 	t.EnableMouse()
@@ -415,7 +411,10 @@ func main() {
 	display()
 
 	evch := make(chan uv.Event)
-	go t.ReceiveEvents(ctx, evch) //nolint:errcheck
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
 
 	for ev := range evch {
 		log.Printf("event: %T", ev)
