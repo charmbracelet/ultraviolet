@@ -917,7 +917,7 @@ func (t *Terminal) StreamEvents(ctx context.Context, evch chan<- Event) error {
 		}
 	})
 
-	return errg.Wait()
+	return errg.Wait() //nolint:wrapcheck
 }
 
 // Restore restores the terminal to its original state. This can be called
@@ -1029,9 +1029,9 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 		select {
 		case <-ctx.Done():
 			if err := ctx.Err(); err != nil {
-				return err
+				return err //nolint:wrapcheck
 			} else if winchErr != nil {
-				return err
+				return err //nolint:wrapcheck
 			}
 			return nil
 		case <-donec:
@@ -1048,7 +1048,7 @@ func (t *Terminal) close(reset bool) (rErr error) {
 	t.cr.Cancel()
 	_ = t.cr.Close()
 	err := t.Restore()
-	if rErr == nil && err != nil {
+	if err != nil {
 		rErr = fmt.Errorf("error restoring terminal state: %w", err)
 	}
 	if reset {

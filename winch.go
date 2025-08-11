@@ -13,7 +13,6 @@ import (
 type WindowSizeNotifier struct {
 	f   term.File
 	sig chan os.Signal
-	wg  sync.WaitGroup
 	m   sync.Mutex
 }
 

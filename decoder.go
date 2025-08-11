@@ -212,11 +212,13 @@ type EventDecoder struct {
 	// these variables keep track of the current Windows Console API key events
 	// state. They are used to decode utf16 sequences and track the last
 	// control key state, mouse button state, and window size changes.
-	utf16Buf                   [2]rune
-	utf16Half                  bool
-	lastCks                    uint32 // the last control key state for the previous event
-	lastMouseBtns              uint32 // the last mouse button state for the previous event
-	lastWinsizeX, lastWinsizeY int16  // the last window size for the previous event to prevent multiple size events from firing
+	utf16Buf  [2]rune
+	utf16Half bool
+	lastCks   uint32 // the last control key state for the previous event
+	//nolint:unused
+	lastMouseBtns uint32 // the last mouse button state for the previous event
+	//nolint:unused
+	lastWinsizeX, lastWinsizeY int16 // the last window size for the previous event to prevent multiple size events from firing
 }
 
 // Decode finds the first recognized event sequence and returns it along

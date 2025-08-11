@@ -133,7 +133,7 @@ func (d *TerminalReader) sendBytes(ctx context.Context, readc chan []byte) error
 		var readBuf [readBufSize]byte
 		n, err := d.r.Read(readBuf[:])
 		if err != nil {
-			return err
+			return err //nolint:wrapcheck
 		}
 
 		select {
