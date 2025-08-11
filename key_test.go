@@ -122,6 +122,40 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Broken escape sequence introducers.
+		seqTest{
+			[]byte("\x1b["), // CSI
+			[]Event{KeyPressEvent{Code: '[', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b]"), // OSC
+			[]Event{KeyPressEvent{Code: ']', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b^"), // PM
+			[]Event{KeyPressEvent{Code: '^', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b_"), // APC
+			[]Event{KeyPressEvent{Code: '_', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1bP"), // DCS
+			[]Event{KeyPressEvent{Code: 'p', Mod: ModShift | ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1bX"), // SOS
+			[]Event{KeyPressEvent{Code: 'x', Mod: ModShift | ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1bO"), // SS3
+			[]Event{KeyPressEvent{Code: 'o', Mod: ModShift | ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b"), // ESC
+			[]Event{KeyPressEvent{Code: KeyEscape}},
+		},
+
 		// Kitty printable keys with lock modifiers.
 		seqTest{
 			[]byte("\x1b[97;65u" + // caps lock on
@@ -1795,6 +1829,61 @@ func TestSplitSequences(t *testing.T) {
 				KeyPressEvent{Code: 'x', Text: "x"},
 			},
 			delay: 50 * time.Millisecond, // Ensure the timeout is triggered.
+		},
+		{
+			name: "multiple broken down sequences",
+			chunks: [][]byte{
+				[]byte("\x1b[B"),
+				[]byte("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B"),
+				[]byte("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b["),
+				[]byte("B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b"),
+				[]byte("[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B"),
+			},
+			want: []Event{
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+			},
 		},
 	}
 
