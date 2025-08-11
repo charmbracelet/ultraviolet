@@ -215,9 +215,9 @@ type EventDecoder struct {
 	utf16Buf  [2]rune
 	utf16Half bool
 	lastCks   uint32 // the last control key state for the previous event
-	//nolint:unused
+	//nolint:unused,nolintlint
 	lastMouseBtns uint32 // the last mouse button state for the previous event
-	//nolint:unused
+	//nolint:unused,nolintlint
 	lastWinsizeX, lastWinsizeY int16 // the last window size for the previous event to prevent multiple size events from firing
 }
 
