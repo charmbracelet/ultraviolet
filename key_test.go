@@ -1828,7 +1828,7 @@ func TestSplitSequences(t *testing.T) {
 				KeyPressEvent{Code: 'x', Text: "x"},
 				KeyPressEvent{Code: 'x', Text: "x"},
 			},
-			delay: 50 * time.Millisecond, // Ensure the timeout is triggered.
+			delay: 60 * time.Millisecond, // Ensure the timeout is triggered.
 		},
 		{
 			name: "multiple broken down sequences",
