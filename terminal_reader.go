@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
@@ -233,7 +234,90 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
+// decodePairs is a helper that takes a slice of UTF-16 encoded runes and
+// decodes them to UTF-8 byte slice.
+func (d *TerminalReader) decodePairs(pairs []uint16) []byte {
+	if len(pairs) == 0 {
+		return nil
+	}
+	runes := utf16.Decode(pairs)
+	return []byte(string(runes))
+}
+
+// processWin32InputEvents pre processes Windows Win32 Input Mode formatted
+// events that might contain double encoded escape sequences using the
+// win32-input-mode sequence format. The specs also allow UTF-16 pairs to be
+// encoded so this will also try to find those pairs and decode them to UTF-8.
+func (d *TerminalReader) processWin32InputEvents(events []Event, eventc chan<- Event) {
+	var keyPresses []uint16
+	var keyReleases []uint16
+	for i := 0; i < len(events); i++ {
+		e := events[i]
+		switch e := e.(type) {
+		case KeyPressEvent:
+			if e.Code == 0 && e.BaseCode != 0 {
+				keyPresses = append(keyPresses, uint16(e.BaseCode))
+				if i+1 < len(events) {
+					if e2, ok := events[i+1].(KeyReleaseEvent); ok && e2.Code == 0 && e2.BaseCode == e.BaseCode {
+						// This is a key press followed by a key release, so we can decode it as a single key press.
+						keyReleases = append(keyReleases, uint16(e2.BaseCode))
+						i++
+					}
+				}
+				continue
+			}
+		}
+
+		d.sendEvents(d.decodePairs(keyPresses), false, eventc)
+		d.sendEvents(d.decodePairs(keyReleases), false, eventc)
+		eventc <- e
+	}
+
+	d.sendEvents(d.decodePairs(keyPresses), false, eventc)
+	d.sendEvents(d.decodePairs(keyReleases), false, eventc)
+}
+
+func (d *TerminalReader) sendKeyPresses(eventc chan<- Event) int {
+	if len(d.win32PressBuf) > 0 {
+		bts := d.decodePairs(d.win32PressBuf)
+		d.win32PressBuf = d.win32PressBuf[:0]
+		return d.sendEvents(bts, false, eventc)
+	}
+	return 0
+}
+
+func (d *TerminalReader) sendKeyReleases(eventc chan<- Event) int {
+	var total int
+	if len(d.win32ReleaseBuf) > 0 {
+		bts := d.decodePairs(d.win32ReleaseBuf)
+		d.win32ReleaseBuf = d.win32ReleaseBuf[:0]
+		evch := make(chan Event)
+		go func() {
+			// The buffer contains key releases data. However,
+			// [EventDecoder.Decode] only returns [KeyPressEvent] for UTF-8
+			// buffers so we need to change the type to [KeyReleaseEvent]
+			// before sending them to the channel.
+			for e := range evch {
+				switch ev := e.(type) {
+				case KeyPressEvent:
+					eventc <- KeyReleaseEvent(ev)
+				default:
+					eventc <- ev
+				}
+			}
+		}()
+		return d.sendEvents(bts, false, evch)
+	}
+	return total
+}
+
 func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Event) int {
+	if len(buf) == 0 {
+		return 0
+	}
+
+	d.logf("processing buf %q", buf)
+
 	// Lookup table first
 	if d.lookup && len(buf) > 2 && buf[0] == ansi.ESC {
 		if k, ok := d.table[string(buf)]; ok {
@@ -248,10 +332,37 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 		esc := buf[0] == ansi.ESC
 		n, event := d.Decode(buf)
 
+		// d.logf("decoded: n=%d, buf: %q, event=%T %v", n, buf[:n], event, event)
+
+		// Handle encoded win32-input-mode keys.
+		if kp, ok := event.(KeyPressEvent); ok && kp.Code == 0 && kp.BaseCode != 0 {
+			d.win32PressBuf = append(d.win32PressBuf, uint16(kp.BaseCode))
+			buf = buf[n:]
+			continue
+		} else if kr, ok := event.(KeyReleaseEvent); ok && kr.Code == 0 && kr.BaseCode != 0 {
+			d.win32ReleaseBuf = append(d.win32ReleaseBuf, uint16(kr.BaseCode))
+			buf = buf[n:]
+			continue
+		} else {
+			total += d.sendKeyPresses(eventc)
+			total += d.sendKeyReleases(eventc)
+		}
+
 		// Handle bracketed-paste
 		if d.paste != nil {
 			if _, ok := event.(PasteEndEvent); !ok {
-				d.paste = append(d.paste, buf[:n]...)
+				switch event := event.(type) {
+				case KeyPressEvent:
+					if len(event.Text) > 0 {
+						d.paste = append(d.paste, event.Text...)
+					} else {
+						d.paste = utf8.AppendRune(d.paste, event.Code)
+					}
+				case KeyReleaseEvent:
+					// ignore
+				default:
+					d.paste = append(d.paste, buf[:n]...)
+				}
 				buf = buf[n:]
 				total += n
 				continue
@@ -311,6 +422,12 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 		buf = buf[n:]
 		total += n
 	}
+
+	// NOTE: For some reason, emojis and multi rune events send their release
+	// events before the press events. We need to investigate why is that
+	// happening.
+	total += d.sendKeyPresses(eventc)
+	total += d.sendKeyReleases(eventc)
 
 	return total
 }

@@ -49,7 +49,7 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 	}
 
 	modes := []uint32{
-		// windows.ENABLE_VIRTUAL_TERMINAL_INPUT,
+		windows.ENABLE_VIRTUAL_TERMINAL_INPUT,
 		windows.ENABLE_WINDOW_INPUT,
 		windows.ENABLE_EXTENDED_FLAGS,
 	}

@@ -60,17 +60,8 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte, reco
 }
 
 func (d *TerminalReader) processRecords(records []inputRecord, eventc chan<- Event) {
-	processWin32Buf := func() {
-		// Parse any remaining buffered data and escape sequences.
-		b := d.win32Buf.Bytes()
-		if n := d.sendEvents(b, true, eventc); n > 0 {
-			d.logf("processing buffer, %d bytes, %q", n, b[:n])
-			d.win32Buf.Next(n)
-		}
-	}
-
-	var lastEventType uint16
-	for i, record := range records {
+	var events []Event
+	for _, record := range records {
 		switch record.EventType {
 		case xwindows.KEY_EVENT:
 			kevent := record.KeyEvent()
@@ -78,20 +69,21 @@ func (d *TerminalReader) processRecords(records []inputRecord, eventc chan<- Eve
 
 			if ev := d.parseWin32InputKeyEvent(kevent.VirtualKeyCode, kevent.VirtualScanCode,
 				kevent.Char, kevent.KeyDown, kevent.ControlKeyState, kevent.RepeatCount); ev != nil {
-				if d.win32Buf.Len() > 0 {
-					processWin32Buf()
+				if m, ok := ev.(MultiEvent); ok {
+					events = append(events, m...)
+				} else {
+					events = append(events, ev)
 				}
-				eventc <- ev
 			}
 
 		case xwindows.WINDOW_BUFFER_SIZE_EVENT:
 			wevent := record.WindowBufferSizeEvent()
 			if wevent.Size.X != d.lastWinsizeX || wevent.Size.Y != d.lastWinsizeY {
 				d.lastWinsizeX, d.lastWinsizeY = wevent.Size.X, wevent.Size.Y
-				eventc <- WindowSizeEvent{
+				events = append(events, WindowSizeEvent{
 					Width:  int(wevent.Size.X),
 					Height: int(wevent.Size.Y),
-				}
+				})
 			}
 		case xwindows.MOUSE_EVENT:
 			if d.MouseMode == nil || *d.MouseMode == 0 {
@@ -112,25 +104,20 @@ func (d *TerminalReader) processRecords(records []inputRecord, eventc chan<- Eve
 				}
 			}
 			d.lastMouseBtns = mevent.ButtonState
-			eventc <- event
+			events = append(events, event)
 		case xwindows.FOCUS_EVENT:
 			fevent := record.FocusEvent()
 			if fevent.SetFocus {
-				eventc <- FocusEvent{}
+				events = append(events, FocusEvent{})
 			} else {
-				eventc <- BlurEvent{}
+				events = append(events, BlurEvent{})
 			}
 		case xwindows.MENU_EVENT:
 			// ignore
 		}
-
-		notKeyEvent := lastEventType == xwindows.KEY_EVENT && record.EventType != xwindows.KEY_EVENT
-		if d.win32Buf.Len() > 0 && (notKeyEvent || i == len(records)-1) {
-			processWin32Buf()
-		}
-
-		lastEventType = record.EventType
 	}
+
+	d.processWin32InputEvents(events, eventc)
 }
 
 func mouseEventButton(p, s uint32) (MouseButton, bool) {
@@ -278,7 +265,7 @@ func keyEventString(vkc, sc uint16, r rune, keyDown bool, cks uint32, repeatCoun
 	s.WriteString(", sc: ")
 	s.WriteString(fmt.Sprintf("%d, 0x%02x", sc, sc))
 	s.WriteString(", r: ")
-	s.WriteString(fmt.Sprintf("%q", r))
+	s.WriteString(fmt.Sprintf("%q 0x%x", r, r))
 	s.WriteString(", down: ")
 	s.WriteString(fmt.Sprintf("%v", keyDown))
 	s.WriteString(", cks: [")
