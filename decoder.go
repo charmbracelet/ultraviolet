@@ -206,13 +206,7 @@ type EventDecoder struct {
 	// override the default key sequences handled by the parser.
 	UseTerminfo bool
 
-	win32PressBuf   []uint16
-	win32ReleaseBuf []uint16
-	lastCks         uint32 // the last control key state for the previous event
-	//nolint:unused,nolintlint
-	lastMouseBtns uint32 // the last mouse button state for the previous event
-	//nolint:unused,nolintlint
-	lastWinsizeX, lastWinsizeY int16 // the last window size for the previous event to prevent multiple size events from firing
+	lastCks uint32 // the last control key state for the previous key event record.
 }
 
 // Decode finds the first recognized event sequence and returns it along

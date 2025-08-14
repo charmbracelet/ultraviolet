@@ -63,6 +63,10 @@ type TerminalReader struct {
 	utf16Half   [2]bool    // 0 key up, 1 key down
 	utf16Buf    [2][2]rune // 0 key up, 1 key down
 	graphemeBuf [2][]rune  // 0 key up, 1 key down
+	//nolint:unused,nolintlint
+	lastMouseBtns uint32 // the last mouse button state for the previous event
+	//nolint:unused,nolintlint
+	lastWinsizeX, lastWinsizeY int16 // the last window size for the previous event to prevent multiple size events from firing
 
 	logger Logger // The logger to use for debugging.
 }
