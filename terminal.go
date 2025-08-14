@@ -147,7 +147,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 // information about the terminal I/O. By default, it is set to a no-op logger.
 func (t *Terminal) SetLogger(logger Logger) {
 	t.logger = logger
-	t.scr.SetLogger(logger)
 }
 
 // ColorProfile returns the currently used color profile for the terminal.
