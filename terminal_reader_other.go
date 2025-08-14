@@ -14,6 +14,6 @@ func (p *TerminalReader) processRecords([]inputRecord, chan<- Event) {
 }
 
 // streamData sends data from the input stream to the event channel.
-func (p *TerminalReader) streamData(ctx context.Context, readc chan []byte, _ chan []inputRecord) error {
+func (p *TerminalReader) streamData(ctx context.Context, readc chan []byte) error {
 	return p.sendBytes(ctx, readc)
 }

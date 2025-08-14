@@ -4,11 +4,14 @@
 package uv
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf16"
 
+	"github.com/charmbracelet/x/ansi"
 	xwindows "github.com/charmbracelet/x/windows"
 	"github.com/muesli/cancelreader"
 	"golang.org/x/sys/windows"
@@ -17,13 +20,17 @@ import (
 type inputRecord = xwindows.InputRecord
 
 // streamData sends data from the input stream to the event channel.
-func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte, recordc chan []inputRecord) error {
+func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) error {
 	cc, ok := d.r.(*conInputReader)
 	if !ok {
 		d.logf("streamData: reader is not a conInputReader, falling back to default implementation")
 		return d.sendBytes(ctx, readc)
 	}
 
+	// Store the value of VT Input Mode for later use.
+	d.vtInput = cc.newMode&windows.ENABLE_VIRTUAL_TERMINAL_INPUT != 0
+
+	var buf bytes.Buffer
 	var records []inputRecord
 	var err error
 	for {
@@ -51,73 +58,151 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte, reco
 			return err
 		}
 
+		// We convert Windows Input Records to VT input sequences for easier
+		// processing especially when dealing with UTF-16 decoding and
+		// Win32-Input-Mode processing.
+		d.serializeWin32InputRecords(records, &buf)
+
 		select {
 		case <-ctx.Done():
 			return nil
-		case recordc <- records:
+		case readc <- buf.Bytes():
 		}
+
+		buf.Reset()
 	}
 }
 
-func (d *TerminalReader) processRecords(records []inputRecord, eventc chan<- Event) {
-	var events []Event
+// serializeWin32InputRecords serializes the Win32 input events converting them
+// to valid VT input sequences. It will also encode any UTF-16 pairs that might
+// be present in the input buffer. The resulting byte slice can be sent to the
+// terminal as input.
+func (d *TerminalReader) serializeWin32InputRecords(records []inputRecord, buf *bytes.Buffer) {
 	for _, record := range records {
 		switch record.EventType {
 		case xwindows.KEY_EVENT:
 			kevent := record.KeyEvent()
 			// d.logf("key event: %s", keyEventString(kevent.VirtualKeyCode, kevent.VirtualScanCode, kevent.Char, kevent.KeyDown, kevent.ControlKeyState, kevent.RepeatCount))
 
-			if ev := d.parseWin32InputKeyEvent(kevent.VirtualKeyCode, kevent.VirtualScanCode,
-				kevent.Char, kevent.KeyDown, kevent.ControlKeyState, kevent.RepeatCount); ev != nil {
-				if m, ok := ev.(MultiEvent); ok {
-					events = append(events, m...)
+			var kd int
+			if kevent.KeyDown {
+				kd = 1
+			}
+			if d.vtInput {
+				// In VT Input Mode, we only capture the Unicode characters
+				// decoding them along the way.
+				// This is similar to [TerminalReader.storeGraphemeRune] except
+				// that we need to write the events directly to the buffer.
+				if d.utf16Half[kd] {
+					// We have a half pair that needs to be decoded.
+					d.utf16Half[kd] = false
+					d.utf16Buf[kd][1] = kevent.Char
+					r := utf16.DecodeRune(d.utf16Buf[kd][0], d.utf16Buf[kd][1])
+					buf.WriteRune(r)
+				} else if utf16.IsSurrogate(kevent.Char) {
+					// This is the first half of a UTF-16 surrogate pair.
+					d.utf16Half[kd] = true
+					d.utf16Buf[kd][0] = kevent.Char
 				} else {
-					events = append(events, ev)
+					// Just a regular character.
+					buf.WriteRune(kevent.Char)
+				}
+			} else {
+				// We encode the key to Win32 Input Mode if it is a known key.
+				if kevent.VirtualKeyCode == 0 {
+					d.storeGraphemeRune(kd, kevent.Char)
+				} else {
+					buf.Write(d.encodeGraphemeBufs())
+					fmt.Fprintf(buf,
+						"\x1b[%d;%d;%d;%d;%d;%d_",
+						kevent.VirtualKeyCode,
+						kevent.VirtualScanCode,
+						kevent.Char,
+						kd,
+						kevent.ControlKeyState,
+						kevent.RepeatCount)
 				}
 			}
 
-		case xwindows.WINDOW_BUFFER_SIZE_EVENT:
-			wevent := record.WindowBufferSizeEvent()
-			if wevent.Size.X != d.lastWinsizeX || wevent.Size.Y != d.lastWinsizeY {
-				d.lastWinsizeX, d.lastWinsizeY = wevent.Size.X, wevent.Size.Y
-				events = append(events, WindowSizeEvent{
-					Width:  int(wevent.Size.X),
-					Height: int(wevent.Size.Y),
-				})
-			}
 		case xwindows.MOUSE_EVENT:
 			if d.MouseMode == nil || *d.MouseMode == 0 {
 				continue
 			}
 			mouseMode := *d.MouseMode
 			mevent := record.MouseEvent()
-			event := mouseEvent(d.lastMouseBtns, mevent)
+
+			var isRelease bool
+			var isMotion bool
+			var button MouseButton
+			alt := mevent.ControlKeyState&(xwindows.LEFT_ALT_PRESSED|xwindows.RIGHT_ALT_PRESSED) != 0
+			ctrl := mevent.ControlKeyState&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_CTRL_PRESSED) != 0
+			shift := mevent.ControlKeyState&(xwindows.SHIFT_PRESSED) != 0
+			wheelDirection := int16(highWord(mevent.ButtonState)) //nolint:gosec
+			switch mevent.EventFlags {
+			case 0, xwindows.DOUBLE_CLICK:
+				button, isRelease = mouseEventButton(d.lastMouseBtns, mevent.ButtonState)
+			case xwindows.MOUSE_WHEELED:
+				if wheelDirection > 0 {
+					button = MouseWheelUp
+				} else {
+					button = MouseWheelDown
+				}
+			case xwindows.MOUSE_HWHEELED:
+				if wheelDirection > 0 {
+					button = MouseWheelRight
+				} else {
+					button = MouseWheelLeft
+				}
+			case xwindows.MOUSE_MOVED:
+				button, _ = mouseEventButton(d.lastMouseBtns, mevent.ButtonState)
+				isMotion = true
+			}
+
 			// We emulate mouse mode levels on Windows. This is because Windows
 			// doesn't have a concept of different mouse modes. We use the mouse mode to determine
-			switch m := event.(type) {
-			case MouseMotionEvent:
-				if m.Button == MouseNone && mouseMode&AllMouseMode == 0 {
-					continue
-				}
-				if m.Button != MouseNone && mouseMode&DragMouseMode == 0 {
-					continue
-				}
+			if button == MouseNone && mouseMode&AllMouseMode == 0 ||
+				(button != MouseNone && mouseMode&DragMouseMode == 0) {
+				continue
 			}
+
+			// Encode mouse events as SGR mouse sequences that can be read by [EventDecoder].
+			buf.WriteString(ansi.MouseSgr(
+				ansi.EncodeMouseButton(button, isMotion, shift, alt, ctrl),
+				int(mevent.MousePositon.X), int(mevent.MousePositon.Y), isRelease,
+			))
+
 			d.lastMouseBtns = mevent.ButtonState
-			events = append(events, event)
+
+		case xwindows.WINDOW_BUFFER_SIZE_EVENT:
+			wevent := record.WindowBufferSizeEvent()
+			if wevent.Size.X != d.lastWinsizeX || wevent.Size.Y != d.lastWinsizeY {
+				d.lastWinsizeX, d.lastWinsizeY = wevent.Size.X, wevent.Size.Y
+				// We encode window resize events as CSI 4 ; height ; width t
+				// sequence which the [EventDecoder] understands.
+				buf.WriteString(
+					ansi.WindowOp(
+						ansi.ResizeWindowWinOp,
+						int(wevent.Size.Y), // height
+						int(wevent.Size.X), // width
+					),
+				)
+			}
+
 		case xwindows.FOCUS_EVENT:
 			fevent := record.FocusEvent()
 			if fevent.SetFocus {
-				events = append(events, FocusEvent{})
+				buf.WriteString(ansi.Focus)
 			} else {
-				events = append(events, BlurEvent{})
+				buf.WriteString(ansi.Blur)
 			}
+
 		case xwindows.MENU_EVENT:
 			// ignore
 		}
 	}
 
-	d.processWin32InputEvents(events, eventc)
+	// Flush any remaining grapheme buffers.
+	buf.Write(d.encodeGraphemeBufs())
 }
 
 func mouseEventButton(p, s uint32) (MouseButton, bool) {
@@ -158,55 +243,6 @@ func mouseEventButton(p, s uint32) (MouseButton, bool) {
 	}
 
 	return button, isRelease
-}
-
-func mouseEvent(p uint32, e xwindows.MouseEventRecord) (ev Event) {
-	var mod KeyMod
-	var isRelease bool
-	if e.ControlKeyState&(xwindows.LEFT_ALT_PRESSED|xwindows.RIGHT_ALT_PRESSED) != 0 {
-		mod |= ModAlt
-	}
-	if e.ControlKeyState&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_CTRL_PRESSED) != 0 {
-		mod |= ModCtrl
-	}
-	if e.ControlKeyState&(xwindows.SHIFT_PRESSED) != 0 {
-		mod |= ModShift
-	}
-
-	m := Mouse{
-		X:   int(e.MousePositon.X),
-		Y:   int(e.MousePositon.Y),
-		Mod: mod,
-	}
-
-	wheelDirection := int16(highWord(e.ButtonState)) //nolint:gosec
-	switch e.EventFlags {
-	case 0, xwindows.DOUBLE_CLICK:
-		m.Button, isRelease = mouseEventButton(p, e.ButtonState)
-	case xwindows.MOUSE_WHEELED:
-		if wheelDirection > 0 {
-			m.Button = MouseWheelUp
-		} else {
-			m.Button = MouseWheelDown
-		}
-	case xwindows.MOUSE_HWHEELED:
-		if wheelDirection > 0 {
-			m.Button = MouseWheelRight
-		} else {
-			m.Button = MouseWheelLeft
-		}
-	case xwindows.MOUSE_MOVED:
-		m.Button, _ = mouseEventButton(p, e.ButtonState)
-		return MouseMotionEvent(m)
-	}
-
-	if isWheel(m.Button) {
-		return MouseWheelEvent(m)
-	} else if isRelease {
-		return MouseReleaseEvent(m)
-	}
-
-	return MouseClickEvent(m)
 }
 
 func highWord(data uint32) uint16 {
