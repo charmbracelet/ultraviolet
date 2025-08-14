@@ -56,6 +56,7 @@ type TerminalReader struct {
 	lookup bool // lookup indicates whether to use the lookup table for key sequences.
 
 	// vtInput indicates whether we're using Windows Console API VT input mode.
+	//nolint:unused,nolintlint
 	vtInput bool
 
 	// We use these buffers to decode UTF-16 sequences and graphemes from the

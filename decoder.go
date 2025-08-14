@@ -1844,9 +1844,8 @@ func (p *EventDecoder) parseWin32InputKeyEvent(vkc uint16, _ uint16, r rune, key
 		// to be decoded.
 		if keyDown {
 			return KeyPressEvent{Code: 0, BaseCode: r, Mod: translateControlKeyState(cks)}
-		} else {
-			return KeyReleaseEvent{Code: 0, BaseCode: r, Mod: translateControlKeyState(cks)}
 		}
+		return KeyReleaseEvent{Code: 0, BaseCode: r, Mod: translateControlKeyState(cks)}
 	case vkc == xwindows.VK_BACK:
 		key.BaseCode = KeyBackspace
 	case vkc == xwindows.VK_TAB:

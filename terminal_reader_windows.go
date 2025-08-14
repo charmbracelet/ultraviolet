@@ -17,8 +17,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type inputRecord = xwindows.InputRecord
-
 // streamData sends data from the input stream to the event channel.
 func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) error {
 	cc, ok := d.r.(*conInputReader)
@@ -31,7 +29,7 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 	d.vtInput = cc.newMode&windows.ENABLE_VIRTUAL_TERMINAL_INPUT != 0
 
 	var buf bytes.Buffer
-	var records []inputRecord
+	var records []xwindows.InputRecord
 	var err error
 	for {
 		for {
@@ -77,7 +75,7 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 // to valid VT input sequences. It will also encode any UTF-16 pairs that might
 // be present in the input buffer. The resulting byte slice can be sent to the
 // terminal as input.
-func (d *TerminalReader) serializeWin32InputRecords(records []inputRecord, buf *bytes.Buffer) {
+func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputRecord, buf *bytes.Buffer) {
 	for _, record := range records {
 		switch record.EventType {
 		case xwindows.KEY_EVENT:
