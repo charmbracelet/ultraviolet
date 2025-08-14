@@ -354,14 +354,11 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 				switch event := event.(type) {
 				case KeyPressEvent:
 					if len(event.Text) > 0 {
+						// We only allow text events in paste mode.
 						d.paste = append(d.paste, event.Text...)
-					} else {
-						d.paste = utf8.AppendRune(d.paste, event.Code)
 					}
-				case KeyReleaseEvent:
-					// ignore
 				default:
-					d.paste = append(d.paste, buf[:n]...)
+					// Everything else is ignored...
 				}
 				buf = buf[n:]
 				total += n
