@@ -250,7 +250,6 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 				switch event := event.(type) {
 				case KeyPressEvent:
 					if len(event.Text) > 0 {
-						// We only allow text events in paste mode.
 						d.paste = append(d.paste, event.Text...)
 					} else {
 						d.paste = append(d.paste, buf[:n]...)
