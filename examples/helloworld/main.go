@@ -16,11 +16,7 @@ func main() {
 	// Or simply use...
 	// t := uv.DefaultTerminal()
 
-	// Set the terminal to raw mode.
-	if err := t.MakeRaw(); err != nil {
-		log.Fatal(err)
-	}
-
+START:
 	// Enter the alternate screen buffer
 	t.EnterAltScreen()
 
@@ -30,26 +26,8 @@ func main() {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
-	// We want to be able to stop the terminal input loop
-	// whenever we call cancel().
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	fixed := uv.Rect(10, 10, 40, 20)
-
-	// This will block until we close the events
-	// channel or cancel the context.
-	for ev := range t.Events(ctx) {
-		switch ev := ev.(type) {
-		case uv.WindowSizeEvent:
-			t.Resize(ev.Width, ev.Height)
-			t.Erase()
-		case uv.KeyPressEvent:
-			if ev.MatchStrings("q", "ctrl+c") {
-				cancel() // This will stop the loop
-			}
-		}
-
+	display := func() {
 		// Display the frame with the styled string
 		// We want the component to occupy the given area which is the
 		// entire screen because we're using the alternate screen buffer.
@@ -71,13 +49,54 @@ func main() {
 		}
 	}
 
-	if err := t.Shutdown(ctx); err != nil {
+	// We want to be able to stop the terminal input loop
+	// whenever we call cancel().
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
+	// This will block until we close the events
+	// channel or cancel the context.
+	for ev := range evch {
+		switch ev := ev.(type) {
+		case uv.WindowSizeEvent:
+			t.Resize(ev.Width, ev.Height)
+			t.Erase()
+		case uv.KeyPressEvent:
+			if ev.MatchStrings("q", "ctrl+c") {
+				cancel() // This will stop the loop
+			} else if ev.MatchString("ctrl+z") {
+				t.Erase()
+				if err := t.Display(); err != nil {
+					log.Fatal(err)
+				}
+				if t.Shutdown(ctx) != nil {
+					log.Fatal("failed to shutdown terminal")
+				}
+
+				cancel()
+
+				uv.Suspend()
+
+				goto START
+			}
+		}
+
+		display()
+	}
+
+	if err := t.Shutdown(context.Background()); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func init() {
-	f, err := os.OpenFile("uv.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open log file: %v", err)
 	}

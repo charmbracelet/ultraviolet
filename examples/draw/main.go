@@ -28,11 +28,6 @@ func main() {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
-	// Set terminal info raw mode.
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to set raw mode: %v", err)
-	}
-
 	defer t.Restore() //nolint:errcheck
 
 	// Use altscreen buffer.
@@ -151,7 +146,13 @@ Press any key to continue...`
 		t.Display()
 	}
 
-	for ev := range t.Events(ctx) {
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
 			if showingHelp {

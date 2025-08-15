@@ -1,6 +1,7 @@
 package uv
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -12,6 +13,15 @@ import (
 
 // Event represents an input event that can be received from an input source.
 type Event interface{}
+
+// EventStreamer is an interface that defines a method to stream events from an
+// input source. It takes a context and a channel to send events to. The
+// streamer should block until the context is done or an error occurs. The
+// channel should never be closed by the streamer, as it is the responsibility
+// of the consumer to close it when done.
+type EventStreamer interface {
+	StreamEvents(ctx context.Context, ch chan<- Event) error
+}
 
 // UnknownEvent represents an unknown event.
 type UnknownEvent string
@@ -87,6 +97,20 @@ func (e MultiEvent) String() string {
 		sb.WriteString(fmt.Sprintf("%v\n", ev))
 	}
 	return sb.String()
+}
+
+// Size represents the size of the terminal window.
+type Size struct {
+	Width  int
+	Height int
+}
+
+// Bounds returns the bounds corresponding to the size.
+func (s Size) Bounds() Rectangle {
+	return Rectangle{
+		Min: image.Point{X: 0, Y: 0},
+		Max: image.Point{X: s.Width, Y: s.Height},
+	}
 }
 
 // WindowSizeEvent represents the window size in cells.

@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
+	"os"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
@@ -15,15 +18,10 @@ func main() {
 	// Create a new default terminal that uses [os.Stdin] and [os.Stdout] for
 	// I/O.
 	t := uv.DefaultTerminal()
+	t.SetLogger(log.Default())
 
 	// Set the terminal title to "Hello World".
 	t.SetTitle("Hello World")
-
-	// We need the terminal to be in raw mode so that we can read input
-	// characters without echoing them to the screen.
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
 
 	w, _, err := t.GetSize()
 	if err != nil {
@@ -35,7 +33,6 @@ func main() {
 
 	// We want to display the program in alternate screen mode.
 	// t.EnterAltScreen()
-	// defer t.LeaveAltScreen()
 
 	// Without starting the program, we cannot display anything on the screen.
 	if err := t.Start(); err != nil {
@@ -91,18 +88,22 @@ func main() {
 
 	display()
 
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		t.StreamEvents(ctx, evch)
+	}()
+
 	// Events returns an event channel that receives input events from the all
 	// the terminal input sources. It will block until we close the event
 	// channel or cancel the context.
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		// Handle events here
 		switch ev := ev.(type) {
 		case uv.KeyPressEvent:
 			switch {
 			case ev.MatchStrings("q", "ctrl+c"):
 				cancel()
-			case ev.MatchStrings("A"):
-				t.PrependString("Shift + A pressed")
 			}
 
 			st = st.Background(ansi.BasicColor(rand.Intn(16)))
@@ -119,10 +120,22 @@ func main() {
 	}
 
 	// Gracefully shutdown the program.
-	ctx, cancel = context.WithTimeout(context.Background(), 5)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := t.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
+	}
+}
+
+func init() {
+	if os.Getenv("UV_DEBUG") == "" {
+		log.SetOutput(io.Discard)
+		return
+	}
+	f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err == nil {
+		log.SetOutput(f)
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 }

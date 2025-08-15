@@ -1,23 +1,17 @@
 package uv
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"slices"
-	"sync"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/cancelreader"
 )
-
-// Logger is a simple logger interface.
-type Logger interface {
-	Printf(format string, v ...interface{})
-}
 
 // win32InputState is a state machine for parsing key events from the Windows
 // Console API into escape sequences and utf8 runes, and keeps track of the last
@@ -54,11 +48,11 @@ var ErrReaderNotStarted = fmt.Errorf("reader not started")
 // process ESC sequences. It is set to 50 milliseconds.
 const DefaultEscTimeout = 50 * time.Millisecond
 
-// TerminalReader represents an input event reader. It reads input events and
-// parses escape sequences from the terminal input buffer and translates them
-// into human-readable events.
+// TerminalReader represents an input event loop that reads input events from
+// a reader and parses them into human-readable events. It supports
+// reading escape sequences, mouse events, and bracketed paste mode.
 type TerminalReader struct {
-	SequenceParser
+	EventDecoder
 
 	// MouseMode determines whether mouse events are enabled or not. This is a
 	// platform-specific feature and is only available on Windows. When this is
@@ -77,7 +71,6 @@ type TerminalReader struct {
 	EscTimeout time.Duration
 
 	r     io.Reader
-	rd    cancelreader.CancelReader
 	table map[string]Key // table is a lookup table for key sequences.
 
 	term string // term is the terminal name $TERM.
@@ -86,25 +79,11 @@ type TerminalReader struct {
 	// When nil, bracketed paste mode is disabled.
 	paste []byte
 
-	lookup bool   // lookup indicates whether to use the lookup table for key sequences.
-	buf    []byte // buffer to hold the read data.
+	lookup bool // lookup indicates whether to use the lookup table for key sequences.
 
 	// keyState keeps track of the current Windows Console API key events state.
 	// It is used to decode ANSI escape sequences and utf16 sequences.
 	keyState win32InputState
-
-	// This indicates whether the reader is closed or not. It is used to
-	// prevent	multiple calls to the Close() method.
-	closed    bool
-	started   bool          // started indicates whether the reader has been started.
-	runOnce   sync.Once     // runOnce is used to ensure that the reader is only started once.
-	close     chan struct{} // close is a channel used to signal the reader to close.
-	closeOnce sync.Once
-	notify    chan []byte // notify is a channel used to notify the reader of new input events.
-	timeout   *time.Timer
-	timedout  atomic.Bool
-	esc       atomic.Bool
-	err       atomic.Value // err is the last error encountered by the reader.
 
 	logger Logger // The logger to use for debugging.
 }
@@ -115,7 +94,7 @@ var _ any = &TerminalReader{
 	keyState: win32InputState{},
 }
 
-// NewTerminalReader returns a new input event reader. The reader reads input
+// NewTerminalReader returns a new input event reader. The reader streams input
 // events from the terminal and parses escape sequences into human-readable
 // events. It supports reading Terminfo databases.
 //
@@ -124,18 +103,127 @@ var _ any = &TerminalReader{
 //
 // Example:
 //
-//	r, _ := input.NewTerminalReader(os.Stdin, os.Getenv("TERM"))
-//	defer r.Close()
-//	events, _ := r.ReadEvents()
-//	for _, ev := range events {
-//	  log.Printf("%v", ev)
-//	}
+//	```go
+//	var cr cancelreader.CancelReader
+//	var evc chan Event
+//	sc := NewTerminalReader(cr, os.Getenv("TERM"))
+//	go sc.StreamEvents(ctx, evc)
+//	```
 func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
-	return &TerminalReader{
+	d := &TerminalReader{
 		EscTimeout: DefaultEscTimeout,
 		r:          r,
 		term:       termType,
 		lookup:     true, // Use lookup table by default.
+	}
+	d.r = r
+	if d.table == nil {
+		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
+	}
+	return d
+}
+
+// readBufSize is the size of the read buffer used to read input events at a time.
+const readBufSize = 4096
+
+// sendBytes reads data from the reader and sends it to the provided channel.
+// It stops when an error occurs or when the context is closed.
+func (d *TerminalReader) sendBytes(ctx context.Context, readc chan []byte) error {
+	for {
+		var readBuf [readBufSize]byte
+		n, err := d.r.Read(readBuf[:])
+		if err != nil {
+			return err //nolint:wrapcheck
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case readc <- readBuf[:n]:
+		}
+	}
+}
+
+// StreamEvents sends events to the provided channel. It stops when the context
+// is closed or when an error occurs.
+func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) error {
+	var buf bytes.Buffer
+	errc := make(chan error, 1)
+	readc := make(chan []byte)
+	recordc := make(chan []inputRecord)
+	timeout := time.NewTimer(d.EscTimeout)
+	ttimeout := time.Now().Add(d.EscTimeout)
+
+	go func() {
+		if err := d.streamData(ctx, readc, recordc); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
+				errc <- nil
+				return
+			}
+			errc <- err
+			return
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			d.sendEvents(buf.Bytes(), true, eventc)
+			return nil
+		case err := <-errc:
+			d.sendEvents(buf.Bytes(), true, eventc)
+			return err // return the first error encountered
+		case <-timeout.C:
+			d.logf("timeout reached")
+
+			// Timeout reached process the buffer including any incomplete sequences.
+			var n int // n is the number of bytes processed
+			timedout := time.Now().After(ttimeout)
+			if buf.Len() > 0 && timedout {
+				d.logf("timeout expired, processing buffer")
+				n = d.sendEvents(buf.Bytes(), true, eventc)
+			}
+
+			if n > 0 {
+				buf.Next(n)
+			}
+
+			if buf.Len() > 0 {
+				if !timeout.Stop() {
+					// drain the channel if it was already running
+					select {
+					case <-timeout.C:
+					default:
+					}
+				}
+
+				d.logf("resetting timeout for remaining buffer")
+				timeout.Reset(d.EscTimeout)
+			}
+		case records := <-recordc:
+			d.processRecords(records, eventc)
+		case read := <-readc:
+			d.logf("input: %q", read)
+			buf.Write(read)
+			ttimeout = time.Now().Add(d.EscTimeout)
+			n := d.sendEvents(buf.Bytes(), false, eventc)
+			if !timeout.Stop() {
+				// drain the channel if it was already running
+				select {
+				case <-timeout.C:
+				default:
+				}
+			}
+
+			if n > 0 {
+				buf.Next(n)
+			}
+
+			if buf.Len() > 0 {
+				d.logf("resetting timeout for remaining buffer after parse")
+				timeout.Reset(d.EscTimeout)
+			}
+		}
 	}
 }
 
@@ -145,209 +233,52 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
-// Start initializes the reader and prepares it for reading input events. It
-// sets up the cancel reader and the key sequence parser. It also sets up the
-// lookup table for key sequences if it is not already set. This function
-// should be called before reading input events.
-func (d *TerminalReader) Start() (err error) {
-	if d.started {
-		return ErrStarted
-	}
-	d.rd, err = newCancelreader(d.r)
-	if err != nil {
-		return err
-	}
-	if d.table == nil {
-		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
-	}
-	d.closed = false
-	d.started = true
-	d.esc.Store(false)
-	d.timeout = time.NewTimer(d.EscTimeout)
-	d.notify = make(chan []byte)
-	d.close = make(chan struct{}, 1)
-	d.closeOnce = sync.Once{}
-	d.runOnce = sync.Once{}
-	return nil
-}
-
-// Read implements [io.Reader].
-func (d *TerminalReader) Read(p []byte) (int, error) {
-	if err := d.Start(); err != nil {
-		return 0, err
-	}
-	return d.rd.Read(p) //nolint:wrapcheck
-}
-
-// Cancel cancels the underlying reader.
-func (d *TerminalReader) Cancel() bool {
-	if d.rd == nil {
-		return false
-	}
-	return d.rd.Cancel()
-}
-
-// Close closes the underlying reader.
-func (d *TerminalReader) Close() (rErr error) {
-	if d.closed {
-		return nil
-	}
-	if !d.started {
-		return ErrReaderNotStarted
-	}
-	if err := d.rd.Close(); err != nil {
-		return fmt.Errorf("failed to close reader: %w", err)
-	}
-	d.closed = true
-	d.started = false
-	d.closeEvents()
-	return nil
-}
-
-func (d *TerminalReader) closeEvents() {
-	d.closeOnce.Do(func() {
-		close(d.close) // signal the reader to close
-	})
-}
-
-func (d *TerminalReader) receiveEvents(ctx context.Context, events chan<- Event) error {
-	if !d.started {
-		return ErrReaderNotStarted
-	}
-
-	// Start the reader loop if it hasn't been started yet.
-	d.runOnce.Do(func() {
-		go d.run()
-	})
-
-	closingFunc := func() error {
-		// If we're closing, make sure to send any remaining events even if
-		// they are incomplete.
-		d.timedout.Store(true)
-		d.sendEvents(events)
-		err, ok := d.err.Load().(error)
-		if !ok {
-			return nil
-		}
-		return err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return closingFunc()
-		case <-d.close:
-			return closingFunc()
-		case <-d.timeout.C:
-			d.timedout.Store(true)
-			d.sendEvents(events)
-			d.esc.Store(false)
-		case buf := <-d.notify:
-			d.buf = append(d.buf, buf...)
-			if !d.esc.Load() {
-				d.sendEvents(events)
-				d.timedout.Store(false)
-			}
-		}
-	}
-}
-
-func (d *TerminalReader) run() {
-	for {
-		if d.closed {
-			return
-		}
-
-		var readBuf [256]byte
-		n, err := d.rd.Read(readBuf[:])
-		if err != nil {
-			d.err.Store(err)
-			d.closeEvents()
-			return
-		}
-		if d.closed {
-			return
-		}
-
-		d.logf("input: %q", readBuf[:n])
-		// This handles small inputs that start with an ESC like:
-		// - "\x1b" (escape key press)
-		// - "\x1b\x1b" (alt+escape key press)
-		// - "\x1b[" (alt+[ key press)
-		// - "\x1bP" (alt+shift+p key press)
-		// - "\x1bX" (alt+shift+x key press)
-		// - "\x1bO" (alt+shift+o key press)
-		// - "\x1b_" (alt+_ key press)
-		// - "\x1b^" (alt+^ key press)
-		esc := n > 0 && n <= 2 && readBuf[0] == ansi.ESC
-		if esc {
-			d.resetEsc()
-		}
-
-		d.notify <- readBuf[:n]
-	}
-}
-
-func (d *TerminalReader) resetEsc() {
-	// Reset the escape sequence state and timer.
-	d.esc.Store(true)
-	d.timeout.Reset(d.EscTimeout)
-}
-
-func (d *TerminalReader) sendEvents(events chan<- Event) {
+func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Event) int {
 	// Lookup table first
-	if d.lookup && d.timedout.Load() && len(d.buf) > 2 && d.buf[0] == ansi.ESC {
-		if k, ok := d.table[string(d.buf)]; ok {
-			events <- KeyPressEvent(k)
-			d.buf = d.buf[:0]
-			return
+	if d.lookup && len(buf) > 2 && buf[0] == ansi.ESC {
+		if k, ok := d.table[string(buf)]; ok {
+			eventc <- KeyPressEvent(k)
+			return len(buf)
 		}
 	}
 
-LOOP:
-	for len(d.buf) > 0 {
-		nb, ev := d.parseSequence(d.buf)
+	// total is the total number of bytes processed
+	var total int
+	for len(buf) > 0 {
+		esc := buf[0] == ansi.ESC
+		n, event := d.Decode(buf)
 
 		// Handle bracketed-paste
 		if d.paste != nil {
-			if _, ok := ev.(PasteEndEvent); !ok {
-				d.paste = append(d.paste, d.buf[0])
-				d.buf = d.buf[1:]
+			if _, ok := event.(PasteEndEvent); !ok {
+				d.paste = append(d.paste, buf[:n]...)
+				buf = buf[n:]
+				total += n
 				continue
 			}
 		}
 
-		var isUnknownEvent bool
-		switch ev.(type) {
+		var isUnknown bool
+		switch event.(type) {
 		case ignoredEvent:
-			ev = nil // ignore this event
+			// ignore this event
+			event = nil
 		case UnknownEvent:
-			isUnknownEvent = true
-
-			// If the sequence is not recognized by the parser, try looking it up.
-			if k, ok := d.table[string(d.buf[:nb])]; ok {
-				ev = KeyPressEvent(k)
+			isUnknown = true
+			// Try to look up the event in the table.
+			if !expired {
+				return total
 			}
 
-			d.logf("unknown sequence: %q", d.buf[:nb])
-			if !d.timedout.Load() {
-				if nb > 0 {
-					// This handles unknown escape sequences that might be incomplete.
-					if slices.Contains([]byte{
-						ansi.ESC, ansi.CSI, ansi.OSC, ansi.DCS, ansi.APC, ansi.SOS, ansi.PM,
-					}, d.buf[0]) {
-						d.resetEsc()
-					}
-				}
-				// If this is the entire buffer, we can break and assume this
-				// is an incomplete sequence.
-				break LOOP
+			if k, ok := d.table[string(buf[:n])]; ok {
+				eventc <- KeyPressEvent(k)
+				return total + n
 			}
-			d.logf("timed out, skipping unknown sequence: %q", d.buf[:nb])
+
+			eventc <- event
 		case PasteStartEvent:
-			d.paste = []byte{}
+			d.paste = []byte{} // reset the paste buffer
 		case PasteEndEvent:
-			// Decode the captured data into runes.
 			var paste []rune
 			for len(d.paste) > 0 {
 				r, w := utf8.DecodeRune(d.paste)
@@ -356,28 +287,32 @@ LOOP:
 				}
 				d.paste = d.paste[w:]
 			}
-			d.paste = nil // reset the d.buffer
-			events <- PasteEvent(paste)
+			d.paste = nil // reset the paste buffer
+			eventc <- PasteEvent(paste)
 		}
 
-		if ev != nil {
-			if !isUnknownEvent && d.esc.Load() {
-				// If we are in an escape sequence, and the event is a valid
-				// one, we need to reset the escape state.
-				d.esc.Store(false)
+		if !isUnknown && event != nil {
+			if esc && n <= 2 && !expired {
+				// Wait for more input
+				return total
 			}
 
-			if mevs, ok := ev.(MultiEvent); ok {
-				for _, mev := range mevs {
-					events <- mev
+			if m, ok := event.(MultiEvent); ok {
+				// If the event is a MultiEvent, append all events to the queue.
+				for _, e := range m {
+					eventc <- e
 				}
 			} else {
-				events <- ev
+				// Otherwise, just append the event to the queue.
+				eventc <- event
 			}
 		}
 
-		d.buf = d.buf[nb:]
+		buf = buf[n:]
+		total += n
 	}
+
+	return total
 }
 
 func (d *TerminalReader) logf(format string, v ...interface{}) {

@@ -11,14 +11,13 @@ import (
 	"io"
 	"log"
 	"os"
-	"runtime"
+	"slices"
 	"strings"
 	"time"
 
 	_ "image/jpeg" // Register JPEG format
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/iterm2"
 	"github.com/charmbracelet/x/ansi/kitty"
@@ -70,10 +69,6 @@ func main() {
 
 	t := uv.DefaultTerminal()
 
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
-
 	// Use altscreen buffer.
 	t.EnterAltScreen() //nolint:errcheck
 
@@ -117,6 +112,13 @@ func main() {
 	if desiredEnc > 0 {
 		imgEnc = imageEncoding(desiredEnc)
 	}
+
+	winSize.Width, winSize.Height, err = t.GetSize()
+	if err != nil {
+		log.Fatalf("failed to get terminal size: %v", err)
+	}
+
+	t.Resize(winSize.Width, winSize.Height) //nolint:errcheck
 
 	upgradeEnc := func(enc imageEncoding) {
 		if desiredEnc == unknownEncoding {
@@ -165,9 +167,11 @@ func main() {
 	var transmitKitty bool
 	var imgCellW, imgCellH int
 	var imgOffsetX, imgOffsetY int
-	var lastImgArea uv.Rectangle
+	imgCellW, imgCellH = imgCellSize()
+	imgOffsetX = winSize.Width/2 - imgCellW/2
+	imgOffsetY = winSize.Height/2 - imgCellH/2
+
 	fillStyle := uv.Style{Fg: ansi.IndexedColor(240)}
-	empty := uv.EmptyCell
 	displayImg := func() {
 		img := charmImg
 		imgArea := uv.Rect(
@@ -184,9 +188,9 @@ func main() {
 		log.Printf("image area: %v", imgArea)
 
 		// Clear the screen.
-		screen.FillArea(t, &empty, lastImgArea)
+		t.Clear()
 		fill := uv.Cell{Content: "/", Width: 1, Style: fillStyle}
-		screen.Fill(t, &fill)
+		t.Fill(&fill)
 
 		// Draw the image on the screen.
 		switch imgEnc {
@@ -194,55 +198,15 @@ func main() {
 			blocks := mosaic.New().Width(imgCellW).Height(imgCellH).Scale(2)
 			ss := uv.NewStyledString(blocks.Render(img))
 			ss.Draw(t, imgArea)
-		case sixelEncoding:
-			screen.FillArea(t, &empty, imgArea)
 
-			var senc sixel.Encoder
-			var buf bytes.Buffer
-			senc.Encode(&buf, img)
-			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
-
-			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
-			if lastCell != nil {
-				// Some terminals mess up the cursor position after drawing the
-				// image, so we need to move the cursor back to the correct
-				// position.
-				cup := ansi.CursorPosition(imgArea.Max.X+1, imgArea.Max.Y)
-				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + six + cup
-			}
-		case itermEncoding:
-			screen.FillArea(t, &empty, imgArea)
-
-			// Now, we need to encode the image and place it in the first
-			// cell before moving the cursor to the correct position.
-			if charmImgB64 == nil {
-				// Encode the image to base64 for the first time.
-				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
-			}
-
-			data := ansi.ITerm2(iterm2.File{
-				Name:              "charm.jpg",
-				Width:             iterm2.Cells(imgArea.Dx()),
-				Height:            iterm2.Cells(imgArea.Dy()),
-				Inline:            true,
-				Content:           charmImgB64,
-				IgnoreAspectRatio: true,
-			})
-
-			lastCell := t.CellAt(imgArea.Max.X-1, imgArea.Max.Y-1)
-			if lastCell != nil {
-				// Some terminals mess up the cursor position after drawing the
-				// image, so we need to move the cursor back to the correct
-				// position.
-				cup := ansi.CursorPosition(imgArea.Max.X+1, imgArea.Max.Y)
-				lastCell.Content += ansi.CursorBackward(imgArea.Dx()) + ansi.CursorUp(imgArea.Dy()-1) + data + cup
-			}
+		case itermEncoding, sixelEncoding:
+			t.FillArea(&uv.EmptyCell, imgArea)
 
 		case kittyEncoding:
 			const imgId = 31 // random id for kitty graphics
 			if !transmitKitty {
 				var buf bytes.Buffer
-				if err := ansi.EncodeKittyGraphics(&buf, img, &kitty.Options{
+				if err := kitty.EncodeGraphics(&buf, img, &kitty.Options{
 					ID:               imgId,
 					Action:           kitty.TransmitAndPut,
 					Transmission:     kitty.Direct,
@@ -253,12 +217,14 @@ func main() {
 					Columns:          imgArea.Dx(),
 					Rows:             imgArea.Dy(),
 					VirtualPlacement: true,
+					Quite:            2,
 				}); err != nil {
 					log.Fatalf("failed to encode image for Kitty Graphics: %v", err)
 				}
 
 				t.WriteString(buf.String()) //nolint:errcheck
 				transmitKitty = true
+				t.Flush()
 			}
 
 			// Build Kitty graphics unicode place holders
@@ -304,41 +270,90 @@ func main() {
 
 		t.Display() //nolint:errcheck
 
-		lastImgArea = imgArea
+		switch imgEnc {
+		case sixelEncoding:
+			var senc sixel.Encoder
+			var buf bytes.Buffer
+			senc.Encode(&buf, img)
+			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
+			// Note: Sixel starts drawing from the current cursor position
+			// and the cursor ends up at the bottom of the image
+			// Add a small offset to prevent top cutoff
+			if imgArea.Min.Y > 0 {
+				t.MoveTo(imgArea.Min.X, imgArea.Min.Y+1)
+			} else {
+				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
+			}
+
+			t.WriteString(six) //nolint:errcheck
+			t.WriteString(ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1))
+
+		case itermEncoding:
+			// Now, we need to encode the image and place it in the first
+			// cell before moving the cursor to the correct position.
+			if charmImgB64 == nil {
+				// Encode the image to base64 for the first time.
+				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
+			}
+
+			data := ansi.ITerm2(iterm2.File{
+				Name:              "charm.jpg",
+				Width:             iterm2.Cells(imgArea.Dx()),
+				Height:            iterm2.Cells(imgArea.Dy()),
+				Inline:            true,
+				Content:           charmImgB64,
+				IgnoreAspectRatio: true,
+			})
+
+			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
+			t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
+			t.WriteString(data) //nolint:errcheck
+			t.WriteString(cup)  //nolint:errcheck
+		}
+
+		if t.Buffered() > 0 {
+			t.Flush() //nolint:errcheck
+		}
 	}
 
 	// Query image encoding support.
-	t.WriteString(ansi.RequestPrimaryDeviceAttributes) // Query Sixel support.
-	t.WriteString(ansi.RequestNameVersion)             // Query terminal version and name.
-	if runtime.GOOS == "windows" {
-		t.WriteString(ansi.WindowOp(ansi.RequestWindowSizeWinOp)) // Request window size.
-	}
+	t.WriteString(ansi.RequestPrimaryDeviceAttributes)        // Query Sixel support.
+	t.WriteString(ansi.RequestNameVersion)                    // Query terminal version and name.
+	t.WriteString(ansi.WindowOp(ansi.RequestWindowSizeWinOp)) // Request window size.
 	// Query Kitty Graphics support using random id=31.
 	t.WriteString(ansi.KittyGraphics([]byte("AAAA"), "i=31", "s=1", "v=1", "a=q", "t=d", "f=24"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
 	// Listen for input events.
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.WindowPixelSizeEvent:
 			// XXX: This is only emitted with traditional Unix systems. On
 			// Windows, we would need to use [ansi.RequestWindowSizeWinOp] to
 			// get the pixel size.
 			pixSize = ev
-
+			imgCellW, imgCellH = imgCellSize()
+			imgOffsetX = winSize.Width/2 - imgCellW/2
+			imgOffsetY = winSize.Height/2 - imgCellH/2
 			displayImg()
 		case uv.WindowSizeEvent:
 			winSize = ev
 			imgCellW, imgCellH = imgCellSize()
 			imgOffsetX = winSize.Width/2 - imgCellW/2
 			imgOffsetY = winSize.Height/2 - imgCellH/2
+			t.Erase()
 			log.Printf("image cell size: %d x %d", imgCellW, imgCellH)
 			if err := t.Resize(ev.Width, ev.Height); err != nil {
 				log.Fatalf("failed to resize program: %v", err)
 			}
-			t.Erase()
 
 			displayImg()
 		case uv.KeyPressEvent:
@@ -362,22 +377,17 @@ func main() {
 
 			displayImg()
 		case uv.PrimaryDeviceAttributesEvent:
-			for _, attr := range ev {
-				if attr == 4 {
-					upgradeEnc(sixelEncoding)
-					break
-				}
+			if slices.Contains(ev, 4) {
+				upgradeEnc(sixelEncoding)
+				displayImg()
 			}
 
-			displayImg()
 		case uv.TerminalVersionEvent:
-			termVersion = string(ev)
-			switch {
-			case strings.Contains(string(ev), "iTerm"), strings.Contains(string(ev), "WezTerm"):
+			if strings.Contains(string(ev), "iTerm") || strings.Contains(string(ev), "WezTerm") {
 				upgradeEnc(itermEncoding)
+				displayImg()
 			}
 
-			displayImg()
 		case uv.WindowOpEvent:
 			// The [ansi.RequestWindowSizeWinOp] request responds with a "4" or
 			// [ansi.ResizeWindowWinOp] first parameter.

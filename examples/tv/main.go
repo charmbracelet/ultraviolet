@@ -28,9 +28,6 @@ var (
 
 func main() {
 	t := uv.DefaultTerminal()
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("Error making terminal raw: %v", err)
-	}
 	if err := t.Start(); err != nil {
 		log.Fatalf("Error starting terminal: %v", err)
 	}
@@ -125,7 +122,13 @@ func main() {
 		}
 	}
 
-	for ev := range t.Events(ctx) {
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
 			area.Max.X, area.Max.Y = ev.Width, ev.Height

@@ -3,7 +3,6 @@ package uv
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"image/color"
@@ -99,8 +98,8 @@ func buildBaseSeqTests() []seqTest {
 }
 
 func TestFocus(t *testing.T) {
-	var p SequenceParser
-	_, e := p.parseSequence([]byte("\x1b[I"))
+	var p EventDecoder
+	_, e := p.Decode([]byte("\x1b[I"))
 	switch e.(type) {
 	case FocusEvent:
 		// ok
@@ -110,8 +109,8 @@ func TestFocus(t *testing.T) {
 }
 
 func TestBlur(t *testing.T) {
-	var p SequenceParser
-	_, e := p.parseSequence([]byte("\x1b[O"))
+	var p EventDecoder
+	_, e := p.Decode([]byte("\x1b[O"))
 	switch e.(type) {
 	case BlurEvent:
 		// ok
@@ -123,6 +122,40 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Broken escape sequence introducers.
+		seqTest{
+			[]byte("\x1b["), // CSI
+			[]Event{KeyPressEvent{Code: '[', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b]"), // OSC
+			[]Event{KeyPressEvent{Code: ']', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b^"), // PM
+			[]Event{KeyPressEvent{Code: '^', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b_"), // APC
+			[]Event{KeyPressEvent{Code: '_', Mod: ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1bP"), // DCS
+			[]Event{KeyPressEvent{Code: 'p', Mod: ModShift | ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1bX"), // SOS
+			[]Event{KeyPressEvent{Code: 'x', Mod: ModShift | ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1bO"), // SS3
+			[]Event{KeyPressEvent{Code: 'o', Mod: ModShift | ModAlt}},
+		},
+		seqTest{
+			[]byte("\x1b"), // ESC
+			[]Event{KeyPressEvent{Code: KeyEscape}},
+		},
+
 		// Kitty printable keys with lock modifiers.
 		seqTest{
 			[]byte("\x1b[97;65u" + // caps lock on
@@ -532,13 +565,13 @@ func TestParseSequence(t *testing.T) {
 		})
 	}
 
-	var p SequenceParser
+	var p EventDecoder
 	for _, tc := range td {
 		t.Run(fmt.Sprintf("%q", string(tc.seq)), func(t *testing.T) {
 			var events []Event
 			buf := tc.seq
 			for len(buf) > 0 {
-				width, Event := p.parseSequence(buf)
+				width, Event := p.Decode(buf)
 				switch Event := Event.(type) {
 				case MultiEvent:
 					events = append(events, Event...)
@@ -569,6 +602,7 @@ func TestSplitReads(t *testing.T) {
 		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
 		MouseClickEvent{X: 32, Y: 16, Button: MouseLeft},
 		FocusEvent{},
+		UnknownEvent("\x1b[12;34;9"),
 	}
 	inputs := []string{
 		"abc",
@@ -602,32 +636,28 @@ func TestSplitReads(t *testing.T) {
 		"\x1b[A\x1b[",
 		"<0;33;17M\x1b[",
 		"<0;33;17M\x1b[I",
+		"\x1b[12;34;9",
 	}
 
-	drv := NewTerminalReader(NewStringSliceReader(t, inputs), "dumb")
+	r := LimitedReader(strings.NewReader(strings.Join(inputs, "")), 8)
+	drv := NewTerminalReader(r, "dumb")
 	drv.SetLogger(TLogger{t})
-	if err := drv.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
+
+	eventc := make(chan Event)
+	go func(t testing.TB) {
+		defer close(eventc)
+		if err := drv.StreamEvents(t.Context(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
+		}
+	}(t)
+
+	var events []Event
+	for ev := range eventc {
+		events = append(events, ev)
 	}
 
-	var err error
-	var evs []Event
-	events := make(chan Event)
-	go func() {
-		err = drv.ReceiveEvents(context.Background(), events)
-		close(events)
-	}()
-
-	for ev := range events {
-		evs = append(evs, ev)
-	}
-
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
-	}
-
-	if !reflect.DeepEqual(expect, evs) {
-		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, evs)
+	if !reflect.DeepEqual(expect, events) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events)
 	}
 }
 
@@ -639,31 +669,22 @@ func TestReadLongInput(t *testing.T) {
 	input := strings.Repeat("a", 1000)
 	rdr := strings.NewReader(input)
 	drv := NewTerminalReader(rdr, "dumb")
-	if err := drv.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
+
+	eventc := make(chan Event)
+	go func(t testing.TB) {
+		defer close(eventc)
+		if err := drv.StreamEvents(context.TODO(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
+		}
+	}(t)
+
+	var events []Event
+	for ev := range eventc {
+		events = append(events, ev)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	var err error
-	var evs []Event
-	events := make(chan Event)
-	go func() {
-		err = drv.ReceiveEvents(ctx, events)
-		close(events)
-	}()
-
-	for ev := range events {
-		evs = append(evs, ev)
-	}
-
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
-	}
-
-	if !reflect.DeepEqual(expect, evs) {
-		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, evs)
+	if !reflect.DeepEqual(expect, events) {
+		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events)
 	}
 }
 
@@ -972,35 +993,20 @@ func TestReadInput(t *testing.T) {
 }
 
 func testReadInputs(t *testing.T, input io.Reader) []Event {
-	// We'll check that the input reader finishes at the end
-	// without error.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	t.Cleanup(cancel)
+	drv := NewTerminalReader(input, "dumb")
+	drv.SetLogger(TLogger{t})
 
-	dr := NewTerminalReader(input, "dumb")
-	dr.SetLogger(TLogger{t})
-	if err := dr.Start(); err != nil {
-		t.Fatalf("unexpected error starting terminal reader: %v", err)
-	}
-
-	var err error
-	var events []Event
-	eventsc := make(chan Event)
-
-	// Start the reader in the background.
-	go func() {
-		err = dr.ReceiveEvents(ctx, eventsc)
-		close(eventsc)
-	}()
-
-	for ev := range eventsc {
-		if ev != nil {
-			events = append(events, ev)
+	eventc := make(chan Event)
+	go func(t testing.TB) {
+		defer close(eventc)
+		if err := drv.StreamEvents(context.TODO(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
 		}
-	}
+	}(t)
 
-	if err != nil && !errors.Is(err, io.EOF) {
-		t.Fatalf("unexpected error receiving events: %v", err)
+	var events []Event
+	for ev := range eventc {
+		events = append(events, ev)
 	}
 
 	return events
@@ -1096,7 +1102,7 @@ func genRandomDataWithSeed(s int64, length int) randTest {
 }
 
 func FuzzParseSequence(f *testing.F) {
-	var p SequenceParser
+	var p EventDecoder
 	for seq := range sequences {
 		f.Add(seq)
 	}
@@ -1105,7 +1111,7 @@ func FuzzParseSequence(f *testing.F) {
 	f.Add("\x1bP>|charm terminal(0.1.2)\x1b\\") // DCS (XTVERSION)
 	f.Add("\x1b_Gi=123\x1b\\")                  // APC
 	f.Fuzz(func(t *testing.T, seq string) {
-		n, _ := p.parseSequence([]byte(seq))
+		n, _ := p.Decode([]byte(seq))
 		if n == 0 && seq != "" {
 			t.Errorf("expected a non-zero width for %q", seq)
 		}
@@ -1115,11 +1121,11 @@ func FuzzParseSequence(f *testing.F) {
 // BenchmarkDetectSequenceMap benchmarks the map-based sequence
 // detector.
 func BenchmarkDetectSequenceMap(b *testing.B) {
-	var p SequenceParser
+	var p EventDecoder
 	td := genRandomDataWithSeed(123, 10000)
 	for i := 0; i < b.N; i++ {
 		for j, w := 0, 0; j < len(td.data); j += w {
-			w, _ = p.parseSequence(td.data[j:])
+			w, _ = p.Decode(td.data[j:])
 		}
 	}
 }
@@ -1699,28 +1705,264 @@ func TestKeyMatchString(t *testing.T) {
 	}
 }
 
-type stringSliceReader struct {
-	t testing.TB
-	s []string
+// TestSplitSequences tests that string-terminated sequences work correctly
+// when split across multiple read() calls.
+func TestSplitSequences(t *testing.T) {
+	tests := []struct {
+		name   string
+		chunks [][]byte
+		want   []Event
+		delay  time.Duration
+		limit  int // limit the number of bytes read at once
+	}{
+		{
+			name: "OSC 11 background color with ST terminator",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1a1a/1b1b/2c2c"),
+				[]byte("\x1b\\"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1a1a/1b1b/2c2c")},
+			},
+		},
+		{
+			name: "OSC 11 background color with BEL terminator",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1a1a/1b1b/2c2c"),
+				[]byte("\x07"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1a1a/1b1b/2c2c")},
+			},
+		},
+		{
+			name: "OSC 10 foreground color split",
+			chunks: [][]byte{
+				[]byte("\x1b]10;rgb:ffff/0000/"),
+				[]byte("0000\x1b\\"),
+			},
+			want: []Event{
+				ForegroundColorEvent{Color: ansi.XParseColor("rgb:ffff/0000/0000")},
+			},
+		},
+		{
+			name: "OSC 12 cursor color split",
+			chunks: [][]byte{
+				[]byte("\x1b]12;rgb:"),
+				[]byte("8080/8080/8080\x07"),
+			},
+			want: []Event{
+				CursorColorEvent{Color: ansi.XParseColor("rgb:8080/8080/8080")},
+			},
+		},
+		{
+			name: "DCS sequence split",
+			chunks: [][]byte{
+				[]byte("\x1bP1$r"),
+				[]byte("test\x1b\\"),
+			},
+			want: []Event{
+				UnknownDcsEvent("\x1bP1$rtest\x1b\\"),
+			},
+		},
+		{
+			name: "long DCS sequence split",
+			chunks: [][]byte{
+				[]byte("\x1bP1$raaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcdef"),
+				[]byte("test\x1b\\"),
+			},
+			want: []Event{
+				UnknownDcsEvent("\x1bP1$raaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabcdeftest\x1b\\"),
+			},
+			limit: 256,
+		},
+		{
+			name: "APC sequence split",
+			chunks: [][]byte{
+				[]byte("\x1b_T"),
+				[]byte("test\x1b\\"),
+			},
+			want: []Event{
+				UnknownApcEvent("\x1b_Ttest\x1b\\"),
+			},
+		},
+		{
+			name: "Multiple chunks OSC",
+			chunks: [][]byte{
+				[]byte("\x1b]11;"),
+				[]byte("rgb:1234/"),
+				[]byte("5678/9abc\x07"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1234/5678/9abc")},
+			},
+		},
+		{
+			name: "OSC followed by regular key",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1111/2222/3333"),
+				[]byte("\x07a"),
+			},
+			want: []Event{
+				BackgroundColorEvent{Color: ansi.XParseColor("rgb:1111/2222/3333")},
+				KeyPressEvent{Code: 'a', Text: "a"},
+			},
+		},
+		{
+			name: "unknown sequence after timeout",
+			chunks: [][]byte{
+				[]byte("\x1b]11;rgb:1111/2222/3333"),
+				[]byte("abc"),
+				[]byte("x"),
+				[]byte("x"),
+				[]byte("x"),
+				[]byte("x"),
+			},
+			want: []Event{
+				UnknownEvent("\x1b]11;rgb:1111/2222/3333"),
+				KeyPressEvent{Code: 'a', Text: "a"},
+				KeyPressEvent{Code: 'b', Text: "b"},
+				KeyPressEvent{Code: 'c', Text: "c"},
+				KeyPressEvent{Code: 'x', Text: "x"},
+				KeyPressEvent{Code: 'x', Text: "x"},
+				KeyPressEvent{Code: 'x', Text: "x"},
+				KeyPressEvent{Code: 'x', Text: "x"},
+			},
+			delay: 60 * time.Millisecond, // Ensure the timeout is triggered.
+		},
+		{
+			name: "multiple broken down sequences",
+			chunks: [][]byte{
+				[]byte("\x1b[B"),
+				[]byte("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B"),
+				[]byte("\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b["),
+				[]byte("B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b"),
+				[]byte("[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B"),
+			},
+			want: []Event{
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+				KeyPressEvent{Code: KeyDown},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rds := make([]io.Reader, len(tt.chunks))
+			for i, chunk := range tt.chunks {
+				rds[i] = bytes.NewReader(chunk)
+			}
+			var r io.Reader
+			limit := 32
+			if tt.limit > 0 {
+				limit = tt.limit
+			}
+			if tt.delay > 0 {
+				r = DelayedLimitedReader(io.MultiReader(rds...), limit, tt.delay)
+			} else {
+				r = LimitedReader(io.MultiReader(rds...), limit)
+			}
+			ir := NewTerminalReader(r, "xterm-256color")
+			ir.SetLogger(TLogger{TB: t})
+
+			eventc := make(chan Event)
+			go func(t testing.TB) {
+				defer close(eventc)
+				if err := ir.StreamEvents(t.Context(), eventc); err != nil {
+					t.Errorf("error streaming events: %v", err)
+				}
+			}(t)
+
+			var events []Event
+			for ev := range eventc {
+				events = append(events, ev)
+			}
+
+			if len(events) != len(tt.want) {
+				t.Fatalf("got %d events, want %d: %#v", len(events), len(tt.want), events)
+			}
+
+			for i, want := range tt.want {
+				if !reflect.DeepEqual(events[i], want) {
+					t.Errorf("event %d: got %#v, want %#v", i, events[i], want)
+				}
+			}
+		})
+	}
+}
+
+// limitedSleepReader is a simple io.Reader that limits the number of bytes
+// read on each Read call and simulates a delay to mimic terminal input
+// behavior.
+type limitedSleepReader struct {
+	r io.Reader
+	n int
+	d time.Duration
 	i int
 }
 
-func NewStringSliceReader(t testing.TB, s []string) io.Reader {
-	return &stringSliceReader{t: t, s: s}
+func DelayedLimitedReader(r io.Reader, n int, d time.Duration) io.Reader {
+	return &limitedSleepReader{r: r, n: n, d: d}
 }
 
-func (r *stringSliceReader) Read(p []byte) (n int, err error) {
-	if r.i >= len(r.s) {
+func LimitedReader(r io.Reader, n int) io.Reader {
+	return &limitedSleepReader{r: r, n: n}
+}
+
+func (r *limitedSleepReader) Read(p []byte) (n int, err error) {
+	if r.i > 0 && r.d > 0 {
+		time.Sleep(r.d)
+	}
+	if r.n <= 0 {
 		return 0, io.EOF
 	}
-	// Simulate a read from terminal input.
-	n = copy(p, r.s[r.i])
-	r.i++
-	if n < len(r.s[r.i-1]) {
-		return n, nil
+	if len(p) > r.n {
+		p = p[0:r.n]
 	}
-	// time.Sleep(time.Duration(rand.Intn(99)) * time.Millisecond)
-	return n, nil
+	n, err = r.r.Read(p)
+	r.i++
+	return n, err
 }
 
 type TLogger struct{ testing.TB }

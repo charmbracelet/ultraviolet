@@ -3,13 +3,15 @@
 
 package uv
 
-import (
-	"context"
-	"fmt"
+func (n *WindowSizeNotifier) start() error {
+	return ErrPlatformNotSupported
+}
 
-	"github.com/charmbracelet/x/term"
-)
+func (n *WindowSizeNotifier) stop() error {
+	return ErrPlatformNotSupported
+}
 
-func (*WinChReceiver) receiveEvents(context.Context, term.File, chan<- Event) error {
-	return fmt.Errorf("SIGWINCH not supported on this platform")
+func (n *WindowSizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {
+	cells.Width, cells.Height, err = n.GetSize()
+	return cells, pixels, err
 }

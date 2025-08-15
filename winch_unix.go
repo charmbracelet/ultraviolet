@@ -4,62 +4,47 @@
 package uv
 
 import (
-	"context"
-	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/charmbracelet/x/termios"
 )
 
-func (l *WinChReceiver) receiveEvents(ctx context.Context, f term.File, evch chan<- Event) error {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGWINCH)
-
-	defer signal.Stop(sig)
-
-	sendWinSize := func(w, h int) {
-		select {
-		case <-ctx.Done():
-		case evch <- WindowSizeEvent{w, h}:
-		}
+func (n *WindowSizeNotifier) start() error {
+	n.m.Lock()
+	defer n.m.Unlock()
+	if n.f == nil || !term.IsTerminal(n.f.Fd()) {
+		return ErrNotTerminal
 	}
 
-	sendPixelSize := func(w, h int) {
-		select {
-		case <-ctx.Done():
-		case evch <- WindowPixelSizeEvent{w, h}:
-		}
+	signal.Notify(n.sig, syscall.SIGWINCH)
+	return nil
+}
+
+func (n *WindowSizeNotifier) stop() error {
+	n.m.Lock()
+	signal.Stop(n.sig)
+	n.m.Unlock()
+	return nil
+}
+
+func (n *WindowSizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {
+	n.m.Lock()
+	defer n.m.Unlock()
+
+	winsize, err := termios.GetWinsize(int(n.f.Fd()))
+	if err != nil {
+		return Size{}, Size{}, err //nolint:wrapcheck
 	}
 
-	// Listen for window size changes.
-	var wg sync.WaitGroup
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-sig:
-			winsize, err := termios.GetWinsize(int(f.Fd()))
-			if err != nil {
-				return err //nolint:wrapcheck
-			}
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				sendWinSize(int(winsize.Col), int(winsize.Row))
-			}()
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				sendPixelSize(int(winsize.Xpixel), int(winsize.Ypixel))
-			}()
-
-			// Wait for all goroutines to finish before continuing.
-			wg.Wait()
-		}
+	cells = Size{
+		Width:  int(winsize.Col),
+		Height: int(winsize.Row),
 	}
+	pixels = Size{
+		Width:  int(winsize.Xpixel),
+		Height: int(winsize.Ypixel),
+	}
+	return cells, pixels, nil
 }

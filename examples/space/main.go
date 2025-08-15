@@ -49,9 +49,6 @@ type tickEvent struct{}
 
 func main() {
 	t := uv.DefaultTerminal()
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
 
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start terminal: %v", err)
@@ -78,10 +75,16 @@ func main() {
 	var lastWidth, lastHeight int
 	colors := setupColors(area.Dx(), area.Dy())
 
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
 	go t.SendEvent(ctx, tickEvent{})
 
 LOOP:
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.KeyPressEvent:
 			switch ev.String() {

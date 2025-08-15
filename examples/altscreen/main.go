@@ -2,20 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
-	"github.com/muesli/cancelreader"
 )
 
 func main() {
 	t := uv.DefaultTerminal()
-
-	if err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to make terminal raw: %v", err)
-	}
 
 	width, height, err := t.GetSize()
 	if err != nil {
@@ -58,8 +53,14 @@ func main() {
 		t.Display()
 	}
 
+	evch := make(chan uv.Event)
+	go func() {
+		defer close(evch)
+		_ = t.StreamEvents(ctx, evch)
+	}()
+
 	var cursorHidden bool
-	for ev := range t.Events(ctx) {
+	for ev := range evch {
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
 			width, height = ev.Width, ev.Height
@@ -85,16 +86,8 @@ func main() {
 	}
 
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(context.Background(), 5)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	if altScreen {
-		t.ExitAltScreen()
-	}
-
-	if err := t.Err(); err != nil && !errors.Is(err, cancelreader.ErrCanceled) {
-		log.Printf("error: %v", err)
-	}
 
 	if err := t.Shutdown(ctx); err != nil {
 		log.Fatalf("failed to shutdown program: %v", err)

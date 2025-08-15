@@ -22,7 +22,9 @@ type conInputReader struct {
 
 var _ cancelreader.CancelReader = &conInputReader{}
 
-func newCancelreader(r io.Reader) (cancelreader.CancelReader, error) {
+// NewCancelReader creates a new [cancelreader.CancelReader] that provides a
+// cancelable reader interface that can be used to cancel reads.
+func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 	fallback := func(io.Reader) (cancelreader.CancelReader, error) {
 		return cancelreader.NewReader(r)
 	}
@@ -47,6 +49,7 @@ func newCancelreader(r io.Reader) (cancelreader.CancelReader, error) {
 	}
 
 	modes := []uint32{
+		// windows.ENABLE_VIRTUAL_TERMINAL_INPUT,
 		windows.ENABLE_WINDOW_INPUT,
 		windows.ENABLE_EXTENDED_FLAGS,
 	}

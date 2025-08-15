@@ -9,6 +9,8 @@ import (
 	"github.com/muesli/cancelreader"
 )
 
-func newCancelreader(r io.Reader) (cancelreader.CancelReader, error) {
+// NewCancelReader creates a new [cancelreader.CancelReader] that provides a
+// cancelable reader interface that can be used to cancel reads.
+func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 	return cancelreader.NewReader(r) //nolint:wrapcheck
 }
