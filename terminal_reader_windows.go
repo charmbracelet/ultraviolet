@@ -86,7 +86,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			if kevent.KeyDown {
 				kd = 1
 			}
-			if d.vtInput {
+			if d.vtInput { //nolint:nestif
 				// In VT Input Mode, we only capture the Unicode characters
 				// decoding them along the way.
 				// This is similar to [TerminalReader.storeGraphemeRune] except
