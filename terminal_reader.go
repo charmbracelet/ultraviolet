@@ -6,40 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/cancelreader"
 )
-
-// win32InputState is a state machine for parsing key events from the Windows
-// Console API into escape sequences and utf8 runes, and keeps track of the last
-// control key state to determine modifier key changes. It also keeps track of
-// the last mouse button state and window size changes to determine which mouse
-// buttons were released and to prevent multiple size events from firing.
-type win32InputState struct {
-	ansiBuf                    [256]byte
-	ansiIdx                    int
-	utf16Buf                   [2]rune
-	utf16Half                  bool
-	lastCks                    uint32 // the last control key state for the previous event
-	lastMouseBtns              uint32 // the last mouse button state for the previous event
-	lastWinsizeX, lastWinsizeY int16  // the last window size for the previous event to prevent multiple size events from firing
-}
-
-// This is to silence the linter warning about the win32InputState not being
-// used.
-var _ any = win32InputState{
-	ansiBuf:       [256]byte{},
-	ansiIdx:       0,
-	utf16Buf:      [2]rune{},
-	utf16Half:     false,
-	lastCks:       0,
-	lastMouseBtns: 0,
-	lastWinsizeX:  0,
-	lastWinsizeY:  0,
-}
 
 // ErrReaderNotStarted is returned when the reader has not been started yet.
 var ErrReaderNotStarted = fmt.Errorf("reader not started")
@@ -81,17 +55,21 @@ type TerminalReader struct {
 
 	lookup bool // lookup indicates whether to use the lookup table for key sequences.
 
-	// keyState keeps track of the current Windows Console API key events state.
-	// It is used to decode ANSI escape sequences and utf16 sequences.
-	keyState win32InputState
+	// vtInput indicates whether we're using Windows Console API VT input mode.
+	//nolint:unused,nolintlint
+	vtInput bool
+
+	// We use these buffers to decode UTF-16 sequences and graphemes from the
+	// Windows Console API and Win32-Input-Mode events.
+	utf16Half   [2]bool    // 0 key up, 1 key down
+	utf16Buf    [2][2]rune // 0 key up, 1 key down
+	graphemeBuf [2][]rune  // 0 key up, 1 key down
+	//nolint:unused,nolintlint
+	lastMouseBtns uint32 // the last mouse button state for the previous event
+	//nolint:unused,nolintlint
+	lastWinsizeX, lastWinsizeY int16 // the last window size for the previous event to prevent multiple size events from firing
 
 	logger Logger // The logger to use for debugging.
-}
-
-// This is to silence the linter warning about the [win32InputState] not being
-// used.
-var _ any = &TerminalReader{
-	keyState: win32InputState{},
 }
 
 // NewTerminalReader returns a new input event reader. The reader streams input
@@ -150,12 +128,11 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 	var buf bytes.Buffer
 	errc := make(chan error, 1)
 	readc := make(chan []byte)
-	recordc := make(chan []inputRecord)
 	timeout := time.NewTimer(d.EscTimeout)
 	ttimeout := time.Now().Add(d.EscTimeout)
 
 	go func() {
-		if err := d.streamData(ctx, readc, recordc); err != nil {
+		if err := d.streamData(ctx, readc); err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, cancelreader.ErrCanceled) {
 				errc <- nil
 				return
@@ -200,8 +177,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 				d.logf("resetting timeout for remaining buffer")
 				timeout.Reset(d.EscTimeout)
 			}
-		case records := <-recordc:
-			d.processRecords(records, eventc)
+
 		case read := <-readc:
 			d.logf("input: %q", read)
 			buf.Write(read)
@@ -234,16 +210,36 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 }
 
 func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Event) int {
+	n, events := d.scanEvents(buf, expired)
+	for _, event := range events {
+		eventc <- event
+	}
+	return n
+}
+
+func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events []Event) {
+	if len(buf) == 0 {
+		return 0, nil
+	}
+
+	d.logf("processing buf %q", buf)
+	bufLen := len(buf)
+	buf = d.deserializeWin32Input(buf)
+	if len(buf) == 0 {
+		// This handles the case where after deserializing the input buffer we
+		// end up with an empty buffer meaning there was nothing to further
+		// decode. We return the original buffer length as processed.
+		total = bufLen
+	}
+
 	// Lookup table first
 	if d.lookup && len(buf) > 2 && buf[0] == ansi.ESC {
 		if k, ok := d.table[string(buf)]; ok {
-			eventc <- KeyPressEvent(k)
-			return len(buf)
+			return len(buf), []Event{KeyPressEvent(k)}
 		}
 	}
 
 	// total is the total number of bytes processed
-	var total int
 	for len(buf) > 0 {
 		esc := buf[0] == ansi.ESC
 		n, event := d.Decode(buf)
@@ -251,7 +247,16 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 		// Handle bracketed-paste
 		if d.paste != nil {
 			if _, ok := event.(PasteEndEvent); !ok {
-				d.paste = append(d.paste, buf[:n]...)
+				switch event := event.(type) {
+				case KeyPressEvent:
+					if len(event.Text) > 0 {
+						d.paste = append(d.paste, event.Text...)
+					} else {
+						d.paste = append(d.paste, buf[:n]...)
+					}
+				default:
+					// Everything else is ignored...
+				}
 				buf = buf[n:]
 				total += n
 				continue
@@ -267,15 +272,15 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 			isUnknown = true
 			// Try to look up the event in the table.
 			if !expired {
-				return total
+				return total, events
 			}
 
 			if k, ok := d.table[string(buf[:n])]; ok {
-				eventc <- KeyPressEvent(k)
-				return total + n
+				events = append(events, KeyPressEvent(k))
+				return total + n, events
 			}
 
-			eventc <- event
+			events = append(events, event)
 		case PasteStartEvent:
 			d.paste = []byte{} // reset the paste buffer
 		case PasteEndEvent:
@@ -288,23 +293,21 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 				d.paste = d.paste[w:]
 			}
 			d.paste = nil // reset the paste buffer
-			eventc <- PasteEvent(paste)
+			events = append(events, PasteEvent(paste))
 		}
 
 		if !isUnknown && event != nil {
 			if esc && n <= 2 && !expired {
 				// Wait for more input
-				return total
+				return total, events
 			}
 
 			if m, ok := event.(MultiEvent); ok {
 				// If the event is a MultiEvent, append all events to the queue.
-				for _, e := range m {
-					eventc <- e
-				}
+				events = append(events, m...)
 			} else {
 				// Otherwise, just append the event to the queue.
-				eventc <- event
+				events = append(events, event)
 			}
 		}
 
@@ -312,7 +315,105 @@ func (d *TerminalReader) sendEvents(buf []byte, expired bool, eventc chan<- Even
 		total += n
 	}
 
-	return total
+	return total, events
+}
+
+func (d *TerminalReader) encodeGraphemeBufs() []byte {
+	var b []byte
+	for kd, buf := range d.graphemeBuf {
+		if len(buf) > 0 {
+			switch kd {
+			case 0:
+				b = append(b, string(buf)...)
+			case 1:
+				// Encode the release grapheme as Kitty Keyboard to get the release event.
+				var codepoints string
+				for i, r := range buf {
+					if r == 0 {
+						continue
+					}
+					if i > 0 {
+						codepoints += ":"
+					}
+					codepoints += strconv.FormatInt(int64(r), 10)
+				}
+				// This is dark :)
+				// During serializing/deserializing of win32 input events, the
+				// API will split a grapheme into runes and send them as a
+				// keydown/keyup sequences. We collect the runes, decoded them
+				// from UTF-16 just fine. However, [EventDecoder.Decode] will
+				// always decode graphemes as [KeyPressEvent]s. Thus, to
+				// workaround that and the existing API, while we are
+				// intercepting win32 input events, we encode the grapheme
+				// release events as Kitty Keyboard sequences so that
+				// [EventDecoder.Decode] can properly decode them as
+				// [KeyReleaseEvent]s.
+				seq := fmt.Sprintf("\x1b[%d;1:3;%su", d.graphemeBuf[kd][0], codepoints)
+				b = append(b, seq...)
+			}
+			d.graphemeBuf[kd] = d.graphemeBuf[kd][:0] // reset the buffer
+		}
+	}
+	return b
+}
+
+func (d *TerminalReader) storeGraphemeRune(kd int, r rune) {
+	if d.utf16Half[kd] {
+		// We have a half pair that needs to be decoded.
+		d.utf16Half[kd] = false
+		d.utf16Buf[kd][1] = r
+		r := utf16.DecodeRune(d.utf16Buf[kd][0], d.utf16Buf[kd][1])
+		d.graphemeBuf[kd] = append(d.graphemeBuf[kd], r)
+	} else if utf16.IsSurrogate(r) {
+		// This is the first half of a UTF-16 surrogate pair.
+		d.utf16Half[kd] = true
+		d.utf16Buf[kd][0] = r
+	} else {
+		// This should be a single UTF-16 that can be converted
+		// to UTF-8.
+		d.graphemeBuf[kd] = append(d.graphemeBuf[kd], r)
+	}
+}
+
+// deserializeWin32Input deserializes the Win32 input events converting
+// KeyEventRecrods to bytes. Before returning the bytes, it will also try to
+// decode any UTF-16 pairs that might be present in the input buffer.
+func (d *TerminalReader) deserializeWin32Input(buf []byte) []byte {
+	p := parserPool.Get().(*ansi.Parser)
+	defer parserPool.Put(p)
+
+	var state byte
+	des := make([]byte, 0, len(buf))
+
+	for len(buf) > 0 {
+		seq, width, n, newState := ansi.DecodeSequence(buf, state, p)
+		switch width {
+		case 0:
+			if p.Command() == '_' { // Win32 Input Mode
+				vk, _ := p.Param(0, 0)
+				if vk == 0 {
+					// This is either a serialized KeyEventRecord or a UTF-16
+					// pair.
+					uc, _ := p.Param(2, 0)
+					kd, _ := p.Param(3, 0)
+					kd = clamp(kd, 0, 1) // kd is the key down state (0 or 1)
+					d.storeGraphemeRune(kd, rune(uc))
+					break
+				}
+			}
+			fallthrough
+		default:
+			des = append(des, d.encodeGraphemeBufs()...)
+			des = append(des, seq...)
+		}
+
+		state = newState
+		buf = buf[n:]
+	}
+
+	des = append(des, d.encodeGraphemeBufs()...)
+
+	return des
 }
 
 func (d *TerminalReader) logf(format string, v ...interface{}) {

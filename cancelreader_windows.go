@@ -18,6 +18,7 @@ type conInputReader struct {
 	cancelMixin
 	conin        windows.Handle
 	originalMode uint32
+	newMode      uint32
 }
 
 var _ cancelreader.CancelReader = &conInputReader{}
@@ -49,12 +50,12 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 	}
 
 	modes := []uint32{
-		// windows.ENABLE_VIRTUAL_TERMINAL_INPUT,
+		windows.ENABLE_VIRTUAL_TERMINAL_INPUT,
 		windows.ENABLE_WINDOW_INPUT,
 		windows.ENABLE_EXTENDED_FLAGS,
 	}
 
-	originalMode, err := prepareConsole(conin, modes...)
+	originalMode, newMode, err := prepareConsole(conin, modes...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare console input: %w", err)
 	}
@@ -62,6 +63,7 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 	return &conInputReader{
 		conin:        conin,
 		originalMode: originalMode,
+		newMode:      newMode,
 	}, nil
 }
 
@@ -98,23 +100,22 @@ func (r *conInputReader) Read(data []byte) (int, error) {
 	return int(n), nil
 }
 
-func prepareConsole(input windows.Handle, modes ...uint32) (originalMode uint32, err error) {
+func prepareConsole(input windows.Handle, modes ...uint32) (originalMode, newMode uint32, err error) {
 	err = windows.GetConsoleMode(input, &originalMode)
 	if err != nil {
-		return 0, fmt.Errorf("get console mode: %w", err)
+		return 0, 0, fmt.Errorf("get console mode: %w", err)
 	}
 
-	var newMode uint32
 	for _, mode := range modes {
 		newMode |= mode
 	}
 
 	err = windows.SetConsoleMode(input, newMode)
 	if err != nil {
-		return 0, fmt.Errorf("set console mode: %w", err)
+		return 0, 0, fmt.Errorf("set console mode: %w", err)
 	}
 
-	return originalMode, nil
+	return originalMode, newMode, nil
 }
 
 // cancelMixin represents a goroutine-safe cancelation status.
