@@ -360,66 +360,7 @@ func TestColorFunctions(t *testing.T) {
 	})
 }
 
-// TestPrimaryDeviceAttributes tests device attributes parsing
-/*
-func TestPrimaryDeviceAttributes(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected Event
-	}{
-		// Device attributes response format: ESC [ ? <params> c
-		{"simple DA1", []byte("\x1b[?1;2c"), PrimaryDeviceAttributesEvent{1, 2}},
-		{"empty DA1", []byte("\x1b[?c"), PrimaryDeviceAttributesEvent{}},
-		{"single param DA1", []byte("\x1b[?6c"), PrimaryDeviceAttributesEvent{6}},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var p EventDecoder
-			n, got := p.Decode(tt.input)
-			
-			if n != len(tt.input) {
-				t.Errorf("Expected width %d, got %d", len(tt.input), n)
-			}
-			
-			if !reflect.DeepEqual(got, tt.expected) {
-				t.Errorf("Expected %+v, got %+v", tt.expected, got)
-			}
-		})
-	}
-}
-*/
-
-// TestTermcapParsing tests termcap capability parsing
-/*
-func TestTermcapParsing(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []byte
-		expected Event
-	}{
-		{"empty termcap", []byte("\x1bP+q\x1b\\"), CapabilityEvent("")},
-		{"simple capability", []byte("\x1bP+qco=80\x1b\\"), CapabilityEvent("co=80")},
-		{"multiple capabilities", []byte("\x1bP+qco=80;li=24\x1b\\"), CapabilityEvent("co=80;li=24")},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var p EventDecoder
-			n, got := p.Decode(tt.input)
-			
-			if n != len(tt.input) {
-				t.Errorf("Expected width %d, got %d", len(tt.input), n)
-			}
-			
-			if !reflect.DeepEqual(got, tt.expected) {
-				t.Errorf("Expected %+v, got %+v", tt.expected, got)
-			}
-		})
-	}
-}
-*/
 
 // TestParseTermcap tests the parseTermcap function directly
 func TestParseTermcap(t *testing.T) {
