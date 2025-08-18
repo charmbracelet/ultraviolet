@@ -420,3 +420,63 @@ func TestTermcapParsing(t *testing.T) {
 	}
 }
 */
+
+// TestParseTermcap tests the parseTermcap function directly
+func TestParseTermcap(t *testing.T) {
+tests := []struct {
+name     string
+input    []byte
+expected CapabilityEvent
+}{
+{"empty data", []byte{}, CapabilityEvent("")},
+{"valid hex", []byte("636f=3830"), CapabilityEvent("co=80")}, // "co" in hex = 636f, "80" in hex = 3830
+{"no value", []byte("636f"), CapabilityEvent("co")},
+{"invalid hex", []byte("zz=41"), CapabilityEvent("")},
+}
+
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+result := parseTermcap(tt.input)
+if result != tt.expected {
+t.Errorf("Expected %q, got %q", tt.expected, result)
+}
+})
+}
+}
+
+// TestAdditionalEdgeCases tests additional edge cases
+func TestAdditionalEdgeCases(t *testing.T) {
+t.Run("rgbToHSL with negative hue", func(t *testing.T) {
+// Test cyan-like color where hue calculation might go negative
+h, s, l := rgbToHSL(0, 255, 128)
+if h < 0 {
+t.Errorf("Hue should not be negative, got %f", h)
+}
+// Basic sanity checks
+if s < 0 || s > 1 {
+t.Errorf("Saturation should be 0-1, got %f", s)
+}
+if l < 0 || l > 1 {
+t.Errorf("Lightness should be 0-1, got %f", l)
+}
+})
+
+t.Run("parseControl with boundary values", func(t *testing.T) {
+var p EventDecoder
+
+// Test boundary values that might not be covered
+result := p.parseControl(0x1C) // FS
+if k, ok := result.(KeyPressEvent); ok {
+if k.Code != '\\' || k.Mod != ModCtrl {
+t.Errorf("Expected ctrl+\\, got %+v", k)
+}
+}
+
+result = p.parseControl(0x1F) // US
+if k, ok := result.(KeyPressEvent); ok {
+if k.Code != '_' || k.Mod != ModCtrl {
+t.Errorf("Expected ctrl+_, got %+v", k)
+}
+}
+})
+}
