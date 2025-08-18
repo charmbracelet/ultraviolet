@@ -16,7 +16,7 @@ require (
 
 require (
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
-	github.com/charmbracelet/colorprofile v0.3.1 // indirect
+	github.com/charmbracelet/colorprofile v0.3.2 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
