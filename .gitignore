@@ -1,0 +1,18 @@
+# Binaries
+examples/helloworld/helloworld
+examples/altscreen/altscreen
+examples/draw/draw
+examples/prependline/prependline
+examples/space/space
+examples/image/image
+examples/panic/panic
+examples/tv/tv
+examples/layout/layout
+
+# Log files
+*.log
+uv_debug.log
+
+# Test outputs
+coverage.out
+*.prof
