@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -252,7 +254,34 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 					if len(event.Text) > 0 {
 						d.paste = append(d.paste, event.Text...)
 					} else {
-						d.paste = append(d.paste, buf[:n]...)
+						seq := string(buf[:n])
+						isWin32 := strings.HasPrefix(seq, "\x1b[") && strings.HasSuffix(seq, "_")
+						switch {
+						case isWin32 && event.Code == KeyEnter && event.Code == event.BaseCode:
+							// This handles special cases where
+							// win32-input-mode encodes newlines and other keys
+							// as keypress events. We need to encode them as
+							// their respective values.
+							d.paste = append(d.paste, '\n')
+						case isWin32 && unicode.IsControl(event.Code) && event.Code == event.BaseCode:
+							// This handles other cases such as tabs, escapes, etc.
+							d.paste = append(d.paste, string(event.Code)...)
+						case !isWin32:
+							// We ignore all other non-text win32-input-mode events.
+							if esc && n <= 2 && !expired {
+								// If the event is an escape sequence and we
+								// are not expired, we need to wait for more
+								// input.
+								return total, events
+							}
+							d.paste = append(d.paste, seq...)
+						}
+					}
+				case UnknownEvent:
+					if !expired {
+						// If the event is unknown and we are not expired, we
+						// return need to try to decode the buffer again.
+						return total, events
 					}
 				default:
 					// Everything else is ignored...
