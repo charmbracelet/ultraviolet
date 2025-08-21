@@ -123,6 +123,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			}
 
 		case xwindows.MOUSE_EVENT:
+			// Skip all mouse events if mouse mode is not enabled
 			if d.MouseMode == nil || *d.MouseMode == 0 {
 				continue
 			}
@@ -156,9 +157,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 				isMotion = true
 			}
 
-			// We emulate mouse mode levels on Windows. This is because Windows
-			// doesn't have a concept of different mouse modes. We use the mouse mode to determine
-			// which events to report based on the current mouse mode.
+			// Filter mouse events based on the current mouse mode
 			if isMotion {
 				// For motion events, check if we should report them based on the mouse mode
 				if button == MouseNone && mouseMode&AllMouseMode == 0 {
@@ -167,6 +166,12 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 				}
 				if button != MouseNone && mouseMode&DragMouseMode == 0 {
 					// Motion with button pressed (drag) - only report if DragMouseMode is enabled
+					continue
+				}
+			} else {
+				// For non-motion events (clicks, releases, wheel), check if basic mouse mode is enabled
+				if mouseMode&ButtonMouseMode == 0 {
+					// No mouse mode enabled at all - skip all mouse events
 					continue
 				}
 			}
