@@ -158,9 +158,17 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 
 			// We emulate mouse mode levels on Windows. This is because Windows
 			// doesn't have a concept of different mouse modes. We use the mouse mode to determine
-			if button == MouseNone && mouseMode&AllMouseMode == 0 ||
-				(button != MouseNone && mouseMode&DragMouseMode == 0) {
-				continue
+			// which events to report based on the current mouse mode.
+			if isMotion {
+				// For motion events, check if we should report them based on the mouse mode
+				if button == MouseNone && mouseMode&AllMouseMode == 0 {
+					// Motion without button pressed - only report if AllMouseMode is enabled
+					continue
+				}
+				if button != MouseNone && mouseMode&DragMouseMode == 0 {
+					// Motion with button pressed (drag) - only report if DragMouseMode is enabled
+					continue
+				}
 			}
 
 			// Encode mouse events as SGR mouse sequences that can be read by [EventDecoder].
