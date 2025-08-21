@@ -35,6 +35,9 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 	// ensure VT input is enabled.
 	// Other terminals like CMD, PowerShell, and Alacritty don't support this mode.
 	d.win32InputMode = os.Getenv("WT_SESSION") != "" && d.vtInput
+	
+	d.logf("Terminal detection: WT_SESSION=%s, vtInput=%v, win32InputMode=%v", 
+		os.Getenv("WT_SESSION"), d.vtInput, d.win32InputMode)
 
 	var buf bytes.Buffer
 	var records []xwindows.InputRecord
@@ -94,11 +97,12 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			if kevent.KeyDown {
 				kd = 1
 			}
-			if d.vtInput || !d.win32InputMode { //nolint:nestif
-				// In VT Input Mode or when Win32 Input Mode is not supported,
+			if !d.win32InputMode { //nolint:nestif
+				// When Win32 Input Mode is not supported,
 				// we only capture the Unicode characters decoding them along the way.
 				// This is similar to [TerminalReader.storeGraphemeRune] except
 				// that we need to write the events directly to the buffer.
+				d.logf("Taking VT input path (vtInput=%v, win32InputMode=%v)", d.vtInput, d.win32InputMode)
 				if d.utf16Half[kd] {
 					// We have a half pair that needs to be decoded.
 					d.utf16Half[kd] = false
@@ -116,10 +120,15 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 				}
 			} else {
 				// We encode the key to Win32 Input Mode if it is a known key.
+				d.logf("Taking win32-input-mode path (vtInput=%v, win32InputMode=%v)", d.vtInput, d.win32InputMode)
 				if kevent.VirtualKeyCode == 0 {
 					d.storeGraphemeRune(kd, kevent.Char)
 				} else {
-					buf.Write(d.encodeGraphemeBufs())
+					bufs := d.encodeGraphemeBufs()
+					if len(bufs) > 0 {
+						d.logf("Encoding grapheme buffers: %q", bufs)
+					}
+					buf.Write(bufs)
 					fmt.Fprintf(buf,
 						"\x1b[%d;%d;%d;%d;%d;%d_",
 						kevent.VirtualKeyCode,
@@ -208,8 +217,11 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 		}
 	}
 
-	// Flush any remaining grapheme buffers.
-	buf.Write(d.encodeGraphemeBufs())
+	// Flush any remaining grapheme buffers only if we're in win32-input-mode.
+	// These buffers should only be populated when win32-input-mode is enabled.
+	if d.win32InputMode {
+		buf.Write(d.encodeGraphemeBufs())
+	}
 }
 
 func mouseEventButton(p, s uint32) (MouseButton, bool) {
