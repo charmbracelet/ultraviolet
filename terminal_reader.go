@@ -226,12 +226,18 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 
 	d.logf("processing buf %q", buf)
 	bufLen := len(buf)
-	buf = d.deserializeWin32Input(buf)
-	if len(buf) == 0 {
-		// This handles the case where after deserializing the input buffer we
-		// end up with an empty buffer meaning there was nothing to further
-		// decode. We return the original buffer length as processed.
-		total = bufLen
+	// Only deserialize win32 input if we're in VT input mode and might receive
+	// win32-input-mode sequences from the terminal. When not in VT input mode,
+	// we're generating the sequences ourselves from Console API records and
+	// they don't need deserialization.
+	if d.vtInput {
+		buf = d.deserializeWin32Input(buf)
+		if len(buf) == 0 {
+			// This handles the case where after deserializing the input buffer we
+			// end up with an empty buffer meaning there was nothing to further
+			// decode. We return the original buffer length as processed.
+			total = bufLen
+		}
 	}
 
 	// Lookup table first
