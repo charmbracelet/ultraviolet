@@ -29,8 +29,12 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 	// Store the value of VT Input Mode for later use.
 	d.vtInput = cc.newMode&windows.ENABLE_VIRTUAL_TERMINAL_INPUT != 0
 	
-	// Check if we're running in Windows Terminal which supports Win32 Input Mode
-	d.win32InputMode = os.Getenv("WT_SESSION") != ""
+	// Check if we're running in Windows Terminal which supports Win32 Input Mode.
+	// We need to be more specific here - just having WT_SESSION doesn't guarantee
+	// win32-input-mode support. We check for Windows Terminal specifically and
+	// ensure VT input is enabled.
+	// Other terminals like CMD, PowerShell, and Alacritty don't support this mode.
+	d.win32InputMode = os.Getenv("WT_SESSION") != "" && d.vtInput
 
 	var buf bytes.Buffer
 	var records []xwindows.InputRecord
