@@ -172,6 +172,12 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 					// Motion with button pressed (drag) - only report if DragMouseMode is enabled
 					continue
 				}
+			} else {
+				// For non-motion events (clicks, releases, wheel), check if basic mouse mode is enabled
+				if mouseMode&ButtonMouseMode == 0 {
+					// No button mouse mode enabled - skip these events
+					continue
+				}
 			}
 
 			// Encode mouse events as SGR mouse sequences that can be read by [EventDecoder].
