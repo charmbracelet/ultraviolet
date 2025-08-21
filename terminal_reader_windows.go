@@ -123,6 +123,14 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			}
 
 		case xwindows.MOUSE_EVENT:
+			// When VT input mode is enabled, mouse events are handled by the terminal
+			// itself and we should not process them here. This prevents issues with
+			// terminals like Rio and Alacritty on Windows that don't properly handle
+			// SGR mouse sequences.
+			if d.vtInput {
+				continue
+			}
+			
 			if d.MouseMode == nil || *d.MouseMode == 0 {
 				continue
 			}
