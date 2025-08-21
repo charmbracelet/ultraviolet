@@ -61,6 +61,10 @@ type TerminalReader struct {
 	//nolint:unused,nolintlint
 	vtInput bool
 
+	// win32InputMode indicates whether the terminal supports Win32 Input Mode sequences.
+	//nolint:unused,nolintlint
+	win32InputMode bool
+
 	// We use these buffers to decode UTF-16 sequences and graphemes from the
 	// Windows Console API and Win32-Input-Mode events.
 	utf16Half   [2]bool    // 0 key up, 1 key down

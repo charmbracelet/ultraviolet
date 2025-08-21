@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -27,6 +28,9 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 
 	// Store the value of VT Input Mode for later use.
 	d.vtInput = cc.newMode&windows.ENABLE_VIRTUAL_TERMINAL_INPUT != 0
+	
+	// Check if we're running in Windows Terminal which supports Win32 Input Mode
+	d.win32InputMode = os.Getenv("WT_SESSION") != ""
 
 	var buf bytes.Buffer
 	var records []xwindows.InputRecord
@@ -86,9 +90,9 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			if kevent.KeyDown {
 				kd = 1
 			}
-			if d.vtInput { //nolint:nestif
-				// In VT Input Mode, we only capture the Unicode characters
-				// decoding them along the way.
+			if d.vtInput || !d.win32InputMode { //nolint:nestif
+				// In VT Input Mode or when Win32 Input Mode is not supported,
+				// we only capture the Unicode characters decoding them along the way.
 				// This is similar to [TerminalReader.storeGraphemeRune] except
 				// that we need to write the events directly to the buffer.
 				if d.utf16Half[kd] {
@@ -101,8 +105,9 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 					// This is the first half of a UTF-16 surrogate pair.
 					d.utf16Half[kd] = true
 					d.utf16Buf[kd][0] = kevent.Char
-				} else {
-					// Just a regular character.
+				} else if kevent.VirtualKeyCode != 0 || kevent.Char != 0 {
+					// Only write the character if it has a virtual key code or is a non-null character.
+					// This helps filter out spurious events.
 					buf.WriteRune(kevent.Char)
 				}
 			} else {
@@ -123,14 +128,6 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			}
 
 		case xwindows.MOUSE_EVENT:
-			// When VT input mode is enabled, mouse events are handled by the terminal
-			// itself and we should not process them here. This prevents issues with
-			// terminals like Rio and Alacritty on Windows that don't properly handle
-			// SGR mouse sequences.
-			if d.vtInput {
-				continue
-			}
-			
 			if d.MouseMode == nil || *d.MouseMode == 0 {
 				continue
 			}
