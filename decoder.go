@@ -650,7 +650,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		}
 
 		switch param {
-		case 4: // Report Terminal pixel size.
+		case 4: // Report Terminal window size in pixels.
 			if paramsLen == 3 {
 				height, _, hOk := pa.Param(1, 0)
 				width, _, wOk := pa.Param(2, 0)
@@ -659,7 +659,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 				}
 				return i, WindowPixelSizeEvent{Width: width, Height: height}
 			}
-		case 6: // Report Terminal cell size.
+		case 6: // Report Terminal character cell size.
 			if paramsLen == 3 {
 				height, _, hOk := pa.Param(1, 0)
 				width, _, wOk := pa.Param(2, 0)
@@ -667,6 +667,15 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 					break
 				}
 				return i, CellSizeEvent{Width: width, Height: height}
+			}
+		case 8: // Report Terminal Window size in cells.
+			if paramsLen == 3 {
+				height, _, hOk := pa.Param(1, 0)
+				width, _, wOk := pa.Param(2, 0)
+				if !hOk || !wOk {
+					break
+				}
+				return i, WindowSizeEvent{Width: width, Height: height}
 			}
 		case 48: // In band terminal size report.
 			if paramsLen == 5 {

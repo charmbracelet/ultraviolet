@@ -179,7 +179,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 				// sequence which the [EventDecoder] understands.
 				buf.WriteString(
 					ansi.WindowOp(
-						ansi.ResizeWindowWinOp,
+						8,                  // Terminal window size in cells
 						int(wevent.Size.Y), // height
 						int(wevent.Size.X), // width
 					),
