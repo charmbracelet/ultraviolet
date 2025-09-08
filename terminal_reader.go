@@ -15,6 +15,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/cancelreader"
+	"github.com/rivo/uniseg"
 )
 
 // ErrReaderNotStarted is returned when the reader has not been started yet.
@@ -345,36 +346,40 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 
 func (d *TerminalReader) encodeGraphemeBufs() []byte {
 	var b []byte
-	for kd, buf := range d.graphemeBuf {
-		if len(buf) > 0 {
+	for kd := range d.graphemeBuf {
+		if len(d.graphemeBuf[kd]) > 0 {
 			switch kd {
 			case 1:
-				b = append(b, string(buf)...)
+				b = append(b, string(d.graphemeBuf[kd])...)
 			case 0:
 				// Encode the release grapheme as Kitty Keyboard to get the release event.
-				var codepoints string
-				for i, r := range buf {
-					if r == 0 {
-						continue
+				grs := uniseg.NewGraphemes(string(d.graphemeBuf[kd]))
+				for grs.Next() {
+					var codepoints string
+					gr := grs.Str()
+					for i, r := range gr {
+						if r == 0 {
+							continue
+						}
+						if i > 0 {
+							codepoints += ":"
+						}
+						codepoints += strconv.FormatInt(int64(r), 10)
 					}
-					if i > 0 {
-						codepoints += ":"
-					}
-					codepoints += strconv.FormatInt(int64(r), 10)
+					// This is dark :)
+					// During serializing/deserializing of win32 input events, the
+					// API will split a grapheme into runes and send them as a
+					// keydown/keyup sequences. We collect the runes, decoded them
+					// from UTF-16 just fine. However, [EventDecoder.Decode] will
+					// always decode graphemes as [KeyPressEvent]s. Thus, to
+					// workaround that and the existing API, while we are
+					// intercepting win32 input events, we encode the grapheme
+					// release events as Kitty Keyboard sequences so that
+					// [EventDecoder.Decode] can properly decode them as
+					// [KeyReleaseEvent]s.
+					seq := fmt.Sprintf("\x1b[%d;1:3;%su", d.graphemeBuf[kd][0], codepoints)
+					b = append(b, seq...)
 				}
-				// This is dark :)
-				// During serializing/deserializing of win32 input events, the
-				// API will split a grapheme into runes and send them as a
-				// keydown/keyup sequences. We collect the runes, decoded them
-				// from UTF-16 just fine. However, [EventDecoder.Decode] will
-				// always decode graphemes as [KeyPressEvent]s. Thus, to
-				// workaround that and the existing API, while we are
-				// intercepting win32 input events, we encode the grapheme
-				// release events as Kitty Keyboard sequences so that
-				// [EventDecoder.Decode] can properly decode them as
-				// [KeyReleaseEvent]s.
-				seq := fmt.Sprintf("\x1b[%d;1:3;%su", d.graphemeBuf[kd][0], codepoints)
-				b = append(b, seq...)
 			}
 			d.graphemeBuf[kd] = d.graphemeBuf[kd][:0] // reset the buffer
 		}
