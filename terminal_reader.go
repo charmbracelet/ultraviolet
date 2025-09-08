@@ -194,6 +194,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			}
 
 			if n > 0 {
+				d.logf("processed %d bytes from buffer", n)
 				buf.Next(n)
 			}
 
@@ -224,15 +225,10 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 		return 0, nil
 	}
 
-	d.logf("processing buf %q", buf)
-	bufLen := len(buf)
-	buf = d.deserializeWin32Input(buf)
-	if len(buf) == 0 {
-		// This handles the case where after deserializing the input buffer we
-		// end up with an empty buffer meaning there was nothing to further
-		// decode. We return the original buffer length as processed.
-		total = bufLen
-	}
+	var dn int
+	d.logf("processing buf %d %q", len(buf), buf)
+	dn, buf = d.deserializeWin32Input(buf)
+	total += dn
 
 	// Lookup table first
 	if d.lookup && len(buf) > 2 && buf[0] == ansi.ESC {
@@ -352,9 +348,9 @@ func (d *TerminalReader) encodeGraphemeBufs() []byte {
 	for kd, buf := range d.graphemeBuf {
 		if len(buf) > 0 {
 			switch kd {
-			case 0:
-				b = append(b, string(buf)...)
 			case 1:
+				b = append(b, string(buf)...)
+			case 0:
 				// Encode the release grapheme as Kitty Keyboard to get the release event.
 				var codepoints string
 				for i, r := range buf {
@@ -407,10 +403,11 @@ func (d *TerminalReader) storeGraphemeRune(kd int, r rune) {
 // deserializeWin32Input deserializes the Win32 input events converting
 // KeyEventRecrods to bytes. Before returning the bytes, it will also try to
 // decode any UTF-16 pairs that might be present in the input buffer.
-func (d *TerminalReader) deserializeWin32Input(buf []byte) []byte {
+func (d *TerminalReader) deserializeWin32Input(buf []byte) (int, []byte) {
 	p := parserPool.Get().(*ansi.Parser)
 	defer parserPool.Put(p)
 
+	var processed int
 	var state byte
 	des := make([]byte, 0, len(buf))
 
@@ -438,11 +435,12 @@ func (d *TerminalReader) deserializeWin32Input(buf []byte) []byte {
 
 		state = newState
 		buf = buf[n:]
+		processed += n
 	}
 
 	des = append(des, d.encodeGraphemeBufs()...)
 
-	return des
+	return processed, des
 }
 
 func (d *TerminalReader) logf(format string, v ...interface{}) {
