@@ -393,6 +393,9 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 	case 'c' | '?'<<parser.PrefixShift:
 		// Primary Device Attributes
 		return i, parsePrimaryDevAttrs(pa)
+	case 'c' | '>'<<parser.PrefixShift:
+		// Secondary Device Attributes
+		return i, parseSecondaryDevAttrs(pa)
 	case 'u' | '?'<<parser.PrefixShift:
 		// Kitty keyboard flags
 		flags, _, ok := pa.Param(0, -1)
@@ -1065,6 +1068,9 @@ func (p *EventDecoder) parseDcs(b []byte) (int, Event) {
 	case '|' | '>'<<parser.PrefixShift:
 		// XTVersion response
 		return i, TerminalVersionEvent(b[start:end])
+	case '|' | '!'<<parser.IntermedShift:
+		// Teritary Device Attributes
+		return i, parseTertiaryDevAttrs(b[start:end])
 	}
 
 	return i, UnknownDcsEvent(b[:i])
@@ -1566,6 +1572,27 @@ func parsePrimaryDevAttrs(params ansi.Params) Event {
 		}
 	}
 	return da1
+}
+
+func parseSecondaryDevAttrs(params ansi.Params) Event {
+	// Secondary Device Attributes
+	da2 := make(SecondaryDeviceAttributesEvent, len(params))
+	for i, p := range params {
+		if !p.HasMore() {
+			da2[i] = p.Param(0)
+		}
+	}
+	return da2
+}
+
+func parseTertiaryDevAttrs(b []byte) Event {
+	// Tertiary Device Attributes
+	// The response is a 4-digit hexadecimal number.
+	bts, err := hex.DecodeString(string(b))
+	if err != nil {
+		return UnknownDcsEvent(fmt.Sprintf("\x1bP!|%s\x1b\\", b))
+	}
+	return TertiaryDeviceAttributesEvent(bts)
 }
 
 // Parse SGR-encoded mouse events; SGR extended mouse events. SGR mouse events

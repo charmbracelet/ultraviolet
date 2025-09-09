@@ -413,6 +413,18 @@ func (e KittyEnhancementsEvent) Contains(enhancements int) bool {
 // See [ansi.PrimaryDeviceAttributes] for more details.
 type PrimaryDeviceAttributesEvent []int
 
+// SecondaryDeviceAttributesEvent is an event that represents the terminal
+// secondary device attributes.
+//
+// See [ansi.SecondaryDeviceAttributes] for more details.
+type SecondaryDeviceAttributesEvent []int
+
+// TertiaryDeviceAttributesEvent is an event that represents the terminal
+// tertiary device attributes.
+//
+// See [ansi.TertiaryDeviceAttributes] for more details.
+type TertiaryDeviceAttributesEvent string
+
 // ModeReportEvent is a message that represents a mode report event (DECRPM).
 //
 // See: https://vt100.net/docs/vt510-rm/DECRPM.html
