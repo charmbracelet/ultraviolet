@@ -122,6 +122,43 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// esc followed by non-key event sequence
+		seqTest{
+			[]byte("\x1b\x1b[?2004;1$y"),
+			[]Event{
+				KeyPressEvent{Code: KeyEscape},
+				ModeReportEvent{Mode: ansi.BracketedPasteMode, Value: ansi.ModeSet},
+			},
+		},
+
+		// 8-bit sequences
+		seqTest{
+			[]byte(
+				"\x9bA" + // CSI A
+					"\x8fA" + // SS3 A
+					"\x90>|Ultraviolet\x1b\\" + // DCS >|Ultraviolet ST
+					"\x9d11;#123456\x9c" + // OSC 11 ; #123456 ST
+					"\x98hi\x9c" + // SOS hi ST
+					"\x9fhello\x9c" + // APC hello ST
+					"\x9ebye\x9c", // PM bye ST
+			),
+			[]Event{
+				KeyPressEvent{Code: KeyUp},
+				KeyPressEvent{Code: KeyUp},
+				TerminalVersionEvent("Ultraviolet"),
+				BackgroundColorEvent{ansi.XParseColor("#123456")},
+				UnknownSosEvent("\x98hi\x9c"),
+				UnknownApcEvent("\x9fhello\x9c"),
+				UnknownPmEvent("\x9ebye\x9c"),
+			},
+		},
+
+		// Empty input
+		seqTest{
+			[]byte(""),
+			[]Event(nil),
+		},
+
 		// Broken escape sequence introducers.
 		seqTest{
 			[]byte("\x1b["), // CSI
@@ -584,6 +621,13 @@ func TestParseSequence(t *testing.T) {
 				t.Errorf("\nexpected event for %q:\n    %#v\ngot:\n    %#v", tc.seq, tc.Events, events)
 			}
 		})
+	}
+}
+
+func TestEmptyBufferDecode(t *testing.T) {
+	var p EventDecoder
+	if n, e := p.Decode([]byte{}); n != 0 || e != nil {
+		t.Errorf("expected (0, nil), got (%d, %v)", n, e)
 	}
 }
 
