@@ -1812,6 +1812,56 @@ func TestParseSGRMouseEvent(t *testing.T) {
 	}
 }
 
+// TestMatchStrings tests the MatchStrings method
+func TestMatchStrings(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     Key
+		inputs  []string
+		want    bool
+	}{
+		{
+			name:   "matches first string",
+			key:    Key{Code: 'a', Mod: ModCtrl},
+			inputs: []string{"ctrl+a", "ctrl+b", "ctrl+c"},
+			want:   true,
+		},
+		{
+			name:   "matches middle string",
+			key:    Key{Code: 'b', Mod: ModCtrl},
+			inputs: []string{"ctrl+a", "ctrl+b", "ctrl+c"},
+			want:   true,
+		},
+		{
+			name:   "matches last string",
+			key:    Key{Code: 'c', Mod: ModCtrl},
+			inputs: []string{"ctrl+a", "ctrl+b", "ctrl+c"},
+			want:   true,
+		},
+		{
+			name:   "no match",
+			key:    Key{Code: 'd', Mod: ModCtrl},
+			inputs: []string{"ctrl+a", "ctrl+b", "ctrl+c"},
+			want:   false,
+		},
+		{
+			name:   "empty inputs",
+			key:    Key{Code: 'a', Mod: ModCtrl},
+			inputs: []string{},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.key.MatchStrings(tt.inputs...)
+			if got != tt.want {
+				t.Errorf("MatchStrings() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestKeyMatchString(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1901,6 +1951,186 @@ func TestKeyMatchString(t *testing.T) {
 			name:  "shift+space",
 			key:   Key{Code: KeySpace, Mod: ModShift, Text: " "},
 			input: "shift+space",
+			want:  true,
+		},
+		{
+			name:  "meta modifier",
+			key:   Key{Code: 'a', Mod: ModMeta},
+			input: "meta+a",
+			want:  true,
+		},
+		{
+			name:  "hyper modifier",
+			key:   Key{Code: 'a', Mod: ModHyper},
+			input: "hyper+a",
+			want:  true,
+		},
+		{
+			name:  "super modifier",
+			key:   Key{Code: 'a', Mod: ModSuper},
+			input: "super+a",
+			want:  true,
+		},
+		{
+			name:  "scrolllock modifier",
+			key:   Key{Code: 'a', Mod: ModScrollLock},
+			input: "scrolllock+a",
+			want:  true,
+		},
+		{
+			name:  "numlock modifier",
+			key:   Key{Code: 'a', Mod: ModNumLock},
+			input: "numlock+a",
+			want:  true,
+		},
+		{
+			name:  "multi-rune key",
+			key:   Key{Code: KeyExtended, Text: "hello"},
+			input: "hello",
+			want:  true,
+		},
+		{
+			name:  "enter key",
+			key:   Key{Code: KeyEnter},
+			input: "enter",
+			want:  true,
+		},
+		{
+			name:  "tab key",
+			key:   Key{Code: KeyTab},
+			input: "tab",
+			want:  true,
+		},
+		{
+			name:  "escape key",
+			key:   Key{Code: KeyEscape},
+			input: "esc",
+			want:  true,
+		},
+		{
+			name:  "f1 key",
+			key:   Key{Code: KeyF1},
+			input: "f1",
+			want:  true,
+		},
+		{
+			name:  "backspace key",
+			key:   Key{Code: KeyBackspace},
+			input: "backspace",
+			want:  true,
+		},
+		{
+			name:  "delete key",
+			key:   Key{Code: KeyDelete},
+			input: "delete",
+			want:  true,
+		},
+		{
+			name:  "home key",
+			key:   Key{Code: KeyHome},
+			input: "home",
+			want:  true,
+		},
+		{
+			name:  "end key",
+			key:   Key{Code: KeyEnd},
+			input: "end",
+			want:  true,
+		},
+		{
+			name:  "pgup key",
+			key:   Key{Code: KeyPgUp},
+			input: "pgup",
+			want:  true,
+		},
+		{
+			name:  "pgdown key",
+			key:   Key{Code: KeyPgDown},
+			input: "pgdown",
+			want:  true,
+		},
+		{
+			name:  "up arrow",
+			key:   Key{Code: KeyUp},
+			input: "up",
+			want:  true,
+		},
+		{
+			name:  "down arrow",
+			key:   Key{Code: KeyDown},
+			input: "down",
+			want:  true,
+		},
+		{
+			name:  "left arrow",
+			key:   Key{Code: KeyLeft},
+			input: "left",
+			want:  true,
+		},
+		{
+			name:  "right arrow",
+			key:   Key{Code: KeyRight},
+			input: "right",
+			want:  true,
+		},
+		{
+			name:  "insert key",
+			key:   Key{Code: KeyInsert},
+			input: "insert",
+			want:  true,
+		},
+		{
+			name:  "single printable character",
+			key:   Key{Code: '1', Text: "1"},
+			input: "1",
+			want:  true,
+		},
+		{
+			name:  "uppercase letter without shift",
+			key:   Key{Code: 'A', Text: "A"},
+			input: "A",
+			want:  true,
+		},
+		{
+			name:  "no match different key",
+			key:   Key{Code: 'a', Mod: ModCtrl},
+			input: "ctrl+b",
+			want:  false,
+		},
+		{
+			name:  "no match different modifier",
+			key:   Key{Code: 'a', Mod: ModCtrl},
+			input: "alt+a",
+			want:  false,
+		},
+		{
+			name:  "unknown key name",
+			key:   Key{Code: 'x'},
+			input: "unknownkey",
+			want:  false,
+		},
+		{
+			name:  "multi-rune string that doesn't match",
+			key:   Key{Code: 'a'},
+			input: "hello",
+			want:  false,
+		},
+		{
+			name:  "printable character with ctrl modifier",
+			key:   Key{Code: 'a', Mod: ModCtrl},
+			input: "a",
+			want:  false,
+		},
+		{
+			name:  "lowercase letter with shift",
+			key:   Key{Code: 'h', Mod: ModShift},
+			input: "shift+h",
+			want:  true,
+		},
+		{
+			name:  "uppercase letter with capslock",
+			key:   Key{Code: 'h', Mod: ModCapsLock},
+			input: "capslock+h",
 			want:  true,
 		},
 	}
@@ -2183,4 +2413,230 @@ func (t TLogger) Printf(format string, args ...interface{}) {
 		return
 	}
 	t.Logf(format, args...)
+}
+
+// TestKeystroke tests the Keystroke method
+func TestKeystroke(t *testing.T) {
+	tests := []struct {
+		name string
+		key  Key
+		want string
+	}{
+		{
+			name: "simple key",
+			key:  Key{Code: 'a'},
+			want: "a",
+		},
+		{
+			name: "ctrl+a",
+			key:  Key{Code: 'a', Mod: ModCtrl},
+			want: "ctrl+a",
+		},
+		{
+			name: "alt+a",
+			key:  Key{Code: 'a', Mod: ModAlt},
+			want: "alt+a",
+		},
+		{
+			name: "shift+a",
+			key:  Key{Code: 'a', Mod: ModShift},
+			want: "shift+a",
+		},
+		{
+			name: "meta+a",
+			key:  Key{Code: 'a', Mod: ModMeta},
+			want: "meta+a",
+		},
+		{
+			name: "hyper+a",
+			key:  Key{Code: 'a', Mod: ModHyper},
+			want: "hyper+a",
+		},
+		{
+			name: "super+a",
+			key:  Key{Code: 'a', Mod: ModSuper},
+			want: "super+a",
+		},
+		{
+			name: "ctrl+alt+shift+a",
+			key:  Key{Code: 'a', Mod: ModCtrl | ModAlt | ModShift},
+			want: "ctrl+alt+shift+a",
+		},
+		{
+			name: "all modifiers",
+			key:  Key{Code: 'a', Mod: ModCtrl | ModAlt | ModShift | ModMeta | ModHyper | ModSuper},
+			want: "ctrl+alt+shift+meta+hyper+super+a",
+		},
+		{
+			name: "space key",
+			key:  Key{Code: KeySpace},
+			want: "space",
+		},
+		{
+			name: "extended key with text",
+			key:  Key{Code: KeyExtended, Text: "hello"},
+			want: "hello",
+		},
+		{
+			name: "enter key",
+			key:  Key{Code: KeyEnter},
+			want: "enter",
+		},
+		{
+			name: "tab key",
+			key:  Key{Code: KeyTab},
+			want: "tab",
+		},
+		{
+			name: "escape key",
+			key:  Key{Code: KeyEscape},
+			want: "esc",
+		},
+		{
+			name: "f1 key",
+			key:  Key{Code: KeyF1},
+			want: "f1",
+		},
+		{
+			name: "backspace key",
+			key:  Key{Code: KeyBackspace},
+			want: "backspace",
+		},
+		{
+			name: "left ctrl key alone",
+			key:  Key{Code: KeyLeftCtrl, Mod: ModCtrl},
+			want: "leftctrl",
+		},
+		{
+			name: "right ctrl key alone",
+			key:  Key{Code: KeyRightCtrl, Mod: ModCtrl},
+			want: "rightctrl",
+		},
+		{
+			name: "left alt key alone",
+			key:  Key{Code: KeyLeftAlt, Mod: ModAlt},
+			want: "leftalt",
+		},
+		{
+			name: "right alt key alone",
+			key:  Key{Code: KeyRightAlt, Mod: ModAlt},
+			want: "rightalt",
+		},
+		{
+			name: "left shift key alone",
+			key:  Key{Code: KeyLeftShift, Mod: ModShift},
+			want: "leftshift",
+		},
+		{
+			name: "right shift key alone",
+			key:  Key{Code: KeyRightShift, Mod: ModShift},
+			want: "rightshift",
+		},
+		{
+			name: "left meta key alone",
+			key:  Key{Code: KeyLeftMeta, Mod: ModMeta},
+			want: "leftmeta",
+		},
+		{
+			name: "right meta key alone",
+			key:  Key{Code: KeyRightMeta, Mod: ModMeta},
+			want: "rightmeta",
+		},
+		{
+			name: "left hyper key alone",
+			key:  Key{Code: KeyLeftHyper, Mod: ModHyper},
+			want: "lefthyper",
+		},
+		{
+			name: "right hyper key alone",
+			key:  Key{Code: KeyRightHyper, Mod: ModHyper},
+			want: "righthyper",
+		},
+		{
+			name: "left super key alone",
+			key:  Key{Code: KeyLeftSuper, Mod: ModSuper},
+			want: "leftsuper",
+		},
+		{
+			name: "right super key alone",
+			key:  Key{Code: KeyRightSuper, Mod: ModSuper},
+			want: "rightsuper",
+		},
+		{
+			name: "key with base code",
+			key:  Key{Code: 'A', BaseCode: 'a'},
+			want: "a",
+		},
+		{
+			name: "unknown key with base code",
+			key:  Key{Code: 99999, BaseCode: 'x'},
+			want: "x",
+		},
+		{
+			name: "printable rune",
+			key:  Key{Code: '€'},
+			want: "€",
+		},
+		{
+			name: "unknown key without base code",
+			key:  Key{Code: 99999},
+			want: "𘚟",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.key.Keystroke()
+			if got != tt.want {
+				t.Errorf("Keystroke() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestKeystrokeCoverage tests edge cases for Keystroke method
+func TestKeystrokeCoverage(t *testing.T) {
+	// Test a key that's not in keyTypeString and is KeySpace
+	// This is actually impossible since KeySpace is in keyTypeString
+	// But we can test a key that's not in keyTypeString and has BaseCode of KeySpace
+	k := Key{Code: 999999, BaseCode: KeySpace}
+	if got := k.Keystroke(); got != "space" {
+		t.Errorf("Keystroke() = %q, want %q", got, "space")
+	}
+	
+	// Test a key that's not in keyTypeString, has no BaseCode, and is KeySpace
+	// This would require KeySpace to not be in keyTypeString, which it is
+	// So this branch might be unreachable
+}
+func TestKeyStringMore(t *testing.T) {
+	tests := []struct {
+		name string
+		key  Key
+		want string
+	}{
+		{
+			name: "space character",
+			key:  Key{Code: KeySpace, Text: " "},
+			want: "space",
+		},
+		{
+			name: "empty text",
+			key:  Key{Code: 'a', Text: ""},
+			want: "a",
+		},
+		{
+			name: "text with multiple characters",
+			key:  Key{Code: KeyExtended, Text: "hello"},
+			want: "hello",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.key.String()
+			if got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
