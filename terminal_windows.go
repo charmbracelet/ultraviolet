@@ -60,8 +60,8 @@ func (t *Terminal) getSize() (w, h int, err error) {
 }
 
 func (t *Terminal) optimizeMovements() {
-	t.useBspace = true
-	t.useTabs = true
+	t.useBspace = supportsBackspace(0)
+	t.useTabs = supportsHardTabs(0)
 }
 
 func (t *Terminal) setMouse(enable bool) (err error) {
