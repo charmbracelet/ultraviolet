@@ -235,6 +235,7 @@ func TestHelperFunctions(t *testing.T) {
 			{color.RGBA{R: 255, G: 128, B: 64, A: 255}, "#ff8040"},
 			{color.RGBA{R: 0, G: 0, B: 0, A: 255}, "#000000"},
 			{color.RGBA{R: 255, G: 255, B: 255, A: 255}, "#ffffff"},
+			{nil, ""},
 		}
 		for _, tt := range tests {
 			got := colorToHex(tt.color)

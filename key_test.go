@@ -122,6 +122,193 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// Teritary Device Attributes (DA3)
+		seqTest{
+			[]byte("\x1bP!|4368726d\x1b\\"),
+			[]Event{
+				TertiaryDeviceAttributesEvent("Chrm"),
+			},
+		},
+
+		// XTGETTCAP response
+		seqTest{
+			[]byte("\x1bP1+r524742\x1b\\"),
+			[]Event{
+				CapabilityEvent("RGB"),
+			},
+		},
+
+		// Unknown sequences.
+		seqTest{
+			[]byte("\x1b[z\x1bOz\x1bO2 \x1bP?1;2:3+zABC\x1b\\"),
+			[]Event{
+				UnknownCsiEvent("\x1b[z"),
+				UnknownSs3Event("\x1bOz"),
+				UnknownEvent("\x1bO2"),
+				KeyPressEvent{Code: KeySpace, Text: " "},
+				UnknownDcsEvent("\x1bP?1;2:3+zABC\x1b\\"),
+			},
+		},
+
+		// OSC 52 read clipboard
+		seqTest{
+			[]byte("\x1b]52\x1b\\\x1b]52;c;!\x1b\\\x1b]52;c;aGk=\x1b\\"),
+			[]Event{
+				ClipboardEvent{},
+				ClipboardEvent{Content: "!"},
+				ClipboardEvent{Content: "hi", Selection: 'c'},
+			},
+		},
+
+		// Invalid Xterm modifyOtherKeys key sequence
+		seqTest{
+			[]byte("\x1b[27;3~"),
+			[]Event{UnknownCsiEvent("\x1b[27;3~")},
+		},
+
+		// Empty @ ^ ~
+		seqTest{
+			[]byte("\x1b[@\x1b[^\x1b[~"),
+			[]Event{
+				UnknownCsiEvent("\x1b[@"),
+				UnknownCsiEvent("\x1b[^"),
+				UnknownCsiEvent("\x1b[~"),
+			},
+		},
+
+		// Win32 input mode key sequences
+		seqTest{
+			[]byte("\x1b[65;0;97;1;0;1_\x1b[0;0;0_"),
+			[]Event{
+				KeyPressEvent{Code: 'a', BaseCode: 'a', Text: "a"},
+				UnknownCsiEvent("\x1b[0;0;0_"),
+			},
+		},
+
+		// Report mode responses
+		seqTest{
+			[]byte("\x1b[2;1$y\x1b[$y\x1b[2$y\x1b[2;$y"),
+			[]Event{
+				ModeReportEvent{Mode: ansi.KeyboardActionMode, Value: ansi.ModeSet},
+				UnknownCsiEvent("\x1b[$y"),
+				UnknownCsiEvent("\x1b[2$y"),
+				ModeReportEvent{Mode: ansi.KeyboardActionMode, Value: ansi.ModeNotRecognized},
+			},
+		},
+
+		// Short X10 mouse input
+		seqTest{
+			[]byte("\x1b[M !"),
+			[]Event{
+				UnknownCsiEvent("\x1b[M"),
+				KeyPressEvent{Code: ' ', Text: " "},
+				KeyPressEvent{Code: '!', Text: "!"},
+			},
+		},
+
+		// Invalid report mode responses
+		seqTest{
+			[]byte("\x1b[?$y\x1b[?1049$y\x1b[?1049;$y"),
+			[]Event{
+				UnknownCsiEvent("\x1b[?$y"),
+				UnknownCsiEvent("\x1b[?1049$y"),
+				ModeReportEvent{Mode: ansi.AltScreenSaveCursorMode, Value: ansi.ModeNotRecognized},
+			},
+		},
+
+		// Xterm modifyOtherKeys response
+		seqTest{
+			[]byte("\x1b[>4;1m\x1b[>4m\x1b[>3m"),
+			[]Event{
+				ModifyOtherKeysEvent(1),
+				UnknownCsiEvent("\x1b[>4m"),
+				UnknownCsiEvent("\x1b[>3m"),
+			},
+		},
+
+		// F3 with modifier key press or cursor position report
+		seqTest{
+			[]byte("\x1b[1;5R\x1b[1;5;7R"),
+			[]Event{
+				KeyPressEvent{Code: KeyF3, Mod: ModCtrl},
+				CursorPositionEvent{Y: 0, X: 4},
+				UnknownCsiEvent("\x1b[1;5;7R"),
+			},
+		},
+
+		// Cursor position report
+		seqTest{
+			[]byte("\x1b[?12;34R\x1b[?14R"),
+			[]Event{
+				CursorPositionEvent{Y: 11, X: 33},
+				UnknownCsiEvent("\x1b[?14R"),
+			},
+		},
+
+		// Unknown CSI sequence
+		seqTest{
+			[]byte("\x1b[10;2;3c"),
+			[]Event{UnknownCsiEvent([]byte("\x1b[10;2;3c"))},
+		},
+
+		// Kitty Keyboard response
+		seqTest{
+			[]byte("\x1b[?16u\x1b[?u"),
+			[]Event{
+				KittyEnhancementsEvent(16),
+				KittyEnhancementsEvent(0),
+			},
+		},
+
+		// Secondary Device Attributes (DA2)
+		seqTest{
+			[]byte("\x1b[>1;2;3c"),
+			[]Event{SecondaryDeviceAttributesEvent{1, 2, 3}},
+		},
+
+		// Primary Device Attributes (DA1)
+		seqTest{
+			[]byte("\x1b[?1;2;3c"),
+			[]Event{PrimaryDeviceAttributesEvent{1, 2, 3}},
+		},
+
+		// esc followed by non-key event sequence
+		seqTest{
+			[]byte("\x1b\x1b[?2004;1$y"),
+			[]Event{
+				KeyPressEvent{Code: KeyEscape},
+				ModeReportEvent{Mode: ansi.BracketedPasteMode, Value: ansi.ModeSet},
+			},
+		},
+
+		// 8-bit sequences
+		seqTest{
+			[]byte(
+				"\x9bA" + // CSI A
+					"\x8fA" + // SS3 A
+					"\x90>|Ultraviolet\x1b\\" + // DCS >|Ultraviolet ST
+					"\x9d11;#123456\x9c" + // OSC 11 ; #123456 ST
+					"\x98hi\x9c" + // SOS hi ST
+					"\x9fhello\x9c" + // APC hello ST
+					"\x9ebye\x9c", // PM bye ST
+			),
+			[]Event{
+				KeyPressEvent{Code: KeyUp},
+				KeyPressEvent{Code: KeyUp},
+				TerminalVersionEvent("Ultraviolet"),
+				BackgroundColorEvent{ansi.XParseColor("#123456")},
+				UnknownSosEvent("\x98hi\x9c"),
+				UnknownApcEvent("\x9fhello\x9c"),
+				UnknownPmEvent("\x9ebye\x9c"),
+			},
+		},
+
+		// Empty input
+		seqTest{
+			[]byte(""),
+			[]Event(nil),
+		},
+
 		// Broken escape sequence introducers.
 		seqTest{
 			[]byte("\x1b["), // CSI
@@ -154,6 +341,12 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1b"), // ESC
 			[]Event{KeyPressEvent{Code: KeyEscape}},
+		},
+
+		// Kitty invalid key sequence
+		seqTest{
+			[]byte("\x1b[u"),
+			[]Event{UnknownCsiEvent("\x1b[u")},
 		},
 
 		// Kitty printable keys with lock modifiers.
@@ -357,9 +550,23 @@ func TestParseSequence(t *testing.T) {
 
 		// Xterm report window text area size in pixels.
 		seqTest{
-			[]byte("\x1b[4;24;80t"),
+			[]byte("\x1b[4;24;80t" + // window pixel size
+				"\x1b[6;13;7t" + // single cell size
+				"\x1b[8;24;80t" + // window cells area size
+				"\x1b[48;24;80;312;560t" + // in-band resize response
+				"\x1b[t" + // invalid
+				"\x1b[999t" + // invalid
+				"\x1b[999;1t" + // invalid
+				""),
 			[]Event{
 				WindowPixelSizeEvent{Width: 80, Height: 24},
+				CellSizeEvent{Width: 7, Height: 13},
+				WindowSizeEvent{Width: 80, Height: 24},
+				WindowSizeEvent{Width: 80, Height: 24},
+				WindowPixelSizeEvent{Width: 560, Height: 312},
+				UnknownCsiEvent("\x1b[t"),
+				WindowOpEvent{Op: 999},
+				WindowOpEvent{Op: 999, Args: []int{1}},
 			},
 		},
 
@@ -580,10 +787,22 @@ func TestParseSequence(t *testing.T) {
 				}
 				buf = buf[width:]
 			}
-			if !reflect.DeepEqual(tc.Events, events) {
-				t.Errorf("\nexpected event for %q:\n    %#v\ngot:\n    %#v", tc.seq, tc.Events, events)
+			if len(tc.Events) != len(events) {
+				t.Fatalf("\nexpected %d events for %q:\n    %#v\ngot %d:\n    %#v", len(tc.Events), tc.seq, tc.Events, len(events), events)
+			}
+			for i := range tc.Events {
+				if !reflect.DeepEqual(tc.Events[i], events[i]) {
+					t.Errorf("\nexpected event %d for %q:\n    %#v\ngot:\n    %#v", i, tc.seq, tc.Events[i], events[i])
+				}
 			}
 		})
+	}
+}
+
+func TestEmptyBufferDecode(t *testing.T) {
+	var p EventDecoder
+	if n, e := p.Decode([]byte{}); n != 0 || e != nil {
+		t.Errorf("expected (0, nil), got (%d, %v)", n, e)
 	}
 }
 
@@ -696,24 +915,15 @@ func TestReadInput(t *testing.T) {
 	}
 	testData := []test{
 		{
-			"ignored osc esc",
-			[]byte("\x1b]11;#123456\x1b"),
+			"ignored osc",
+			[]byte("\x1b]11;#123456\x18\x1b]11;#123456\x1a\x1b]11;#123456\x1b"),
 			[]Event(nil),
 		},
 		{
-			"ignored osc can",
-			[]byte("\x1b]11;#123456\x18"),
-			[]Event(nil),
-		},
-		{
-			"ignored osc sub",
-			[]byte("\x1b]11;#123456\x1a"),
-			[]Event(nil),
-		},
-		{
-			"ignored apc esc",
-			[]byte("\x1b_hello\x1b\x1b_abc\x1b\\\x1ba"),
+			"ignored apc",
+			[]byte("\x9f\x9c\x1b_hello\x1b\x1b_hello\x18\x1b_abc\x1b\\\x1ba"),
 			[]Event{
+				UnknownApcEvent("\x9f\x9c"),
 				UnknownApcEvent("\x1b_abc\x1b\\"),
 				KeyPressEvent{Code: 'a', Mod: ModAlt},
 			},
