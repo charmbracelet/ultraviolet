@@ -1,7 +1,9 @@
 // Package screen provides functions and helpers to manipulate a [uv.Screen].
 package screen
 
-import uv "github.com/charmbracelet/ultraviolet"
+import (
+	uv "github.com/charmbracelet/ultraviolet"
+)
 
 // Clear clears the screen with empty cells. This is equivalent to filling the
 // screen with empty cells.
