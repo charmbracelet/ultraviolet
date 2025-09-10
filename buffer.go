@@ -393,6 +393,9 @@ func (b *Buffer) CloneArea(area Rectangle) *Buffer {
 	for y := area.Min.Y; y < area.Max.Y; y++ {
 		for x := area.Min.X; x < area.Max.X; x++ {
 			c := b.CellAt(x, y)
+			if c == nil || c.IsZero() {
+				continue
+			}
 			n.SetCell(x-area.Min.X, y-area.Min.Y, c)
 		}
 	}
