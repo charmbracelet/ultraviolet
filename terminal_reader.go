@@ -434,16 +434,19 @@ func (d *TerminalReader) deserializeWin32Input(buf []byte) (int, []byte) {
 			}
 			fallthrough
 		default:
-			des = append(des, d.encodeGraphemeBufs()...)
+			bufs := d.encodeGraphemeBufs()
+			processed += len(bufs)
+			des = append(des, bufs...)
 			des = append(des, seq...)
 		}
 
 		state = newState
 		buf = buf[n:]
-		processed += n
 	}
 
-	des = append(des, d.encodeGraphemeBufs()...)
+	bufs := d.encodeGraphemeBufs()
+	processed += len(bufs)
+	des = append(des, bufs...)
 
 	return processed, des
 }
