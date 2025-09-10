@@ -868,7 +868,7 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 		case ansi.PM, ansi.APC:
 			return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
 		}
-		panic("shouldn't happen")
+		return 0, nil
 	}
 	return func(b []byte) (int, Event) {
 		if len(b) == 2 && b[0] == ansi.ESC {
@@ -932,9 +932,9 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 			return i, UnknownSosEvent(b[:i])
 		case ansi.APC:
 			return i, UnknownApcEvent(b[:i])
+		default:
+			return i, UnknownEvent(b[:i])
 		}
-
-		panic("shouldn't happen")
 	}
 }
 
