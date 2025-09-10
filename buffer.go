@@ -27,6 +27,15 @@ func Rect(x, y, w, h int) Rectangle {
 // Line represents cells in a line.
 type Line []Cell
 
+// NewLine creates a new line with the given width, filled with empty cells.
+func NewLine(width int) Line {
+	l := make(Line, width)
+	for i := range l {
+		l[i] = EmptyCell
+	}
+	return l
+}
+
 // Set sets the cell at the given x position.
 func (l Line) Set(x int, c *Cell) {
 	// maxCellWidth is the maximum width a terminal cell is expected to have.
@@ -109,7 +118,6 @@ func (l Line) String() (s string) {
 		}
 		s += c.String()
 	}
-	s = strings.TrimRight(s, " ")
 	return
 }
 
@@ -118,7 +126,7 @@ func (l Line) String() (s string) {
 func (l Line) Render() string {
 	var buf strings.Builder
 	renderLine(&buf, l)
-	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces
+	return buf.String()
 }
 
 func renderLine(buf io.StringWriter, l Line) {
@@ -611,4 +619,23 @@ func NewScreenBuffer(width, height int) ScreenBuffer {
 // It defaults to [ansi.WcWidth].
 func (s ScreenBuffer) WidthMethod() WidthMethod {
 	return s.Method
+}
+
+// TrimSpace trims trailing spaces from the end of each line in the given
+// string.
+func TrimSpace(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		// Check if we have a trailing '\r' and preserve it
+		hasCR := strings.HasSuffix(line, "\r")
+		if hasCR {
+			line = strings.TrimSuffix(line, "\r")
+		}
+		line = strings.TrimRight(line, " ")
+		if hasCR {
+			line = line + "\r"
+		}
+		lines[i] = line
+	}
+	return strings.Join(lines, "\n")
 }
