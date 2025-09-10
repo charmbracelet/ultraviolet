@@ -360,6 +360,232 @@ func TestParseTermcap(t *testing.T) {
 	}
 }
 
+// TestParseUtf8 tests UTF-8 parsing
+func TestParseUtf8(t *testing.T) {
+	var p EventDecoder
+	tests := []struct {
+		name      string
+		input     []byte
+		wantN     int
+		wantEvent Event
+	}{
+		{
+			name:      "empty input",
+			input:     []byte{},
+			wantN:     0,
+			wantEvent: nil,
+		},
+		{
+			name:      "control character",
+			input:     []byte{0x01}, // SOH
+			wantN:     1,
+			wantEvent: KeyPressEvent{Code: 'a', Mod: ModCtrl},
+		},
+		{
+			name:      "ASCII printable",
+			input:     []byte{'a'},
+			wantN:     1,
+			wantEvent: KeyPressEvent{Code: 'a', Text: "a"},
+		},
+		{
+			name:      "uppercase letter",
+			input:     []byte{'A'},
+			wantN:     1,
+			wantEvent: KeyPressEvent{Code: 'a', ShiftedCode: 'A', Text: "A", Mod: ModShift},
+		},
+		{
+			name:      "DEL character",
+			input:     []byte{0x7F}, // DEL
+			wantN:     1,
+			wantEvent: KeyPressEvent{Code: KeyBackspace},
+		},
+		{
+			name:      "UTF-8 multi-byte",
+			input:     []byte("€"), // Euro sign
+			wantN:     3,
+			wantEvent: KeyPressEvent{Code: '€', Text: "€"},
+		},
+		{
+			name:      "invalid UTF-8",
+			input:     []byte{0xFF},
+			wantN:     1,
+			wantEvent: UnknownEvent("\u00ff"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, event := p.parseUtf8(tt.input)
+			if n != tt.wantN {
+				t.Errorf("parseUtf8() n = %d, want %d", n, tt.wantN)
+			}
+			if tt.wantEvent == nil {
+				if event != nil {
+					t.Errorf("parseUtf8() event = %v, want nil", event)
+				}
+			} else {
+				switch want := tt.wantEvent.(type) {
+				case KeyPressEvent:
+					if got, ok := event.(KeyPressEvent); ok {
+						if got.Code != want.Code || got.Text != want.Text || got.Mod != want.Mod || got.ShiftedCode != want.ShiftedCode {
+							t.Errorf("parseUtf8() = %+v, want %+v", got, want)
+						}
+					} else {
+						t.Errorf("parseUtf8() = %T, want KeyPressEvent", event)
+					}
+				case UnknownEvent:
+					if got, ok := event.(UnknownEvent); ok {
+						if got != want {
+							t.Errorf("parseUtf8() = %v, want %v", got, want)
+						}
+					} else {
+						t.Errorf("parseUtf8() = %T, want UnknownEvent", event)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestParseControl tests control character parsing
+func TestParseControl(t *testing.T) {
+	var p EventDecoder
+	tests := []struct {
+		name      string
+		input     byte
+		legacy    LegacyKeyEncoding
+		wantEvent Event
+	}{
+		{
+			name:      "NUL with CtrlAt flag",
+			input:     ansi.NUL,
+			legacy:    LegacyKeyEncoding(flagCtrlAt),
+			wantEvent: KeyPressEvent{Code: '@', Mod: ModCtrl},
+		},
+		{
+			name:      "NUL without CtrlAt flag",
+			input:     ansi.NUL,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: KeySpace, Mod: ModCtrl},
+		},
+		{
+			name:      "BS (backspace)",
+			input:     ansi.BS,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: 'h', Mod: ModCtrl},
+		},
+		{
+			name:      "HT with CtrlI flag",
+			input:     ansi.HT,
+			legacy:    LegacyKeyEncoding(flagCtrlI),
+			wantEvent: KeyPressEvent{Code: 'i', Mod: ModCtrl},
+		},
+		{
+			name:      "HT without CtrlI flag",
+			input:     ansi.HT,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: KeyTab},
+		},
+		{
+			name:      "CR with CtrlM flag",
+			input:     ansi.CR,
+			legacy:    LegacyKeyEncoding(flagCtrlM),
+			wantEvent: KeyPressEvent{Code: 'm', Mod: ModCtrl},
+		},
+		{
+			name:      "CR without CtrlM flag",
+			input:     ansi.CR,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: KeyEnter},
+		},
+		{
+			name:      "ESC with CtrlOpenBracket flag",
+			input:     ansi.ESC,
+			legacy:    LegacyKeyEncoding(flagCtrlOpenBracket),
+			wantEvent: KeyPressEvent{Code: '[', Mod: ModCtrl},
+		},
+		{
+			name:      "ESC without CtrlOpenBracket flag",
+			input:     ansi.ESC,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: KeyEscape},
+		},
+		{
+			name:      "DEL with Backspace flag",
+			input:     ansi.DEL,
+			legacy:    LegacyKeyEncoding(flagBackspace),
+			wantEvent: KeyPressEvent{Code: KeyDelete},
+		},
+		{
+			name:      "DEL without Backspace flag",
+			input:     ansi.DEL,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: KeyBackspace},
+		},
+		{
+			name:      "Space",
+			input:     ansi.SP,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: KeySpace, Text: " "},
+		},
+		{
+			name:      "Control-A (SOH)",
+			input:     ansi.SOH,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: 'a', Mod: ModCtrl},
+		},
+		{
+			name:      "Control-Z (SUB)",
+			input:     ansi.SUB,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: 'z', Mod: ModCtrl},
+		},
+		{
+			name:      "FS (File Separator)",
+			input:     ansi.FS,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: '\\', Mod: ModCtrl},
+		},
+		{
+			name:      "US (Unit Separator)",
+			input:     ansi.US,
+			legacy:    0,
+			wantEvent: KeyPressEvent{Code: '_', Mod: ModCtrl},
+		},
+		{
+			name:      "Unknown control",
+			input:     0x80,
+			legacy:    0,
+			wantEvent: UnknownEvent("\u0080"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p.Legacy = tt.legacy
+			event := p.parseControl(tt.input)
+			switch want := tt.wantEvent.(type) {
+			case KeyPressEvent:
+				if got, ok := event.(KeyPressEvent); ok {
+					if got.Code != want.Code || got.Text != want.Text || got.Mod != want.Mod {
+						t.Errorf("parseControl() = %+v, want %+v", got, want)
+					}
+				} else {
+					t.Errorf("parseControl() = %T, want KeyPressEvent", event)
+				}
+			case UnknownEvent:
+				if got, ok := event.(UnknownEvent); ok {
+					if got != want {
+						t.Errorf("parseControl() = %v, want %v", got, want)
+					}
+				} else {
+					t.Errorf("parseControl() = %T, want UnknownEvent", event)
+				}
+			}
+		})
+	}
+}
+
 // TestWin32Functions tests Win32-related functions
 func TestWin32Functions(t *testing.T) {
 	// Test ensureKeyCase
