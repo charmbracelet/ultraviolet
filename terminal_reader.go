@@ -244,7 +244,7 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 		n, event := d.Decode(buf)
 
 		// Handle bracketed-paste
-		if d.paste != nil {
+		if d.paste != nil { //nolint:nestif
 			if _, ok := event.(PasteEndEvent); !ok {
 				switch event := event.(type) {
 				case KeyPressEvent:
