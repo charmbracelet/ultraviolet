@@ -187,13 +187,13 @@ func TestStyledString(t *testing.T) {
 		},
 		{
 			name:           "complex styling with multiple SGR sequences",
-			input:          "\x1b[31;1;4mRed\x1b[0m \x1b[32;3mGreen\x1b[0m \x1b[34;9mBlue\x1b[0m \x1b[33;7mYellow\x1b[0m \x1b[35;5mPurple\x1b[0m",
+			input:          "\x1b[31;1;2;4mR\x1b[22;1med\x1b[0m \x1b[32;3mGreen\x1b[0m \x1b[34;9mBlue\x1b[0m \x1b[33;7mYellow\x1b[0m \x1b[35;5mPurple\x1b[0m",
 			expectedWidth:  28,
 			expectedHeight: 1,
 			expected: &Buffer{
 				Lines: []Line{
 					{
-						newWcCell("R", &Style{Fg: ansi.Red, UlStyle: SingleUnderline, Attrs: BoldAttr}, nil),
+						newWcCell("R", &Style{Fg: ansi.Red, UlStyle: SingleUnderline, Attrs: BoldAttr | FaintAttr}, nil),
 						newWcCell("e", &Style{Fg: ansi.Red, UlStyle: SingleUnderline, Attrs: BoldAttr}, nil),
 						newWcCell("d", &Style{Fg: ansi.Red, UlStyle: SingleUnderline, Attrs: BoldAttr}, nil),
 						newWcCell(" ", nil, nil),
@@ -394,7 +394,7 @@ func TestStyledString(t *testing.T) {
 			for y, line := range buf.Lines {
 				for x, cell := range line {
 					if !cellEqual(tc.expected.CellAt(x, y), &cell) {
-						t.Errorf("case %d expected cell (%d, %d) %q, got %q", y+1, x, y, tc.expected.CellAt(x, y), &cell)
+						t.Errorf("case %d expected cell (%d, %d) %#v, got %#v", y+1, x, y, tc.expected.CellAt(x, y), &cell)
 					}
 				}
 			}
