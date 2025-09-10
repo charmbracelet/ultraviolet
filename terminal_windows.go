@@ -91,3 +91,11 @@ func (t *Terminal) enableWindowsMouse() (err error) {
 func (t *Terminal) disableWindowsMouse() (err error) {
 	return t.setMouse(false)
 }
+
+func supportsBackspace(uint64) bool {
+	return true
+}
+
+func supportsHardTabs(uint64) bool {
+	return true
+}
