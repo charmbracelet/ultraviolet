@@ -385,8 +385,8 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		if !ok || mode == -1 {
 			break
 		}
-		value, _, ok := pa.Param(1, -1)
-		if !ok || value == -1 {
+		value, _, ok := pa.Param(1, 0)
+		if !ok {
 			break
 		}
 		return i, ModeReportEvent{Mode: ansi.DECMode(mode), Value: ansi.ModeSetting(value)}
@@ -398,18 +398,12 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		return i, parseSecondaryDevAttrs(pa)
 	case 'u' | '?'<<parser.PrefixShift:
 		// Kitty keyboard flags
-		flags, _, ok := pa.Param(0, -1)
-		if !ok || flags == -1 {
-			break
-		}
+		flags, _, _ := pa.Param(0, -1)
 		return i, KittyEnhancementsEvent(flags)
 	case 'R' | '?'<<parser.PrefixShift:
 		// This report may return a third parameter representing the page
 		// number, but we don't really need it.
-		row, _, ok := pa.Param(0, 1)
-		if !ok {
-			break
-		}
+		row, _, _ := pa.Param(0, 1)
 		col, _, ok := pa.Param(1, 1)
 		if !ok {
 			break
@@ -491,12 +485,9 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 			k = KeyPressEvent{Code: KeyTab, Mod: ModShift}
 		}
 		id, _, _ := pa.Param(0, 1)
-		if id == 0 {
-			id = 1
-		}
 		mod, _, _ := pa.Param(1, 1)
-		if mod == 0 {
-			mod = 1
+		if paramsLen > 2 && !pa[1].HasMore() || id != 1 {
+			break
 		}
 		if paramsLen > 1 && id == 1 && mod != -1 {
 			// CSI 1 ; <modifiers> A
@@ -516,8 +507,8 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		if !ok || mode == -1 {
 			break
 		}
-		val, _, ok := pa.Param(1, -1)
-		if !ok || val == -1 {
+		val, _, ok := pa.Param(1, 0)
+		if !ok {
 			break
 		}
 		return i, ModeReportEvent{Mode: ansi.ANSIMode(mode), Value: ansi.ModeSetting(val)}
@@ -533,29 +524,20 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 			return i, UnknownCsiEvent(b[:i])
 		}
 
-		vrc, _, _ := pa.Param(5, 0)
-		rc := uint16(vrc) //nolint:gosec
-		if rc == 0 {
-			rc = 1
-		}
-
 		vk, _, _ := pa.Param(0, 0)
 		sc, _, _ := pa.Param(1, 0)
 		uc, _, _ := pa.Param(2, 0)
 		kd, _, _ := pa.Param(3, 0)
 		cs, _, _ := pa.Param(4, 0)
+		rc, _, _ := pa.Param(5, 0)
 		event := p.parseWin32InputKeyEvent(
-			uint16(vk), //nolint:gosec // Vk wVirtualKeyCode
-			uint16(sc), //nolint:gosec // Sc wVirtualScanCode
-			rune(uc),   // Uc UnicodeChar
-			kd == 1,    // Kd bKeyDown
-			uint32(cs), //nolint:gosec // Cs dwControlKeyState
-			rc,         // Rc wRepeatCount
+			uint16(vk),         //nolint:gosec // Vk wVirtualKeyCode
+			uint16(sc),         //nolint:gosec // Sc wVirtualScanCode
+			rune(uc),           // Uc UnicodeChar
+			kd == 1,            // Kd bKeyDown
+			uint32(cs),         //nolint:gosec // Cs dwControlKeyState
+			max(1, uint16(rc)), //nolint:gosec // Rc wRepeatCount
 		)
-
-		if event == nil {
-			return i, UnknownCsiEvent(b[:])
-		}
 
 		return i, event
 	case '@', '^', '~':
@@ -860,17 +842,14 @@ func (p *EventDecoder) parseOsc(b []byte) (int, Event) {
 		return i, CursorColorEvent{ansi.XParseColor(data)}
 	case 52:
 		parts := strings.Split(data, ";")
-		if len(parts) == 0 {
-			return i, ClipboardEvent{}
-		}
 		if len(parts) != 2 || len(parts[0]) < 1 {
-			break
+			return i, ClipboardEvent{}
 		}
 
 		b64 := parts[1]
 		bts, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			break
+			return i, ClipboardEvent{Content: parts[1]}
 		}
 
 		sel := ClipboardSelection(parts[0][0]) //nolint:unconvert
@@ -889,7 +868,7 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 		case ansi.PM, ansi.APC:
 			return 2, KeyPressEvent{Code: rune(b[1]), Mod: ModAlt}
 		}
-		return 0, nil
+		panic("shouldn't happen")
 	}
 	return func(b []byte) (int, Event) {
 		if len(b) == 2 && b[0] == ansi.ESC {
@@ -953,9 +932,9 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 			return i, UnknownSosEvent(b[:i])
 		case ansi.APC:
 			return i, UnknownApcEvent(b[:i])
-		default:
-			return i, UnknownEvent(b[:i])
 		}
+
+		panic("shouldn't happen")
 	}
 }
 
