@@ -915,6 +915,27 @@ func TestReadInput(t *testing.T) {
 	}
 	testData := []test{
 		{
+			"non-serialized single win32 esc",
+			[]byte("\x1b"),
+			[]Event{
+				KeyPressEvent{Code: KeyEscape},
+			},
+		},
+
+		{
+			"serialized win32 esc",
+			[]byte("\x1b[27;0;27;1;0;1_abc\x1b[0;0;55357;1;0;1_\x1b[0;0;56835;1;0;1_ "),
+			[]Event{
+				KeyPressEvent{Code: KeyEscape, BaseCode: KeyEscape},
+				KeyPressEvent{Code: 'a', Text: "a"},
+				KeyPressEvent{Code: 'b', Text: "b"},
+				KeyPressEvent{Code: 'c', Text: "c"},
+				KeyPressEvent{Code: 128515, Text: "😃"},
+				KeyPressEvent{Code: KeySpace, Text: " "},
+			},
+		},
+
+		{
 			"ignored osc",
 			[]byte("\x1b]11;#123456\x18\x1b]11;#123456\x1a\x1b]11;#123456\x1b"),
 			[]Event(nil),
@@ -1815,10 +1836,10 @@ func TestParseSGRMouseEvent(t *testing.T) {
 // TestMatchStrings tests the MatchStrings method
 func TestMatchStrings(t *testing.T) {
 	tests := []struct {
-		name    string
-		key     Key
-		inputs  []string
-		want    bool
+		name   string
+		key    Key
+		inputs []string
+		want   bool
 	}{
 		{
 			name:   "matches first string",
@@ -2603,11 +2624,12 @@ func TestKeystrokeCoverage(t *testing.T) {
 	if got := k.Keystroke(); got != "space" {
 		t.Errorf("Keystroke() = %q, want %q", got, "space")
 	}
-	
+
 	// Test a key that's not in keyTypeString, has no BaseCode, and is KeySpace
 	// This would require KeySpace to not be in keyTypeString, which it is
 	// So this branch might be unreachable
 }
+
 func TestKeyStringMore(t *testing.T) {
 	tests := []struct {
 		name string

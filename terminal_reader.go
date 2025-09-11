@@ -429,14 +429,13 @@ func (d *TerminalReader) deserializeWin32Input(buf []byte) (int, []byte) {
 					kd, _ := p.Param(3, 0)
 					kd = clamp(kd, 0, 1) // kd is the key down state (0 or 1)
 					d.storeGraphemeRune(kd, rune(uc))
+					processed += n
 					break
 				}
 			}
 			fallthrough
 		default:
-			bufs := d.encodeGraphemeBufs()
-			processed += len(bufs)
-			des = append(des, bufs...)
+			des = append(des, d.encodeGraphemeBufs()...)
 			des = append(des, seq...)
 		}
 
@@ -444,9 +443,7 @@ func (d *TerminalReader) deserializeWin32Input(buf []byte) (int, []byte) {
 		buf = buf[n:]
 	}
 
-	bufs := d.encodeGraphemeBufs()
-	processed += len(bufs)
-	des = append(des, bufs...)
+	des = append(des, d.encodeGraphemeBufs()...)
 
 	return processed, des
 }
