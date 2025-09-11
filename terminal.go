@@ -1014,8 +1014,9 @@ func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
 	}
 
 	if !t.altscreen {
-		// Go to the bottom of the screen.
+		// Go to the bottom of the screen and clear everything below.
 		t.scr.MoveTo(0, t.buf.Height()-1)
+		_, _ = t.scr.WriteString(ansi.EraseScreenBelow)
 	}
 
 	donec := make(chan struct{})
