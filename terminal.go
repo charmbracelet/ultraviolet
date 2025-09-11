@@ -556,18 +556,20 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 		mode = ButtonMouseMode | DragMouseMode | AllMouseMode
 	}
 	t.mouseMode = mode
-	if !isWindows {
-		modes := []ansi.Mode{}
-		if t.mouseMode&AllMouseMode != 0 {
-			modes = append(modes, ansi.AnyEventMouseMode)
-		} else if t.mouseMode&DragMouseMode != 0 {
-			modes = append(modes, ansi.ButtonEventMouseMode)
-		} else if t.mouseMode&ButtonMouseMode != 0 {
-			modes = append(modes, ansi.NormalMouseMode)
-		}
-		modes = append(modes, ansi.SgrExtMouseMode)
-		t.EnableMode(modes...)
+	mm := []ansi.Mode{}
+	if t.mouseMode&AllMouseMode != 0 {
+		mm = append(mm, ansi.AnyEventMouseMode)
+	} else if t.mouseMode&DragMouseMode != 0 {
+		mm = append(mm, ansi.ButtonEventMouseMode)
+	} else if t.mouseMode&ButtonMouseMode != 0 {
+		mm = append(mm, ansi.NormalMouseMode)
 	}
+	mm = append(mm, ansi.SgrExtMouseMode)
+	t.EnableMode(mm...)
+
+	// We probably don't need this since we switched to VT input on Windows.
+	// However, we'll keep it for now in case that decision is reverted in the
+	// future.
 	t.enableWindowsMouse() //nolint:errcheck,gosec
 }
 
@@ -578,22 +580,24 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 // [Terminal.Display] or [Terminal.Flush] call.
 func (t *Terminal) DisableMouse() {
 	t.mouseMode = 0
-	if !isWindows {
-		var modes []ansi.Mode
-		if t.modes.Get(ansi.AnyEventMouseMode).IsSet() {
-			modes = append(modes, ansi.AnyEventMouseMode)
-		}
-		if t.modes.Get(ansi.ButtonEventMouseMode).IsSet() {
-			modes = append(modes, ansi.ButtonEventMouseMode)
-		}
-		if t.modes.Get(ansi.NormalMouseMode).IsSet() {
-			modes = append(modes, ansi.NormalMouseMode)
-		}
-		if t.modes.Get(ansi.SgrExtMouseMode).IsSet() {
-			modes = append(modes, ansi.SgrExtMouseMode)
-		}
-		t.DisableMode(modes...)
+	var modes []ansi.Mode
+	if t.modes.Get(ansi.AnyEventMouseMode).IsSet() {
+		modes = append(modes, ansi.AnyEventMouseMode)
 	}
+	if t.modes.Get(ansi.ButtonEventMouseMode).IsSet() {
+		modes = append(modes, ansi.ButtonEventMouseMode)
+	}
+	if t.modes.Get(ansi.NormalMouseMode).IsSet() {
+		modes = append(modes, ansi.NormalMouseMode)
+	}
+	if t.modes.Get(ansi.SgrExtMouseMode).IsSet() {
+		modes = append(modes, ansi.SgrExtMouseMode)
+	}
+	t.DisableMode(modes...)
+
+	// We probably don't need this since we switched to VT input on Windows.
+	// However, we'll keep it for now in case that decision is reverted in the
+	// future.
 	t.disableWindowsMouse() //nolint:errcheck,gosec
 }
 
@@ -771,7 +775,6 @@ func (t *Terminal) Start() error {
 	}
 	t.cr = cr
 	t.rd = NewTerminalReader(t.cr, t.termtype)
-	t.rd.MouseMode = &t.mouseMode
 	t.rd.SetLogger(t.logger)
 
 	// Start the window size notifier if it is available.
