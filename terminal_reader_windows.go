@@ -101,8 +101,8 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 					// This is the first half of a UTF-16 surrogate pair.
 					d.utf16Half[kd] = true
 					d.utf16Buf[kd][0] = kevent.Char
-				} else {
-					// Just a regular character.
+				} else if kevent.KeyDown {
+					// Just a regular key press character encoded in VT.
 					buf.WriteRune(kevent.Char)
 				}
 			} else {
