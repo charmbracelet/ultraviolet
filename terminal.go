@@ -411,22 +411,6 @@ func (t *Terminal) RequestMode(mode ansi.Mode) {
 	t.scr.WriteString(ansi.RequestMode(mode)) //nolint:errcheck,gosec
 }
 
-// MouseMode represents the mouse mode for the terminal. It is used to enable
-// or disable mouse support on the terminal.
-type MouseMode byte
-
-const (
-	// ButtonMouseMode enables basic mouse button clicks and releases.
-	ButtonMouseMode MouseMode = 1 << iota
-	// DragMouseMode enables basic mouse buttons [ButtonMouseMode] as well as
-	// click-and-drag mouse motion events.
-	DragMouseMode
-	// AllMouseMode enables all mouse events including button clicks, releases,
-	// and all motion events. This inclodes the [ButtonMouseMode] and
-	// [DragMouseMode] modes.
-	AllMouseMode
-)
-
 // SetForegroundColor sets the terminal default foreground color.
 //
 // Note that this won't take any effect until the next [Terminal.Display] or
@@ -545,27 +529,29 @@ func (t *Terminal) EnableMouse(modes ...MouseMode) {
 		mode |= m
 	}
 	if len(modes) == 1 {
-		if mode&AllMouseMode != 0 {
-			mode |= ButtonMouseMode | DragMouseMode
+		if mode&MouseModeMotion != 0 {
+			mode |= MouseModeDrag | MouseModeClick
 		}
-		if mode&DragMouseMode != 0 {
-			mode |= ButtonMouseMode
+		if mode&MouseModeDrag != 0 {
+			mode |= MouseModeClick
 		}
 	}
 	if mode == 0 {
-		mode = ButtonMouseMode | DragMouseMode | AllMouseMode
+		mode = MouseModeMotion | MouseModeDrag | MouseModeClick
 	}
 	t.mouseMode = mode
-	mm := []ansi.Mode{}
-	if t.mouseMode&AllMouseMode != 0 {
-		mm = append(mm, ansi.AnyEventMouseMode)
-	} else if t.mouseMode&DragMouseMode != 0 {
-		mm = append(mm, ansi.ButtonEventMouseMode)
-	} else if t.mouseMode&ButtonMouseMode != 0 {
-		mm = append(mm, ansi.NormalMouseMode)
+	if !isWindows {
+		modes := []ansi.Mode{}
+		if t.mouseMode&MouseModeMotion != 0 {
+			modes = append(modes, ansi.AnyEventMouseMode)
+		} else if t.mouseMode&MouseModeDrag != 0 {
+			modes = append(modes, ansi.ButtonEventMouseMode)
+		} else if t.mouseMode&MouseModeClick != 0 {
+			modes = append(modes, ansi.NormalMouseMode)
+		}
+		modes = append(modes, ansi.SgrExtMouseMode)
+		t.EnableMode(modes...)
 	}
-	mm = append(mm, ansi.SgrExtMouseMode)
-	t.EnableMode(mm...)
 
 	// We probably don't need this since we switched to VT input on Windows.
 	// However, we'll keep it for now in case that decision is reverted in the

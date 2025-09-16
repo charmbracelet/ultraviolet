@@ -4,6 +4,19 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// MouseMode represents the mouse mode for the terminal. It is used to enable
+// or disable mouse support on the terminal.
+type MouseMode byte
+
+// Mouse modes
+const (
+	MouseModeClick MouseMode = 1 << iota
+	MouseModeDrag
+	MouseModeMotion
+
+	MouseModeOff MouseMode = 0
+)
+
 // MouseButton represents the button that was pressed during a mouse message.
 type MouseButton = ansi.MouseButton
 
