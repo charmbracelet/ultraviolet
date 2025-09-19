@@ -3,15 +3,15 @@
 
 package uv
 
-func (n *WindowSizeNotifier) start() error {
+func (n *SizeNotifier) start() error {
 	return ErrPlatformNotSupported
 }
 
-func (n *WindowSizeNotifier) stop() error {
+func (n *SizeNotifier) stop() error {
 	return ErrPlatformNotSupported
 }
 
-func (n *WindowSizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {
+func (n *SizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {
 	cells.Width, cells.Height, err = n.GetSize()
 	return cells, pixels, err
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/termios"
 )
 
-func (n *WindowSizeNotifier) start() error {
+func (n *SizeNotifier) start() error {
 	n.m.Lock()
 	defer n.m.Unlock()
 	if n.f == nil || !term.IsTerminal(n.f.Fd()) {
@@ -22,14 +22,14 @@ func (n *WindowSizeNotifier) start() error {
 	return nil
 }
 
-func (n *WindowSizeNotifier) stop() error {
+func (n *SizeNotifier) stop() error {
 	n.m.Lock()
 	signal.Stop(n.sig)
 	n.m.Unlock()
 	return nil
 }
 
-func (n *WindowSizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {
+func (n *SizeNotifier) getWindowSize() (cells Size, pixels Size, err error) {
 	n.m.Lock()
 	defer n.m.Unlock()
 
