@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/charmbracelet/colorprofile v0.3.2
-	github.com/charmbracelet/x/ansi v0.10.1
+	github.com/charmbracelet/x/ansi v0.10.2
 	github.com/charmbracelet/x/term v0.2.1
 	github.com/charmbracelet/x/termios v0.1.1
 	github.com/charmbracelet/x/windows v0.2.2
@@ -17,5 +17,5 @@ require (
 
 require (
 	github.com/lucasb-eyer/go-colorful v1.3.0
-	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mattn/go-runewidth v0.0.17 // indirect
 )
