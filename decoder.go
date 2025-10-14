@@ -399,7 +399,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 	case 'u' | '?'<<parser.PrefixShift:
 		// Kitty keyboard flags
 		flags, _, _ := pa.Param(0, -1)
-		return i, KittyEnhancementsEvent(flags)
+		return i, KeyboardEnhancementsEvent(flags)
 	case 'R' | '?'<<parser.PrefixShift:
 		// This report may return a third parameter representing the page
 		// number, but we don't really need it.

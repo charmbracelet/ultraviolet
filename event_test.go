@@ -282,7 +282,7 @@ func TestMouseEventMethods(t *testing.T) {
 
 // TestKittyEnhancementsEventContains tests the Contains method
 func TestKittyEnhancementsEventContains(t *testing.T) {
-	e := KittyEnhancementsEvent(0b111) // Has bits 0, 1, and 2 set
+	e := KeyboardEnhancementsEvent(0b111) // Has bits 0, 1, and 2 set
 
 	tests := []struct {
 		name         string

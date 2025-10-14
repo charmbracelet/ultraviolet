@@ -380,11 +380,11 @@ type KittyGraphicsEvent struct {
 	Payload []byte
 }
 
-// KittyEnhancementsEvent represents a Kitty enhancements event.
-type KittyEnhancementsEvent int
+// KeyboardEnhancementsEvent represents a keyboard enhancements report event.
+type KeyboardEnhancementsEvent uint8
 
 // Contains reports whether m contains the given enhancements.
-func (e KittyEnhancementsEvent) Contains(enhancements int) bool {
+func (e KeyboardEnhancementsEvent) Contains(enhancements int) bool {
 	return int(e)&enhancements == enhancements
 }
 

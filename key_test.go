@@ -255,8 +255,8 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1b[?16u\x1b[?u"),
 			[]Event{
-				KittyEnhancementsEvent(16),
-				KittyEnhancementsEvent(0),
+				KeyboardEnhancementsEvent(16),
+				KeyboardEnhancementsEvent(0),
 			},
 		},
 
