@@ -69,7 +69,6 @@ type Terminal struct {
 	rd        *TerminalReader
 	winchn    *SizeNotifier // The window size notifier for the terminal.
 	evch      chan Event
-	evdone    chan struct{}      // Channel to signal the event loop is done.
 	evctx     context.Context    // The context for the event channel.
 	evcancel  context.CancelFunc // The cancel function for the event channel.
 	evloop    chan struct{}      // Channel to signal the event loop has exited.
