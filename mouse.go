@@ -14,7 +14,7 @@ const (
 	MouseModeDrag
 	MouseModeMotion
 
-	MouseModeOff MouseMode = 0
+	MouseModeNone MouseMode = 0
 )
 
 // MouseButton represents the button that was pressed during a mouse message.
