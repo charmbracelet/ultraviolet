@@ -518,6 +518,12 @@ func (e ClipboardEvent) String() string {
 	return e.Content
 }
 
+// Clipboard returns the clipboard selection. This can be either
+// [SystemClipboard] 'c' or [PrimaryClipboard] 'p'.
+func (e ClipboardEvent) Clipboard() ClipboardSelection {
+	return e.Selection
+}
+
 // ignoredEvent represents a sequence event that is ignored by the terminal
 // reader. This is used to ignore certain sequences that can be canceled.
 type ignoredEvent string
