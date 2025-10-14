@@ -515,58 +515,41 @@ func (t *Terminal) SetCursorShape(shape CursorShape, blink bool) {
 }
 
 // EnableMouse enables mouse support on the terminal.
-// Calling this without any modes will enable all mouse modes by default.
-// The available modes are:
-//   - [ButtonMouseMode] Enables basic mouse button clicks and releases.
-//   - [DragMouseMode] Enables basic mouse buttons [ButtonMouseMode] as well as
-//     click-and-drag mouse motion events.
-//   - [AllMouseMode] Enables all mouse events including button clicks, releases,
-//     and all motion events. This inclodes the [ButtonMouseMode] and
-//     [DragMouseMode] modes.
 //
-// Note that on Unix, this won't take any effect until the next
-// [Terminal.Display] or [Terminal.Flush] call.
-func (t *Terminal) EnableMouse(modes ...MouseMode) {
-	var mode MouseMode
-	for _, m := range modes {
-		mode |= m
-	}
-	if len(modes) == 1 {
-		if mode&MouseModeMotion != 0 {
-			mode |= MouseModeDrag | MouseModeClick
-		}
-		if mode&MouseModeDrag != 0 {
-			mode |= MouseModeClick
-		}
-	}
-	if mode == 0 {
-		mode = MouseModeMotion | MouseModeDrag | MouseModeClick
-	}
+// Mode can be one of the following:
+//   - [MouseModeNone]: Disables mouse support.
+//   - [MouseModeClick]: Enables sending mouse click events.
+//   - [MouseModeDrag]: Enables sending mouse click and drag events.
+//   - [MouseModeMotion]: Enables sending mouse click, drag, and motion events.
+//
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
+func (t *Terminal) EnableMouse(mode MouseMode) {
+	var m ansi.Mode
 	t.mouseMode = mode
-	if !isWindows {
-		modes := []ansi.Mode{}
-		if t.mouseMode&MouseModeMotion != 0 {
-			modes = append(modes, ansi.AnyEventMouseMode)
-		} else if t.mouseMode&MouseModeDrag != 0 {
-			modes = append(modes, ansi.ButtonEventMouseMode)
-		} else if t.mouseMode&MouseModeClick != 0 {
-			modes = append(modes, ansi.NormalMouseMode)
-		}
-		modes = append(modes, ansi.SgrExtMouseMode)
-		t.EnableMode(modes...)
+	switch mode {
+	case MouseModeNone:
+		t.DisableMouse()
+		return
+	case MouseModeClick:
+		m = ansi.NormalMouseMode
+	case MouseModeDrag:
+		m = ansi.ButtonEventMouseMode
+	case MouseModeMotion:
+		m = ansi.AnyEventMouseMode
 	}
-
-	// We probably don't need this since we switched to VT input on Windows.
-	// However, we'll keep it for now in case that decision is reverted in the
-	// future.
-	t.enableWindowsMouse() //nolint:errcheck,gosec
+	if m != nil {
+		t.EnableMode(m, ansi.SgrExtMouseMode)
+		t.modes[m] = ansi.ModeSet
+		t.modes[ansi.SgrExtMouseMode] = ansi.ModeSet
+	}
 }
 
 // DisableMouse disables mouse support on the terminal. This will disable mouse
 // button and button motion events.
 //
-// Note that on Unix, this won't take any effect until the next
-// [Terminal.Display] or [Terminal.Flush] call.
+// Note that this won't take any effect until the next [Terminal.Display] or
+// [Terminal.Flush] call.
 func (t *Terminal) DisableMouse() {
 	t.mouseMode = 0
 	var modes []ansi.Mode
@@ -583,11 +566,6 @@ func (t *Terminal) DisableMouse() {
 		modes = append(modes, ansi.SgrExtMouseMode)
 	}
 	t.DisableMode(modes...)
-
-	// We probably don't need this since we switched to VT input on Windows.
-	// However, we'll keep it for now in case that decision is reverted in the
-	// future.
-	t.disableWindowsMouse() //nolint:errcheck,gosec
 }
 
 // EnableBracketedPaste enables bracketed paste mode on the terminal. This is

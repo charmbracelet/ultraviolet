@@ -8,13 +8,12 @@ import (
 // or disable mouse support on the terminal.
 type MouseMode byte
 
-// Mouse modes
+// Mouse modes.
 const (
-	MouseModeClick MouseMode = 1 << iota
+	MouseModeNone MouseMode = iota
+	MouseModeClick
 	MouseModeDrag
 	MouseModeMotion
-
-	MouseModeNone MouseMode = 0
 )
 
 // MouseButton represents the button that was pressed during a mouse message.

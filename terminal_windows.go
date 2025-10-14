@@ -84,14 +84,6 @@ func (t *Terminal) setMouse(enable bool) (err error) {
 	return term.SetState(inTty.Fd(), state) //nolint:wrapcheck
 }
 
-func (t *Terminal) enableWindowsMouse() (err error) {
-	return t.setMouse(true)
-}
-
-func (t *Terminal) disableWindowsMouse() (err error) {
-	return t.setMouse(false)
-}
-
 func supportsBackspace(uint64) bool {
 	return true
 }
