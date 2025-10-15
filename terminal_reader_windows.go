@@ -158,8 +158,8 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 
 			// We emulate mouse mode levels on Windows. This is because Windows
 			// doesn't have a concept of different mouse modes. We use the mouse mode to determine
-			if button == MouseNone && mouseMode&AllMouseMode == 0 ||
-				(button != MouseNone && mouseMode&DragMouseMode == 0) {
+			if button == MouseNone && mouseMode&MouseModeMotion == 0 ||
+				(button != MouseNone && mouseMode&MouseModeDrag == 0) {
 				continue
 			}
 
