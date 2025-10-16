@@ -73,6 +73,7 @@ type Terminal struct {
 	// Renderer state.
 	state     state
 	lastState *state
+	prepend   []string
 
 	logger Logger // The debug logger for I/O.
 }
@@ -81,7 +82,6 @@ type state struct {
 	altscreen bool
 	curHidden bool
 	cur       Position
-	prepend   []string
 }
 
 // DefaultTerminal returns a new default terminal instance that uses
@@ -391,11 +391,11 @@ func (t *Terminal) Display() error {
 	t.scr.Render(t.buf)
 
 	// add any prepended strings.
-	if len(state.prepend) > 0 {
-		for _, line := range state.prepend {
+	if len(t.prepend) > 0 {
+		for _, line := range t.prepend {
 			prependLine(t, line)
 		}
-		state.prepend = state.prepend[:0]
+		t.prepend = t.prepend[:0]
 	}
 
 	if !state.curHidden && state.cur != Pos(-1, -1) {
@@ -662,7 +662,7 @@ func (t *Terminal) SendEvent(ev Event) {
 //
 // Note that this won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) PrependString(str string) {
-	t.state.prepend = append(t.state.prepend, str)
+	t.prepend = append(t.prepend, str)
 }
 
 // PrependLines adds lines of cells to the top of the terminal screen. The
@@ -680,7 +680,7 @@ func (t *Terminal) PrependString(str string) {
 // Note that this won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) PrependLines(lines ...Line) {
 	for _, l := range lines {
-		t.state.prepend = append(t.state.prepend, l.Render())
+		t.prepend = append(t.prepend, l.Render())
 	}
 }
 
