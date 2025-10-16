@@ -307,11 +307,21 @@ type Key struct {
 	IsRepeat bool
 }
 
-// MatchString returns true if the [Key] matches the given string. The string
-// can be a key name like "enter", "tab", "a", or a printable character like
-// "1" or " ". It can also have combinations of modifiers like "ctrl+a",
-// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
-func (k Key) MatchString(s string) bool {
+// MatchString returns true if the [Key] matches one of the given strings.
+//
+// A string can be a key name like "enter", "tab", "a", or a printable
+// character like "1" or " ". It can also have combinations of modifiers like
+// "ctrl+a", "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
+func (k Key) MatchString(s ...string) bool {
+	for _, s := range s {
+		if keyMatchString(k, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func keyMatchString(k Key, s string) bool {
 	var (
 		mod  KeyMod
 		code rune
@@ -370,20 +380,6 @@ func (k Key) MatchString(s string) bool {
 	// Check if we have a match.
 	return (k.Mod == mod && k.Code == code) ||
 		(k.Text != "" && k.Text == text)
-}
-
-// MatchStrings returns true if the [Key] matches any of the given strings. The
-// strings can be key names like "enter", "tab", "a", or a printable character
-// like "1" or " ". It can also have combinations of modifiers like "ctrl+a",
-// "shift+enter", "alt+tab", "ctrl+shift+enter", etc.
-// See [Key.MatchString] for more details.
-func (k Key) MatchStrings(ss ...string) bool {
-	for _, s := range ss {
-		if k.MatchString(s) {
-			return true
-		}
-	}
-	return false
 }
 
 // String implements [fmt.Stringer] and is quite useful for matching key
