@@ -61,8 +61,6 @@ func main() {
 		log.Fatalf("failed to get terminal size: %v", err)
 	}
 
-	t.EnterAltScreen()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -75,79 +73,78 @@ func main() {
 	var lastWidth, lastHeight int
 	colors := setupColors(area.Dx(), area.Dy())
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
-	go t.SendEvent(ctx, tickEvent{})
+	go t.SendEvent(tickEvent{})
 
 LOOP:
-	for ev := range evch {
-		switch ev := ev.(type) {
-		case uv.KeyPressEvent:
-			switch ev.String() {
-			case "q", "ctrl+c":
-				cancel()
-				break LOOP
-			}
-
-		case uv.WindowSizeEvent:
-			area.Max.X = ev.Width
-			area.Max.Y = ev.Height
-			if width, height := area.Dx(), area.Dy(); width != lastWidth || height != lastHeight {
-				colors = setupColors(width, height)
-				lastWidth = width
-				lastHeight = height
-				t.Resize(area.Dx(), area.Dy())
-				t.Erase()
-			}
-		case tickEvent:
-			if len(colors) == 0 {
-				continue
-			}
-
-			frameCount++
-			fpsFrameCount++
-			screen.Clear(t)
-
-			// Title
-			uv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).
-				Draw(t, uv.Rect(0, 0, area.Dx(), 1))
-
-			// Color display
-			width, height := area.Dx(), area.Dy() // Reserve one line for the title
-			for y := 1; y < height; y++ {
-				for x := 0; x < width; x++ {
-					xi := (x + frameCount) % width
-					fg := colors[y*2][xi]
-					bg := colors[y*2+1][xi]
-					st := uv.Style{
-						Fg: fg,
-						Bg: bg,
-					}
-					t.SetCell(x, y, &uv.Cell{
-						Content: "▀",
-						Style:   st,
-						Width:   1,
-					})
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			switch ev := ev.(type) {
+			case uv.KeyPressEvent:
+				switch ev.String() {
+				case "q", "ctrl+c":
+					cancel()
+					break LOOP
 				}
-			}
 
-			t.Display()
-			elapsed = time.Since(now)
-			if elapsed > time.Second && fpsFrameCount > 2 {
-				fps = float64(fpsFrameCount) / elapsed.Seconds()
-				now = time.Now()
-				fpsFrameCount = 0
-			}
+			case uv.WindowSizeEvent:
+				area.Max.X = ev.Width
+				area.Max.Y = ev.Height
+				if width, height := area.Dx(), area.Dy(); width != lastWidth || height != lastHeight {
+					colors = setupColors(width, height)
+					lastWidth = width
+					lastHeight = height
+					t.Resize(area.Dx(), area.Dy())
+					t.Erase()
+				}
+			case tickEvent:
+				if len(colors) == 0 {
+					continue
+				}
 
-			go t.SendEvent(ctx, tickEvent{})
+				frameCount++
+				fpsFrameCount++
+				screen.Clear(t)
+
+				// Title
+				uv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).
+					Draw(t, uv.Rect(0, 0, area.Dx(), 1))
+
+				// Color display
+				width, height := area.Dx(), area.Dy() // Reserve one line for the title
+				for y := 1; y < height; y++ {
+					for x := 0; x < width; x++ {
+						xi := (x + frameCount) % width
+						fg := colors[y*2][xi]
+						bg := colors[y*2+1][xi]
+						st := uv.Style{
+							Fg: fg,
+							Bg: bg,
+						}
+						t.SetCell(x, y, &uv.Cell{
+							Content: "▀",
+							Style:   st,
+							Width:   1,
+						})
+					}
+				}
+
+				t.Display()
+				elapsed = time.Since(now)
+				if elapsed > time.Second && fpsFrameCount > 2 {
+					fps = float64(fpsFrameCount) / elapsed.Seconds()
+					now = time.Now()
+					fpsFrameCount = 0
+				}
+
+				go t.SendEvent(tickEvent{})
+			}
 		}
 	}
 
-	if err := t.Shutdown(ctx); err != nil {
-		log.Fatalf("failed to shutdown terminal: %v", err)
+	if err := t.Shutdown(context.Background()); err != nil {
+		log.Printf("failed to shutdown terminal: %v", err)
 	}
 }

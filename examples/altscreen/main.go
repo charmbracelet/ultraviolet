@@ -49,37 +49,37 @@ func main() {
 
 		ss := uv.NewStyledString(str)
 		screen.Clear(t)
-		ss.Draw(t, uv.Rect(0, 0, width, frameHeight))
+		t.Render(ss)
 		t.Display()
 	}
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
 	var cursorHidden bool
-	for ev := range evch {
-		switch ev := ev.(type) {
-		case uv.WindowSizeEvent:
-			width, height = ev.Width, ev.Height
-			t.Erase()
-			display()
-		case uv.KeyPressEvent:
-			switch {
-			case ev.MatchStrings("ctrl+c", "q"):
-				altScreen = false
-				stop()
-			case ev.MatchString("space"):
-				altScreen = !altScreen
-			default:
-				if cursorHidden {
-					t.HideCursor()
-				} else {
-					t.ShowCursor()
+LOOP:
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			switch ev := ev.(type) {
+			case uv.WindowSizeEvent:
+				width, height = ev.Width, ev.Height
+				t.Erase()
+				display()
+			case uv.KeyPressEvent:
+				switch {
+				case ev.MatchStrings("ctrl+c", "q"):
+					altScreen = false
+					stop()
+				case ev.MatchString("space"):
+					altScreen = !altScreen
+				default:
+					if cursorHidden {
+						t.HideCursor()
+					} else {
+						t.ShowCursor()
+					}
+					cursorHidden = !cursorHidden
 				}
-				cursorHidden = !cursorHidden
 			}
 		}
 		display()

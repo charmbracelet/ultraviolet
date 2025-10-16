@@ -16,10 +16,6 @@ func main() {
 	// Or simply use...
 	// t := uv.DefaultTerminal()
 
-START:
-	// Enter the alternate screen buffer
-	t.EnterAltScreen()
-
 	// Create a new program
 	// Start the program
 	if err := t.Start(); err != nil {
@@ -54,36 +50,36 @@ START:
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
 	// This will block until we close the events
 	// channel or cancel the context.
-	for ev := range evch {
-		switch ev := ev.(type) {
-		case uv.WindowSizeEvent:
-			t.Resize(ev.Width, ev.Height)
-			t.Erase()
-		case uv.KeyPressEvent:
-			if ev.MatchStrings("q", "ctrl+c") {
-				cancel() // This will stop the loop
-			} else if ev.MatchString("ctrl+z") {
+LOOP:
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			switch ev := ev.(type) {
+			case uv.WindowSizeEvent:
+				t.Resize(ev.Width, ev.Height)
 				t.Erase()
-				if err := t.Display(); err != nil {
-					log.Fatal(err)
+			case uv.KeyPressEvent:
+				if ev.MatchStrings("q", "ctrl+c") {
+					cancel() // This will stop the loop
+				} else if ev.MatchString("ctrl+z") {
+					t.Erase()
+					if err := t.Display(); err != nil {
+						log.Fatal(err)
+					}
+					if t.Pause() != nil {
+						log.Fatal("failed to shutdown terminal")
+					}
+
+					uv.Suspend()
+
+					if err := t.Resume(); err != nil {
+						log.Fatal("failed to resume terminal")
+					}
 				}
-				if t.Shutdown(ctx) != nil {
-					log.Fatal("failed to shutdown terminal")
-				}
-
-				cancel()
-
-				uv.Suspend()
-
-				goto START
 			}
 		}
 
