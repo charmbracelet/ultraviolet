@@ -34,6 +34,13 @@ func NewStyledString(str string) *StyledString {
 	return ss
 }
 
+// String returns the text of the styled string.
+//
+// It implements the [fmt.Stringer] interface.
+func (s *StyledString) String() string {
+	return s.Text
+}
+
 // Draw renders the styled string to the given buffer at the
 // specified area.
 func (s *StyledString) Draw(buf Screen, area Rectangle) {
