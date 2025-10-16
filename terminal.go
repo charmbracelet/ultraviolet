@@ -61,9 +61,10 @@ type Terminal struct {
 	// Terminal input stream.
 	cr       cancelreader.CancelReader
 	rd       *TerminalReader
-	winchn   *SizeNotifier // The window size notifier for the terminal.
-	evch     chan Event
-	evctx    context.Context    // The context for the event channel.
+	winchn   *SizeNotifier      // The window size notifier for the terminal.
+	evs      chan Event         // receiving event channel.
+	evch     chan Event         // event loop channel
+	evctx    context.Context    // context for the event channel.
 	evcancel context.CancelFunc // The cancel function for the event channel.
 	evloop   chan struct{}      // Channel to signal the event loop has exited.
 	once     sync.Once
@@ -108,6 +109,7 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.buf = NewBuffer(0, 0)
 	t.method = ansi.WcWidth // Default width method.
 	t.SetColorProfile(colorprofile.Detect(out, env))
+	t.evs = make(chan Event)
 	t.evch = make(chan Event)
 	t.once = sync.Once{}
 
@@ -634,7 +636,7 @@ func (t *Terminal) Shutdown(ctx context.Context) error {
 // Events returns the event channel used by the terminal to send input events.
 // Use [Terminal.SendEvent] to send events to the terminal event loop.
 func (t *Terminal) Events() <-chan Event {
-	return t.evch
+	return t.evs
 }
 
 // SendEvent sends the given event to the terminal event loop. This is
@@ -762,29 +764,34 @@ func (t *Terminal) initialize() error {
 	t.rd.SetLogger(t.logger)
 	t.evloop = make(chan struct{})
 
+	// Send the initial window size to the event channel.
+	t.errg.Go(t.initialResizeEvent)
+
 	// Start the window size notifier if it is available.
 	if t.winchn != nil {
 		if err := t.winchn.Start(); err != nil {
 			return fmt.Errorf("error starting window size notifier: %w", err)
 		}
-	}
 
-	// Send the initial window size to the event channel.
-	t.errg.Go(t.initialResizeEvent)
-
-	// Start SIGWINCH listener if available.
-	if t.winchn != nil {
+		// Start SIGWINCH listener if available.
 		t.errg.Go(t.resizeLoop)
 	}
 
-	// Input event loop.
+	// Input and event loops
 	t.errg.Go(t.inputLoop)
+	t.errg.Go(t.eventLoop)
 
 	return nil
 }
 
 func (t *Terminal) initialResizeEvent() error {
-	cells, pixels, err := t.winchn.GetWindowSize()
+	var cells, pixels Size
+	var err error
+	if t.winchn == nil {
+		cells.Width, cells.Height, err = t.GetSize()
+	} else {
+		cells, pixels, err = t.winchn.GetWindowSize()
+	}
 	if err != nil {
 		return err
 	}
@@ -795,17 +802,20 @@ func (t *Terminal) initialResizeEvent() error {
 	if pixels.Width > 0 && pixels.Height > 0 {
 		events = append(events, WindowPixelSizeEvent(pixels))
 	}
-	for _, c := range events {
+	for _, e := range events {
 		select {
 		case <-t.evctx.Done():
 			return nil
-		case t.evch <- c:
+		case t.evch <- e:
 		}
 	}
 	return nil
 }
 
 func (t *Terminal) resizeLoop() error {
+	if t.winchn == nil {
+		return nil
+	}
 	for {
 		select {
 		case <-t.evctx.Done():
@@ -816,25 +826,31 @@ func (t *Terminal) resizeLoop() error {
 				return err
 			}
 
-			t.m.Lock()
-			t.size = cells
-			if pixels.Width > 0 && pixels.Height > 0 {
-				t.pixSize = pixels
-			}
-			t.m.Unlock()
+			t.m.RLock()
+			size, pixSize := t.size, t.pixSize
+			t.m.RUnlock()
 
-			select {
-			case <-t.evctx.Done():
-				return nil
-			case t.evch <- WindowSizeEvent(cells):
+			if cells != size {
+				select {
+				case <-t.evctx.Done():
+					return nil
+				case t.evch <- WindowSizeEvent(cells):
+				}
 			}
-			if pixels.Width > 0 && pixels.Height > 0 {
+			if pixels != pixSize && pixels.Width > 0 && pixels.Height > 0 {
 				select {
 				case <-t.evctx.Done():
 					return nil
 				case t.evch <- WindowPixelSizeEvent(pixels):
 				}
 			}
+
+			t.m.Lock()
+			t.size = cells
+			if pixels.Width > 0 && pixels.Height > 0 {
+				t.pixSize = pixels
+			}
+			t.m.Unlock()
 		}
 	}
 }
@@ -846,6 +862,34 @@ func (t *Terminal) inputLoop() error {
 		return err
 	}
 	return nil
+}
+
+func (t *Terminal) eventLoop() error {
+	for {
+		select {
+		case <-t.evctx.Done():
+			return nil
+		case ev, ok := <-t.evch:
+			if !ok {
+				return nil
+			}
+			switch ev := ev.(type) {
+			case WindowSizeEvent:
+				t.m.Lock()
+				t.size = Size(ev)
+				t.m.Unlock()
+			case WindowPixelSizeEvent:
+				t.m.Lock()
+				t.pixSize = Size(ev)
+				t.m.Unlock()
+			}
+			select {
+			case <-t.evctx.Done():
+				return nil
+			case t.evs <- ev:
+			}
+		}
+	}
 }
 
 // restoreTTY restores the terminal TTY to its original state.
