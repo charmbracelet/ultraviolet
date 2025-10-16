@@ -49,7 +49,7 @@ func main() {
 
 		ss := uv.NewStyledString(str)
 		screen.Clear(t)
-		t.Render(ss)
+		t.Draw(ss)
 		t.Display()
 	}
 
@@ -67,7 +67,7 @@ LOOP:
 				display()
 			case uv.KeyPressEvent:
 				switch {
-				case ev.MatchStrings("ctrl+c", "q"):
+				case ev.MatchString("ctrl+c", "q"):
 					altScreen = false
 					stop()
 				case ev.MatchString("space"):

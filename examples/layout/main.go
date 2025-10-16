@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/rivo/uniseg"
 )
@@ -386,7 +387,7 @@ func main() {
 	t.EnterAltScreen()
 
 	// Enable mouse events.
-	t.EnableMouse()
+	t.WriteString(ansi.SetButtonEventMouseMode + ansi.SetSgrExtMouseMode)
 
 	// Display the program.
 	dialogWidth := lipgloss.Width(dialogUI) + dialogBoxStyle.GetHorizontalFrameSize()
@@ -404,23 +405,14 @@ func main() {
 		t.Display()
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// First display.
 	display()
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
-	for ev := range evch {
+LOOP:
+	for ev := range t.Events() {
 		log.Printf("event: %T", ev)
 		switch ev := ev.(type) {
 		case uv.WindowSizeEvent:
-			physicalWidth, _ = ev.Width, ev.Height
 			t.Resize(ev.Width, ev.Height)
 			t.Erase()
 		case uv.MouseClickEvent:
@@ -428,15 +420,15 @@ func main() {
 		case uv.KeyPressEvent:
 			log.Printf("%T %q %q", ev, ev.String(), ev.Keystroke())
 			switch {
-			case ev.MatchStrings("ctrl+c", "q"):
-				cancel() // This will exit the loop.
-			case ev.MatchStrings("left", "h"):
+			case ev.MatchString("ctrl+c", "q"):
+				break LOOP
+			case ev.MatchString("left", "h"):
 				dialogX--
-			case ev.MatchStrings("down", "j"):
+			case ev.MatchString("down", "j"):
 				dialogY++
-			case ev.MatchStrings("up", "k"):
+			case ev.MatchString("up", "k"):
 				dialogY--
-			case ev.MatchStrings("right", "l"):
+			case ev.MatchString("right", "l"):
 				dialogX++
 			}
 		}
@@ -445,8 +437,10 @@ func main() {
 		display()
 	}
 
+	t.WriteString(ansi.ResetButtonEventMouseMode + ansi.ResetSgrExtMouseMode)
+
 	// Shutdown the program gracefully and exit.
-	if err := t.Shutdown(ctx); err != nil {
+	if err := t.Shutdown(context.Background()); err != nil {
 		log.Fatalf("shutting down program: %v", err)
 	}
 }

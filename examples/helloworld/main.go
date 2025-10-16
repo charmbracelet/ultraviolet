@@ -63,7 +63,7 @@ LOOP:
 				t.Resize(ev.Width, ev.Height)
 				t.Erase()
 			case uv.KeyPressEvent:
-				if ev.MatchStrings("q", "ctrl+c") {
+				if ev.MatchString("q", "ctrl+c") {
 					cancel() // This will stop the loop
 				} else if ev.MatchString("ctrl+z") {
 					t.Erase()

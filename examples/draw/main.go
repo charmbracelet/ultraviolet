@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"unicode"
 	"unicode/utf8"
 
@@ -13,32 +12,19 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-func init() {
-	f, err := os.OpenFile("tv_debug.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
-	if err != nil {
-		log.Fatalf("failed to open log file: %v", err)
-	}
-	log.SetOutput(f)
-}
-
 func main() {
 	t := uv.DefaultTerminal()
-	t.SetTitle("Draw Example")
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
-	defer t.Restore() //nolint:errcheck
+	modes := []ansi.Mode{
+		ansi.ButtonEventMouseMode,
+		ansi.SgrExtMouseMode,
+		ansi.FocusEventMode,
+	}
 
-	// Use altscreen buffer.
-	t.EnterAltScreen()      //nolint:errcheck
-	defer t.ExitAltScreen() //nolint:errcheck
-
-	// Enable mouse events.
-	t.EnableMouse()        //nolint:errcheck
-	defer t.DisableMouse() //nolint:errcheck
-
-	t.EnableMode(ansi.FocusEventMode)
+	t.WriteString(ansi.SetMode(modes...))
 
 	width, height, err := t.GetSize()
 	if err != nil {
@@ -146,67 +132,69 @@ Press any key to continue...`
 		t.Display()
 	}
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
-	for ev := range evch {
-		switch ev := ev.(type) {
-		case uv.WindowSizeEvent:
-			if showingHelp {
-				displayHelp(false)
-			}
-			width, height = ev.Width, ev.Height
-			t.Resize(ev.Width, ev.Height)
-			t.Erase()
-			if showingHelp {
-				displayHelp(showingHelp)
-			}
-		case uv.KeyPressEvent:
-			if showingHelp {
-				showingHelp = false
-				displayHelp(showingHelp)
-				break
-			}
-			switch {
-			case ev.MatchStrings("ctrl+c"):
-				cancel()
-			case ev.MatchString("alt+esc"):
-				pen.Style = uv.Style{}
-				pen.Content = defaultChar
-				fallthrough
-			case ev.MatchString("esc"):
-				clearScreen()
-			case ev.MatchString("ctrl+h"):
-				showingHelp = true
-				displayHelp(showingHelp)
-			default:
-				text := ev.Text
-				if len(text) == 0 {
+LOOP:
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			switch ev := ev.(type) {
+			case uv.WindowSizeEvent:
+				if showingHelp {
+					displayHelp(false)
+				}
+				width, height = ev.Width, ev.Height
+				t.Resize(ev.Width, ev.Height)
+				t.Erase()
+				if showingHelp {
+					displayHelp(showingHelp)
+				}
+			case uv.KeyPressEvent:
+				if showingHelp {
+					showingHelp = false
+					displayHelp(showingHelp)
 					break
 				}
-				r, rw := utf8.DecodeRuneInString(text)
-				if rw == 1 && unicode.IsDigit(r) {
-					pen.Style = pen.Style.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
+				switch {
+				case ev.MatchString("ctrl+c"):
+					cancel()
+				case ev.MatchString("alt+esc"):
+					pen.Style = uv.Style{}
+					pen.Content = defaultChar
+					fallthrough
+				case ev.MatchString("esc"):
+					clearScreen()
+				case ev.MatchString("ctrl+h"):
+					showingHelp = true
+					displayHelp(showingHelp)
+				default:
+					text := ev.Text
+					if len(text) == 0 {
+						break
+					}
+					r, rw := utf8.DecodeRuneInString(text)
+					if rw == 1 && unicode.IsDigit(r) {
+						pen.Style = pen.Style.Foreground(ansi.Black + ansi.BasicColor(r-'0'))
+						break
+					}
+					pen.Content = text
+					pen.Width = runewidth.RuneWidth(r)
+				}
+			case uv.MouseClickEvent:
+				if showingHelp {
 					break
 				}
-				pen.Content = text
-				pen.Width = runewidth.RuneWidth(r)
+				draw(ev)
+			case uv.MouseMotionEvent:
+				if showingHelp || ev.Button == uv.MouseNone {
+					break
+				}
+				draw(ev)
 			}
-		case uv.MouseClickEvent:
-			if showingHelp {
-				break
-			}
-			draw(ev)
-		case uv.MouseMotionEvent:
-			if showingHelp || ev.Button == uv.MouseNone {
-				break
-			}
-			draw(ev)
 		}
 	}
+
+	t.WriteString(ansi.ResetMode(modes...))
 
 	// Shutdown the program.
 	if err := t.Shutdown(context.Background()); err != nil {

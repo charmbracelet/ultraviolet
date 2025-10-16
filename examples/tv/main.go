@@ -122,23 +122,23 @@ func main() {
 		}
 	}
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
-	for ev := range evch {
-		switch ev := ev.(type) {
-		case uv.WindowSizeEvent:
-			area.Max.X, area.Max.Y = ev.Width, ev.Height
-			t.Resize(area.Max.X, area.Max.Y)
-			t.Erase()
-			display()
-		case uv.KeyPressEvent:
-			switch {
-			case ev.MatchStrings("q", "ctrl+c"):
-				cancel()
+LOOP:
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			switch ev := ev.(type) {
+			case uv.WindowSizeEvent:
+				area.Max.X, area.Max.Y = ev.Width, ev.Height
+				t.Resize(area.Max.X, area.Max.Y)
+				t.Erase()
+				display()
+			case uv.KeyPressEvent:
+				switch {
+				case ev.MatchString("q", "ctrl+c"):
+					cancel()
+				}
 			}
 		}
 	}

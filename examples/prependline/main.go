@@ -96,7 +96,7 @@ LOOP:
 			switch ev := ev.(type) {
 			case uv.KeyPressEvent:
 				switch {
-				case ev.MatchStrings("q", "ctrl+c"):
+				case ev.MatchString("q", "ctrl+c"):
 					cancel()
 				}
 
