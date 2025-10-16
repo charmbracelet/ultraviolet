@@ -1093,7 +1093,7 @@ func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
 		bts := s.buf.Bytes()
-		if !s.flags.Contains(tCursorHidden) {
+		if !s.flags.Contains(tCursorHidden) && !bytes.HasSuffix(bts, []byte(ansi.ShowCursor)) {
 			// Hide the cursor during the flush operation.
 			buf := make([]byte, len(bts)+len(ansi.HideCursor)+len(ansi.ShowCursor))
 			copy(buf, ansi.HideCursor)
