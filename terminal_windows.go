@@ -64,26 +64,6 @@ func (t *Terminal) optimizeMovements() {
 	t.useTabs = supportsHardTabs(0)
 }
 
-func (t *Terminal) setMouse(enable bool) (err error) {
-	inTty := t.inTty
-	if inTty == nil {
-		_, inTty, err = openTTY()
-		if err != nil {
-			return err
-		}
-	}
-	state, err := term.GetState(inTty.Fd())
-	if err != nil {
-		return err //nolint:wrapcheck
-	}
-	if enable {
-		state.Mode |= windows.ENABLE_MOUSE_INPUT
-	} else {
-		state.Mode &^= windows.ENABLE_MOUSE_INPUT
-	}
-	return term.SetState(inTty.Fd(), state) //nolint:wrapcheck
-}
-
 func supportsBackspace(uint64) bool {
 	return true
 }
