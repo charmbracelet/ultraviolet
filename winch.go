@@ -1,80 +1,55 @@
 package uv
 
 import (
-	"context"
 	"os"
 	"sync"
 
 	"github.com/charmbracelet/x/term"
 )
 
-// WindowSizeNotifier represents a notifier that listens for window size
+// SizeNotifier represents a notifier that listens for window size
 // changes using the SIGWINCH signal and notifies the given channel.
-type WindowSizeNotifier struct {
+type SizeNotifier struct {
+	// Channel that receives terminal size change notifications.
+	C <-chan os.Signal
+
 	f   term.File
 	sig chan os.Signal
 	m   sync.Mutex
 }
 
-// NewWindowSizeNotifier creates a new WindowSizeNotifier with the given file.
-func NewWindowSizeNotifier(f term.File) *WindowSizeNotifier {
+// NewSizeNotifier creates a new [SizeNotifier] that listens for window size
+// changes on the given TTY file through SIGWINCH signals.
+func NewSizeNotifier(f term.File) *SizeNotifier {
 	if f == nil {
 		panic("no file set")
 	}
-	return &WindowSizeNotifier{
+	sig := make(chan os.Signal)
+	return &SizeNotifier{
 		f:   f,
-		sig: make(chan os.Signal),
+		sig: sig,
+		C:   sig,
 	}
 }
 
-// StreamEvents reads the terminal size change events and sends them to the
-// given channel. It stops when the context is done.
-func (n *WindowSizeNotifier) StreamEvents(ctx context.Context, ch chan<- Event) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-n.sig:
-			cells, pixels, err := n.GetWindowSize()
-			if err != nil {
-				return err
-			}
-
-			select {
-			case <-ctx.Done():
-				return nil
-			case ch <- WindowSizeEvent(cells):
-			}
-			if pixels.Width > 0 && pixels.Height > 0 {
-				select {
-				case <-ctx.Done():
-					return nil
-				case ch <- WindowPixelSizeEvent(pixels):
-				}
-			}
-		}
-	}
-}
-
-// Start starts the notifier by registering for the SIGWINCH signal. It must be
-// called before using [WindowSizeNotifier.Notify] or
-// [WindowSizeNotifier.StreamEvents].
-func (n *WindowSizeNotifier) Start() error {
+// Start starts listening for window size changes and notifies [SizeNotifier.C]
+// about any changes.
+func (n *SizeNotifier) Start() error {
 	return n.start()
 }
 
 // Stop stops the notifier and cleans up resources.
-func (n *WindowSizeNotifier) Stop() error {
+func (n *SizeNotifier) Stop() error {
 	return n.stop()
 }
 
 // GetWindowSize returns the current size of the terminal window.
-func (n *WindowSizeNotifier) GetWindowSize() (cells Size, pixels Size, err error) {
+func (n *SizeNotifier) GetWindowSize() (cells Size, pixels Size, err error) {
 	return n.getWindowSize()
 }
 
 // GetSize returns the current cell size of the terminal window.
-func (n *WindowSizeNotifier) GetSize() (width, height int, err error) {
+func (n *SizeNotifier) GetSize() (width, height int, err error) {
 	n.m.Lock()
 	defer n.m.Unlock()
 

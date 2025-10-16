@@ -143,7 +143,6 @@ type TerminalRenderer struct {
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
 	logger           Logger       // The logger used for debugging.
-	laterFlush       bool         // whether this is the first flush of the renderer
 
 	// profile is the color profile to use when downsampling colors. This is
 	// used to determine the appropriate color the terminal can display.
@@ -1094,7 +1093,7 @@ func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
 		bts := s.buf.Bytes()
-		if !s.flags.Contains(tCursorHidden) {
+		if !s.flags.Contains(tCursorHidden) && !bytes.HasSuffix(bts, []byte(ansi.ShowCursor)) {
 			// Hide the cursor during the flush operation.
 			buf := make([]byte, len(bts)+len(ansi.HideCursor)+len(ansi.ShowCursor))
 			copy(buf, ansi.HideCursor)
@@ -1107,7 +1106,6 @@ func (s *TerminalRenderer) Flush() (err error) {
 		}
 		_, err = s.w.Write(bts)
 		s.buf.Reset()
-		s.laterFlush = true
 	}
 	return
 }
@@ -1225,7 +1223,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		}
 	}
 
-	if !s.laterFlush && !s.flags.Contains(tAltScreen) && s.scrollHeight < newHeight-1 {
+	if !s.flags.Contains(tAltScreen) && s.scrollHeight < newHeight-1 {
 		s.move(newbuf, 0, newHeight-1)
 	}
 

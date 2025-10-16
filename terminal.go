@@ -1,7 +1,6 @@
 package uv
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"image/color"
@@ -10,11 +9,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
-	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/cancelreader"
 	"golang.org/x/sync/errgroup"
 )
@@ -26,8 +26,11 @@ var (
 	// ErrPlatformNotSupported is returned when the platform is not supported.
 	ErrPlatformNotSupported = fmt.Errorf("platform not supported")
 
-	// ErrStarted is returned when the terminal has already been started.
-	ErrStarted = fmt.Errorf("terminal already started")
+	// ErrRunning is returned when the terminal is already running.
+	ErrRunning = fmt.Errorf("terminal is running")
+
+	// ErrNotRunning is returned when the terminal is not running.
+	ErrNotRunning = fmt.Errorf("terminal not running")
 )
 
 // Terminal represents a terminal screen that can be manipulated and drawn to.
@@ -41,39 +44,44 @@ type Terminal struct {
 	inTtyState  *term.State
 	outTty      term.File
 	outTtyState *term.State
-	started     bool // Indicates if the terminal has been started.
+	running     atomic.Bool // Indicates if the terminal is running
 
 	// Terminal type, screen and buffer.
-	termtype            string            // The $TERM type.
-	environ             Environ           // The environment variables.
-	buf                 *Buffer           // Reference to the last buffer used.
-	scr                 *TerminalRenderer // The actual screen to be drawn to.
-	size                Size              // The last known full size of the terminal.
-	pixSize             Size              // The last known pixel size of the terminal.
-	method              ansi.Method       // The width method used by the terminal.
-	profile             colorprofile.Profile
-	modes               ansi.Modes  // Keep track of terminal modes.
-	useTabs             bool        // Whether to use hard tabs or not.
-	useBspace           bool        // Whether to use backspace or not.
-	cursorHidden        bool        // The cached state of the cursor visibility.
-	altscreen           bool        // Cached state of the alternate screen buffer.
-	setFg, setBg, setCc color.Color // The current set foreground, background, and cursor colors.
-	curStyle            int         // The encoded cursor style.
-	cur                 Position    // The last known cursor position before shutdown.
+	termtype  string            // The $TERM type.
+	environ   Environ           // The environment variables.
+	buf       *Buffer           // Reference to the last buffer used.
+	scr       *TerminalRenderer // The actual screen to be drawn to.
+	size      Size              // The last known full size of the terminal.
+	pixSize   Size              // The last known pixel size of the terminal.
+	method    ansi.Method       // The width method used by the terminal.
+	profile   colorprofile.Profile
+	useTabs   bool // Whether to use hard tabs or not.
+	useBspace bool // Whether to use backspace or not.
 
 	// Terminal input stream.
-	cr        cancelreader.CancelReader
-	rd        *TerminalReader
-	winchn    *WindowSizeNotifier // The window size notifier for the terminal.
-	evch      chan Event
-	evctx     context.Context    // The context for the event channel.
-	evcancel  context.CancelFunc // The cancel function for the event channel.
-	once      sync.Once
-	mouseMode MouseMode // The mouse mode for the terminal.
-	wg        sync.WaitGroup
-	m         sync.RWMutex // Mutex to protect the terminal state.
+	cr       cancelreader.CancelReader
+	rd       *TerminalReader
+	winchn   *SizeNotifier // The window size notifier for the terminal.
+	evch     chan Event
+	evctx    context.Context    // The context for the event channel.
+	evcancel context.CancelFunc // The cancel function for the event channel.
+	evloop   chan struct{}      // Channel to signal the event loop has exited.
+	once     sync.Once
+	errg     *errgroup.Group
+	m        sync.RWMutex // Mutex to protect the terminal state.
+
+	// Renderer state.
+	state     state
+	lastState *state
 
 	logger Logger // The debug logger for I/O.
+}
+
+type state struct {
+	altscreen bool
+	curHidden bool
+	cur       Position
+	prepend   []string
 }
 
 // DefaultTerminal returns a new default terminal instance that uses
@@ -82,19 +90,8 @@ func DefaultTerminal() *Terminal {
 	return NewTerminal(os.Stdin, os.Stdout, os.Environ())
 }
 
-var defaultModes = ansi.Modes{
-	// These are modes we care about and want to track.
-	ansi.TextCursorEnableMode:    ansi.ModeSet,
-	ansi.AltScreenSaveCursorMode: ansi.ModeReset,
-	ansi.ButtonEventMouseMode:    ansi.ModeReset,
-	ansi.AnyEventMouseMode:       ansi.ModeReset,
-	ansi.SgrExtMouseMode:         ansi.ModeReset,
-	ansi.BracketedPasteMode:      ansi.ModeReset,
-	ansi.FocusEventMode:          ansi.ModeReset,
-}
-
-// NewTerminal creates a new Terminal instance with the given terminal size.
-// Use [term.GetSize] to get the size of the output screen.
+// NewTerminal creates a new [Terminal] instance with the given I/O streams and
+// environment variables.
 func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t := new(Terminal)
 	t.in = in
@@ -105,11 +102,6 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	if f, ok := out.(term.File); ok {
 		t.outTty = f
 	}
-	t.modes = ansi.Modes{}
-	// Initialize the default modes.
-	for k, v := range defaultModes {
-		t.modes[k] = v
-	}
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.scr = NewTerminalRenderer(t.out, t.environ)
@@ -119,6 +111,10 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.evch = make(chan Event)
 	t.once = sync.Once{}
 
+	// Create a new context to manage input events.
+	t.evctx, t.evcancel = context.WithCancel(context.Background())
+	t.errg, t.evctx = errgroup.WithContext(t.evctx)
+
 	// Window size changes only for non-Windows platforms.
 	if !isWindows {
 		// Create default input receivers.
@@ -126,7 +122,7 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 		if winchTty == nil {
 			winchTty = t.outTty
 		}
-		t.winchn = NewWindowSizeNotifier(winchTty)
+		t.winchn = NewSizeNotifier(winchTty)
 	}
 
 	// Handle debugging I/O.
@@ -159,7 +155,6 @@ func (t *Terminal) ColorProfile() colorprofile.Profile {
 // system's color profile inferred by the environment variables.
 func (t *Terminal) SetColorProfile(p colorprofile.Profile) {
 	t.profile = p
-	t.scr.SetColorProfile(p)
 }
 
 // ColorModel returns the color model of the terminal screen.
@@ -204,6 +199,15 @@ func (t *Terminal) GetSize() (width, height int, err error) {
 	t.size.Height = h
 	t.m.Unlock()
 	return w, h, nil
+}
+
+// Size returns the last known size of the terminal screen. This is updated
+// whenever a window size change event is received. If you need to get the
+// current size of the terminal, use [Terminal.GetSize].
+func (t *Terminal) Size() Size {
+	t.m.RLock()
+	defer t.m.RUnlock()
+	return t.size
 }
 
 // Bounds returns the bounds of the terminal screen buffer. This is the
@@ -280,11 +284,10 @@ func (t *Terminal) SetPosition(x, y int) {
 	t.scr.SetPosition(x, y)
 }
 
-// MoveTo moves the cursor to the given x, y position in the terminal.
-// This won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// MoveTo moves the cursor to the given x, y position in the terminal. This
+// won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) MoveTo(x, y int) {
-	t.scr.MoveTo(x, y)
+	t.state.cur = Pos(x, y)
 }
 
 func (t *Terminal) configureRenderer() {
@@ -295,14 +298,6 @@ func (t *Terminal) configureRenderer() {
 		t.m.RUnlock()
 	}
 	t.scr.SetBackspace(t.useBspace)
-	t.scr.SetRelativeCursor(true) // Initial state is relative cursor movements.
-	if t.scr != nil {
-		if t.scr.AltScreen() {
-			t.scr.EnterAltScreen()
-		} else {
-			t.scr.ExitAltScreen()
-		}
-	}
 	t.scr.SetLogger(t.logger)
 }
 
@@ -310,21 +305,62 @@ func (t *Terminal) configureRenderer() {
 // screen. This is different from [Terminal.Clear], which only fills the
 // terminal with empty cells.
 //
-// This won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// This won't take any effect until the next [Terminal.Display].
 func (t *Terminal) Erase() {
 	t.buf.Touched = nil
 	t.scr.Erase()
 	t.Clear()
 }
 
-// Render computes the necessary changes to the terminal screen and marks the
-// current buffer pending to be rendered to the terminal screen.
+// Render renders the given drawable component to the terminal screen buffer.
+// If the drawable is nil, it clears the screen buffer.
 //
-// Use [Terminal.Display] or [Terminal.Flush] to actually render the buffer to
-// the terminal screen.
-func (t *Terminal) Render() {
-	t.scr.Render(t.buf)
+// This won't take any effect until the next [Terminal.Display].
+func (t *Terminal) Render(d Drawable) {
+	frameArea := t.size.Bounds()
+	if d == nil {
+		// If the component is nil, we should clear the screen buffer.
+		frameArea.Max.Y = 0
+	}
+
+	// We need to resizes the screen based on the frame height and
+	// terminal width. This is because the frame height can change based on
+	// the content of the frame. For example, if the frame contains a list
+	// of items, the height of the frame will be the number of items in the
+	// list. This is different from the alt screen buffer, which has a
+	// fixed height and width.
+	frameHeight := frameArea.Dy()
+	switch layer := d.(type) {
+	case *StyledString:
+		frameHeight = layer.Height()
+	case interface{ Height() int }:
+		frameHeight = layer.Height()
+	case interface{ Bounds() Rectangle }:
+		frameHeight = layer.Bounds().Dy()
+	}
+
+	if frameHeight != frameArea.Dy() {
+		frameArea.Max.Y = frameHeight
+	}
+
+	// Resize the screen buffer to match the frame area. This is necessary
+	// to ensure that the screen buffer is the same size as the frame area
+	// and to avoid rendering issues when the frame area is smaller than
+	// the screen buffer.
+	t.buf.Resize(frameArea.Dx(), frameArea.Dy())
+
+	// Clear our screen buffer before copying the new frame into it to ensure
+	// we erase any old content.
+	t.buf.Clear()
+	if d != nil {
+		d.Draw(t, t.buf.Bounds())
+	}
+
+	// If the frame height is greater than the screen height, we drop the
+	// lines from the top of the buffer.
+	if frameHeight := frameArea.Dy(); frameHeight > t.size.Height {
+		t.buf.Lines = t.buf.Lines[frameHeight-t.size.Height:]
+	}
 }
 
 // Display computes the necessary changes to the terminal screen and renders
@@ -333,8 +369,48 @@ func (t *Terminal) Render() {
 // Typically, you would call this after modifying the terminal buffer using
 // [Terminal.SetCell] or [Terminal.PrependString].
 func (t *Terminal) Display() error {
+	state := t.state // Capture the current state.
+
+	// alternate screen buffer.
+	if state.altscreen {
+		t.scr.EnterAltScreen()
+		t.scr.SetRelativeCursor(false)
+	} else {
+		t.scr.ExitAltScreen()
+		t.scr.SetRelativeCursor(true)
+	}
+
+	// cursor visibility.
+	if state.curHidden {
+		t.scr.HideCursor()
+	} else {
+		t.scr.ShowCursor()
+	}
+
+	// render the buffer.
 	t.scr.Render(t.buf)
-	return t.scr.Flush()
+
+	// add any prepended strings.
+	if len(state.prepend) > 0 {
+		for _, line := range state.prepend {
+			prependLine(t, line)
+		}
+		state.prepend = state.prepend[:0]
+	}
+
+	if !state.curHidden && state.cur != Pos(-1, -1) {
+		// MoveTo must come after [TerminalRenderer.Render] because the cursor
+		// position might get updated during rendering.
+		t.scr.MoveTo(state.cur.X, state.cur.Y)
+	}
+
+	if err := t.Flush(); err != nil {
+		return fmt.Errorf("error flushing terminal: %w", err)
+	}
+
+	t.lastState = &state // Save the last state.
+
+	return nil
 }
 
 // Flush flushes any pending renders to the terminal screen. This is typically
@@ -342,7 +418,19 @@ func (t *Terminal) Display() error {
 //
 // Use [Terminal.Buffered] to check how many bytes pending to be flushed.
 func (t *Terminal) Flush() error {
-	return t.scr.Flush()
+	if err := t.scr.Flush(); err != nil {
+		return fmt.Errorf("error flushing terminal: %w", err)
+	}
+	return nil
+}
+
+func prependLine(t *Terminal, line string) {
+	strLines := strings.Split(line, "\n")
+	for i, line := range strLines {
+		// If the line is wider than the screen, truncate it.
+		strLines[i] = ansi.Truncate(line, t.size.Width, "")
+	}
+	t.scr.PrependString(strings.Join(strLines, "\n"))
 }
 
 // Buffered returns the number of bytes buffered for the flush operation.
@@ -355,292 +443,12 @@ func (t *Terminal) Touched() int {
 	return t.scr.Touched(t.buf)
 }
 
-// GetMode returns the current state of the given mode in the terminal. This is
-// typically used to check if a specific mode is enabled or disabled on the
-// terminal.
-func (t *Terminal) GetMode(mode ansi.Mode) ansi.ModeSetting {
-	m := t.modes[mode]
-	return m
-}
-
-// SetMode sets the given mode and its setting in the [Terminal]. This is
-// usually used when an [ansi.Mode] was enabled/disabled outside the context of
-// [Terminal].
-func (t *Terminal) SetMode(mode ansi.Mode, setting ansi.ModeSetting) {
-	t.modes[mode] = setting
-}
-
-// EnableMode enables the given modes on the terminal. This is typically used
-// to enable mouse support, bracketed paste mode, and other terminal features.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) EnableMode(modes ...ansi.Mode) {
-	if len(modes) == 0 {
-		return
-	}
-	for _, m := range modes {
-		t.modes[m] = ansi.ModeSet
-	}
-	t.scr.WriteString(ansi.SetMode(modes...)) //nolint:errcheck,gosec
-}
-
-// DisableMode disables the given modes on the terminal. This is typically
-// used to disable mouse support, bracketed paste mode, and other terminal
-// features.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) DisableMode(modes ...ansi.Mode) {
-	if len(modes) == 0 {
-		return
-	}
-	for _, m := range modes {
-		t.modes[m] = ansi.ModeReset
-	}
-	t.scr.WriteString(ansi.ResetMode(modes...)) //nolint:errcheck,gosec
-}
-
-// RequestMode requests the current state of the given modes from the terminal.
-// This is typically used to check if a specific mode is recognized, enabled,
-// or disabled on the terminal.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) RequestMode(mode ansi.Mode) {
-	t.scr.WriteString(ansi.RequestMode(mode)) //nolint:errcheck,gosec
-}
-
-// SetForegroundColor sets the terminal default foreground color.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) SetForegroundColor(c color.Color) {
-	t.setFg = c
-	col, ok := colorful.MakeColor(c)
-	if ok {
-		t.scr.WriteString(ansi.SetForegroundColor(col.Hex())) //nolint:errcheck,gosec
-	}
-}
-
-// RequestForegroundColor requests the current foreground color of the terminal.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) RequestForegroundColor() {
-	t.scr.WriteString(ansi.RequestForegroundColor) //nolint:errcheck,gosec
-}
-
-// ResetForegroundColor resets the terminal foreground color to the
-// default color.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) ResetForegroundColor() {
-	t.setFg = nil
-	t.scr.WriteString(ansi.ResetForegroundColor) //nolint:errcheck,gosec
-}
-
-// SetBackgroundColor sets the terminal default background color.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) SetBackgroundColor(c color.Color) {
-	t.setBg = c
-	col, ok := colorful.MakeColor(c)
-	if ok {
-		t.scr.WriteString(ansi.SetBackgroundColor(col.Hex())) //nolint:errcheck,gosec
-	}
-}
-
-// RequestBackgroundColor requests the current background color of the terminal.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) RequestBackgroundColor() {
-	t.scr.WriteString(ansi.RequestBackgroundColor) //nolint:errcheck,gosec
-}
-
-// ResetBackgroundColor resets the terminal background color to the
-// default color.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) ResetBackgroundColor() {
-	t.setBg = nil
-	t.scr.WriteString(ansi.ResetBackgroundColor) //nolint:errcheck,gosec
-}
-
-// SetCursorColor sets the terminal cursor color.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) SetCursorColor(c color.Color) {
-	t.setCc = c
-	col, ok := colorful.MakeColor(c)
-	if ok {
-		t.scr.WriteString(ansi.SetCursorColor(col.Hex())) //nolint:errcheck,gosec
-	}
-}
-
-// RequestCursorColor requests the current cursor color of the terminal.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) RequestCursorColor() {
-	t.scr.WriteString(ansi.RequestCursorColor) //nolint:errcheck,gosec
-}
-
-// ResetCursorColor resets the terminal cursor color to the
-// default color.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) ResetCursorColor() {
-	t.setCc = nil
-	t.scr.WriteString(ansi.ResetCursorColor) //nolint:errcheck,gosec
-}
-
-// SetCursorShape sets the terminal cursor shape and blinking style.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) SetCursorShape(shape CursorShape, blink bool) {
-	style := shape.Encode(blink)
-	t.curStyle = style
-	t.scr.WriteString(ansi.SetCursorStyle(style)) //nolint:errcheck,gosec
-}
-
-// EnableMouse enables mouse support on the terminal.
-// Calling this without any modes will enable all mouse modes by default.
-// The available modes are:
-//   - [ButtonMouseMode] Enables basic mouse button clicks and releases.
-//   - [DragMouseMode] Enables basic mouse buttons [ButtonMouseMode] as well as
-//     click-and-drag mouse motion events.
-//   - [AllMouseMode] Enables all mouse events including button clicks, releases,
-//     and all motion events. This inclodes the [ButtonMouseMode] and
-//     [DragMouseMode] modes.
-//
-// Note that on Unix, this won't take any effect until the next
-// [Terminal.Display] or [Terminal.Flush] call.
-func (t *Terminal) EnableMouse(modes ...MouseMode) {
-	var mode MouseMode
-	for _, m := range modes {
-		mode |= m
-	}
-	if len(modes) == 1 {
-		if mode&MouseModeMotion != 0 {
-			mode |= MouseModeDrag | MouseModeClick
-		}
-		if mode&MouseModeDrag != 0 {
-			mode |= MouseModeClick
-		}
-	}
-	if mode == 0 {
-		mode = MouseModeMotion | MouseModeDrag | MouseModeClick
-	}
-	t.mouseMode = mode
-	if !isWindows {
-		modes := []ansi.Mode{}
-		if t.mouseMode&MouseModeMotion != 0 {
-			modes = append(modes, ansi.AnyEventMouseMode)
-		} else if t.mouseMode&MouseModeDrag != 0 {
-			modes = append(modes, ansi.ButtonEventMouseMode)
-		} else if t.mouseMode&MouseModeClick != 0 {
-			modes = append(modes, ansi.NormalMouseMode)
-		}
-		modes = append(modes, ansi.SgrExtMouseMode)
-		t.EnableMode(modes...)
-	}
-
-	// We probably don't need this since we switched to VT input on Windows.
-	// However, we'll keep it for now in case that decision is reverted in the
-	// future.
-	t.enableWindowsMouse() //nolint:errcheck,gosec
-}
-
-// DisableMouse disables mouse support on the terminal. This will disable mouse
-// button and button motion events.
-//
-// Note that on Unix, this won't take any effect until the next
-// [Terminal.Display] or [Terminal.Flush] call.
-func (t *Terminal) DisableMouse() {
-	t.mouseMode = 0
-	var modes []ansi.Mode
-	if t.modes.Get(ansi.AnyEventMouseMode).IsSet() {
-		modes = append(modes, ansi.AnyEventMouseMode)
-	}
-	if t.modes.Get(ansi.ButtonEventMouseMode).IsSet() {
-		modes = append(modes, ansi.ButtonEventMouseMode)
-	}
-	if t.modes.Get(ansi.NormalMouseMode).IsSet() {
-		modes = append(modes, ansi.NormalMouseMode)
-	}
-	if t.modes.Get(ansi.SgrExtMouseMode).IsSet() {
-		modes = append(modes, ansi.SgrExtMouseMode)
-	}
-	t.DisableMode(modes...)
-
-	// We probably don't need this since we switched to VT input on Windows.
-	// However, we'll keep it for now in case that decision is reverted in the
-	// future.
-	t.disableWindowsMouse() //nolint:errcheck,gosec
-}
-
-// EnableBracketedPaste enables bracketed paste mode on the terminal. This is
-// typically used to enable support for pasting text into the terminal without
-// interfering with the terminal's input handling.
-func (t *Terminal) EnableBracketedPaste() {
-	t.EnableMode(ansi.BracketedPasteMode)
-}
-
-// DisableBracketedPaste disables bracketed paste mode on the terminal. This is
-// typically used to disable support for pasting text into the terminal.
-func (t *Terminal) DisableBracketedPaste() {
-	t.DisableMode(ansi.BracketedPasteMode)
-}
-
-// EnableFocusEvents enables focus/blur receiving notification events on the
-// terminal.
-func (t *Terminal) EnableFocusEvents() {
-	t.EnableMode(ansi.FocusEventMode)
-}
-
-// DisableFocusEvents disables focus/blur receiving notification events on the
-// terminal.
-func (t *Terminal) DisableFocusEvents() {
-	t.DisableMode(ansi.FocusEventMode)
-}
-
 // EnterAltScreen enters the alternate screen buffer. This is typically used
 // for applications that want to take over the entire terminal screen.
 //
-// The [Terminal] manages the alternate screen buffer for you based on the
-// [Viewport] used during [Terminal.Display]. This means that you don't need to
-// call this unless you know what you're doing.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// Note that this won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) EnterAltScreen() {
-	t.enterAltScreen(true)
-}
-
-// cursor indicates whether we want to set the cursor visibility state after
-// entering the alt screen.
-// We do this because some terminals maintain a separate cursor visibility
-// state for the alt screen and the normal screen.
-func (t *Terminal) enterAltScreen(cursor bool) {
-	altscreen := t.scr.AltScreen()
-	t.scr.EnterAltScreen()
-	if cursor && !altscreen {
-		if t.scr.CursorHidden() {
-			t.hideCursor()
-		} else {
-			t.showCursor()
-		}
-	}
-	t.scr.SetRelativeCursor(false)
-	t.modes[ansi.AltScreenSaveCursorMode] = ansi.ModeSet
+	t.state.altscreen = true
 }
 
 // ExitAltScreen exits the alternate screen buffer and returns to the normal
@@ -650,28 +458,9 @@ func (t *Terminal) enterAltScreen(cursor bool) {
 // [Viewport] used during [Terminal.Display]. This means that you don't need to
 // call this unless you know what you're doing.
 //
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// Note that this won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) ExitAltScreen() {
-	t.exitAltScreen(true)
-}
-
-// cursor indicates whether we want to set the cursor visibility state after
-// exiting the alt screen.
-// We do this because some terminals maintain a separate cursor visibility
-// state for the alt screen and the normal screen.
-func (t *Terminal) exitAltScreen(cursor bool) {
-	altscreen := t.scr.AltScreen()
-	t.scr.ExitAltScreen()
-	if cursor && altscreen {
-		if t.scr.CursorHidden() {
-			t.hideCursor()
-		} else {
-			t.showCursor()
-		}
-	}
-	t.scr.SetRelativeCursor(true)
-	t.modes[ansi.AltScreenSaveCursorMode] = ansi.ModeReset
+	t.state.altscreen = false
 }
 
 // ShowCursor shows the terminal cursor.
@@ -680,15 +469,9 @@ func (t *Terminal) exitAltScreen(cursor bool) {
 // [Viewport] used during [Terminal.Display]. This means that you don't need to
 // call this unless you know what you're doing.
 //
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// Note that this won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) ShowCursor() {
-	t.showCursor()
-}
-
-func (t *Terminal) showCursor() {
-	t.scr.ShowCursor()
-	t.modes[ansi.TextCursorEnableMode] = ansi.ModeSet
+	t.state.curHidden = false
 }
 
 // HideCursor hides the terminal cursor.
@@ -697,24 +480,9 @@ func (t *Terminal) showCursor() {
 // [Viewport] used during [Terminal.Display]. This means that you don't need to
 // call this unless you know what you're doing.
 //
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
+// Note that this won't take any effect until the next [Terminal.Display] call.
 func (t *Terminal) HideCursor() {
-	t.hideCursor()
-}
-
-func (t *Terminal) hideCursor() {
-	t.scr.HideCursor()
-	t.modes[ansi.TextCursorEnableMode] = ansi.ModeReset
-}
-
-// SetTitle sets the title of the terminal window. This is typically used to
-// set the title of the terminal window to the name of the application.
-//
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) SetTitle(title string) {
-	_, _ = t.scr.WriteString(ansi.SetWindowTitle(title))
+	t.state.curHidden = true
 }
 
 // Resize resizes the terminal screen buffer to the given width and height.
@@ -724,7 +492,9 @@ func (t *Terminal) Resize(width, height int) error {
 	// We need to reset the touched lines buffer to match the new height.
 	t.buf.Touched = nil
 	t.buf.Resize(width, height)
-	t.scr.Resize(width, height)
+	if t.scr != nil {
+		t.scr.Resize(width, height)
+	}
 	return nil
 }
 
@@ -732,71 +502,31 @@ func (t *Terminal) Resize(width, height int) error {
 // initializes the terminal state. This should be called before using the
 // terminal.
 func (t *Terminal) Start() error {
-	if t.started {
-		return ErrStarted
+	if t.running.Load() {
+		return ErrRunning
 	}
 
 	if t.inTty == nil && t.outTty == nil {
 		return ErrNotTerminal
 	}
 
+	// Create a new terminal renderer.
+	t.scr = NewTerminalRenderer(t.out, t.environ)
+
+	// First run, add some default states.
+	if t.lastState == nil {
+		t.EnterAltScreen()
+		t.HideCursor()
+		t.state.cur = Pos(-1, -1)
+	}
+
 	// Store the initial terminal size.
-	_, _, err := t.GetSize()
+	w, h, err := t.GetSize()
 	if err != nil {
 		return fmt.Errorf("error getting initial terminal size: %w", err)
 	}
 
-	// Initialize the terminal IO streams.
-	if err := t.makeRaw(); err != nil {
-		return fmt.Errorf("error entering raw mode: %w", err)
-	}
-
-	// Create a new context to manage input events.
-	t.evctx, t.evcancel = context.WithCancel(context.Background())
-
-	// Initialize input.
-	cr, err := NewCancelReader(t.in)
-	if err != nil {
-		return fmt.Errorf("error creating cancel reader: %w", err)
-	}
-	t.cr = cr
-	t.rd = NewTerminalReader(t.cr, t.termtype)
-	t.rd.SetLogger(t.logger)
-
-	// Start the window size notifier if it is available.
-	if t.winchn != nil {
-		if err := t.winchn.Start(); err != nil {
-			return fmt.Errorf("error starting window size notifier: %w", err)
-		}
-	}
-
-	// Send the initial window size to the event channel.
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
-
-		var cells, pixels Size
-		if t.winchn != nil {
-			cells, pixels, _ = t.winchn.GetWindowSize()
-		} else {
-			w, h, _ := t.GetSize()
-			cells = Size{Width: w, Height: h}
-		}
-
-		events := []Event{
-			WindowSizeEvent(cells),
-		}
-		if pixels.Width > 0 && pixels.Height > 0 {
-			events = append(events, WindowPixelSizeEvent(pixels))
-		}
-		for _, c := range events {
-			select {
-			case <-t.evctx.Done():
-				return
-			case t.evch <- c:
-			}
-		}
-	}()
+	t.size = Size{Width: w, Height: h}
 
 	if t.buf.Width() == 0 && t.buf.Height() == 0 {
 		// If the buffer is not initialized, set it to the terminal size.
@@ -804,270 +534,115 @@ func (t *Terminal) Start() error {
 		t.scr.Erase()
 	}
 
+	t.scr.Resize(t.buf.Width(), t.buf.Height())
+
+	if err := t.initialize(); err != nil {
+		_ = t.restore()
+		return err
+	}
+
 	// We need to call [Terminal.optimizeMovements] before creating the screen
 	// to populate [Terminal.useBspace] and [Terminal.useTabs].
 	t.optimizeMovements()
 	t.configureRenderer()
 
-	if t.altscreen {
-		t.enterAltScreen(true)
-	} else if !t.cursorHidden {
-		t.hideCursor()
-	} else {
-		t.showCursor()
-	}
-	// Restore terminal modes.
-	for m, s := range t.modes {
-		switch m {
-		case ansi.TextCursorEnableMode, ansi.AltScreenSaveCursorMode:
-			// These modes are handled by the renderer above.
-			continue
-		default:
-			if s.IsSet() {
-				t.scr.WriteString(ansi.SetMode(m)) //nolint:errcheck,gosec
-			}
-		}
-	}
-	// Restore fg, bg, cursor colors, and cursor shape.
-	for _, c := range []struct {
-		setter func(string) string
-		colorp *color.Color
-	}{
-		{ansi.SetForegroundColor, &t.setFg},
-		{ansi.SetBackgroundColor, &t.setBg},
-		{ansi.SetCursorColor, &t.setCc},
-	} {
-		if c.colorp != nil && *c.colorp != nil {
-			col, ok := colorful.MakeColor(*c.colorp)
-			if ok {
-				t.scr.WriteString(c.setter(col.Hex())) //nolint:errcheck,gosec
-			}
-		}
-	}
-	if t.curStyle > 1 {
-		t.scr.WriteString(ansi.SetCursorStyle(t.curStyle)) //nolint:errcheck,gosec
+	t.running.Store(true)
+
+	return t.initializeState()
+}
+
+// Pause pauses the terminal input reader. This is typically used to pause the
+// terminal input reader when the terminal is not in use, such as when
+// switching to another application.
+func (t *Terminal) Pause() error {
+	if !t.running.Load() {
+		return ErrNotRunning
 	}
 
+	t.running.Store(false)
+
+	if err := t.restore(); err != nil {
+		return fmt.Errorf("error restoring terminal: %w", err)
+	}
 	return nil
 }
 
-// StreamEvents streams input events from the terminal to the event channel.
-func (t *Terminal) StreamEvents(ctx context.Context, evch chan<- Event) error {
-	errg, ctx := errgroup.WithContext(ctx)
-
-	if t.winchn != nil {
-		// Windows does not support SIGWINCH.
-		winchc := make(chan Event)
-		errg.Go(func() error { return t.winchn.StreamEvents(ctx, winchc) })
-		errg.Go(func() error {
-			for {
-				select {
-				case <-ctx.Done():
-					return nil
-				case ev := <-winchc:
-					// We need to intercept window size events to update the
-					// terminal size. We use the size to help us determine the
-					// terminal window width so that we can truncate long lines
-					// when using inline mode.
-					switch ev := ev.(type) {
-					case WindowSizeEvent:
-						t.m.Lock()
-						t.size = Size(ev)
-						t.m.Unlock()
-					case WindowPixelSizeEvent:
-						t.m.Lock()
-						t.pixSize = Size(ev)
-						t.m.Unlock()
-					}
-					select {
-					case <-ctx.Done():
-						return nil
-					case evch <- ev:
-					}
-				}
-			}
-		})
+// Resume resumes the terminal input reader. This is typically used to resume
+// the terminal input reader when the terminal is in use again, such as when
+// switching back to the terminal application.
+func (t *Terminal) Resume() error {
+	if t.running.Load() {
+		return ErrRunning
 	}
 
-	errg.Go(func() error { return t.rd.StreamEvents(ctx, t.evch) })
-	errg.Go(func() error {
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case ev := <-t.evch:
-				select {
-				case <-ctx.Done():
-					return nil
-				case evch <- ev:
-				}
-			}
-		}
-	})
+	t.running.Store(true)
 
-	return errg.Wait() //nolint:wrapcheck
+	if err := t.initialize(); err != nil {
+		return fmt.Errorf("error entering raw mode: %w", err)
+	}
+
+	return t.initializeState()
 }
 
-// Restore restores the terminal to its original state. This can be called
-// after [Terminal.MakeRaw] to restore the terminal to its original state.
-// It will also disable any modes that were enabled by the terminal, such as
-// exiting the alternate screen buffer, showing the cursor, and resetting
-// terminal modes.
-//
-// Most of the time, you don't need to call this manually, as it is called
-// automatically when the terminal is shutdown or closed using [Terminal.Close]
-// or [Terminal.Shutdown].
-func (t *Terminal) Restore() error {
-	if t.inTtyState != nil {
-		if err := term.Restore(t.inTty.Fd(), t.inTtyState); err != nil {
-			return fmt.Errorf("error restoring input terminal state: %w", err)
-		}
-		t.inTtyState = nil
-	}
-	if t.outTtyState != nil {
-		if err := term.Restore(t.outTty.Fd(), t.outTtyState); err != nil {
-			return fmt.Errorf("error restoring output terminal state: %w", err)
-		}
-		t.outTtyState = nil
-	}
-	t.started = false
-	t.altscreen = t.modes.Get(ansi.AltScreenSaveCursorMode).IsSet()
-	t.cursorHidden = t.modes.Get(ansi.TextCursorEnableMode).IsReset()
-	if t.cursorHidden {
-		t.showCursor()
-		t.cursorHidden = false
-	}
-	if t.altscreen {
-		t.exitAltScreen(false)
-	}
-
-	// Store the last known cursor position.
-	x, y := t.scr.Position()
-	t.cur = Pos(x, y)
-
-	var buf bytes.Buffer
-	for m, s := range t.modes {
-		switch m {
-		case ansi.TextCursorEnableMode, ansi.AltScreenSaveCursorMode:
-			// These modes are handled by the renderer.
-			continue
-		}
-		var reset bool
-		ds, ok := defaultModes[m]
-		if ok && s != ds {
-			reset = s.IsSet() != ds.IsSet()
-		} else {
-			reset = s.IsSet()
-		}
-		if reset {
-			buf.WriteString(ansi.ResetMode(m))
-		}
-	}
-	if t.setFg != nil {
-		buf.WriteString(ansi.ResetForegroundColor)
-	}
-	if t.setBg != nil {
-		buf.WriteString(ansi.ResetBackgroundColor)
-	}
-	if t.setCc != nil {
-		buf.WriteString(ansi.ResetCursorColor)
-	}
-	if t.curStyle > 1 {
-		buf.WriteString(ansi.SetCursorStyle(0))
-	}
-	if _, err := t.scr.WriteString(buf.String()); err != nil {
-		return fmt.Errorf("error resetting terminal modes: %w", err)
-	}
-	return t.scr.Flush()
+// Stop stops the terminal and restores the terminal to its original state.
+// This is typically used to stop the terminal gracefully.
+func (t *Terminal) Stop() error {
+	return t.stop()
 }
 
-// Shutdown restores the terminal to its original state and stops the event
-// channel in a graceful manner.
-// This waits for any pending events to be processed or the context to be
-// done before closing the event channel.
-func (t *Terminal) Shutdown(ctx context.Context) (rErr error) {
-	defer func() {
-		err := t.close(false)
-		if rErr == nil {
-			rErr = err
-		}
-	}()
-
-	// Cancel the input reader.
-	t.cr.Cancel()
-	t.evcancel()
-
-	var winchErr error
-	if t.winchn != nil {
-		winchErr = t.winchn.Stop()
+// Teardown is similar to [Terminal.Stop], but it also closes the input reader
+// and the event channel as well as any other resources used by the terminal.
+// This is typically used to completely shutdown the application.
+func (t *Terminal) Teardown() error {
+	if err := t.stop(); err != nil {
+		return fmt.Errorf("error stopping terminal: %w", err)
 	}
-
-	if !t.altscreen {
-		// Go to the bottom of the screen and clear everything below.
-		t.scr.MoveTo(0, t.buf.Height()-1)
-		_, _ = t.scr.WriteString(ansi.EraseScreenBelow)
-	}
-
-	donec := make(chan struct{})
-	go func() {
-		defer close(donec)
-		t.wg.Wait()
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			if err := ctx.Err(); err != nil {
-				return err //nolint:wrapcheck
-			} else if winchErr != nil {
-				return err //nolint:wrapcheck
-			}
-			return nil
-		case <-donec:
-			return nil
-		}
-	}
-}
-
-// close closes any resources used by the terminal. This is typically used to
-// close the terminal when it is no longer needed. When reset is true, it will
-// also reset the terminal screen.
-func (t *Terminal) close(reset bool) (rErr error) {
-	t.evcancel()
-	t.cr.Cancel()
 	_ = t.cr.Close()
-	err := t.Restore()
-	if err != nil {
-		rErr = fmt.Errorf("error restoring terminal state: %w", err)
-	}
-	if reset {
-		// Reset screen.
-		t.scr = NewTerminalRenderer(t.out, t.environ)
-		t.configureRenderer()
-	}
-
-	return
+	t.evcancel()
+	return nil
 }
 
-// Close close any resources used by the terminal and restore the terminal to
-// its original state.
-func (t *Terminal) Close() error {
-	return t.close(true)
+// Wait waits for the terminal to shutdown and all pending events to be
+// processed. This is typically used to wait for the terminal to shutdown
+// gracefully.
+func (t *Terminal) Wait() error {
+	if err := t.errg.Wait(); err != nil {
+		return fmt.Errorf("error waiting for terminal: %w", err)
+	}
+	return nil
 }
 
-// Events returns the event channel for the terminal. This channel is used to
-// receive and send events from the terminal.
-func (t *Terminal) Events() chan Event {
+// Shutdown gracefully tears down the terminal, restoring its original state
+// and stopping the event channel. It waits for any pending events to be
+// processed or the context to be done before closing the event channel.
+func (t *Terminal) Shutdown(ctx context.Context) error {
+	if err := t.Teardown(); err != nil {
+		return err
+	}
+	errc := make(chan error, 1)
+	go func() {
+		errc <- t.Wait()
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err() //nolint:wrapcheck
+	case err := <-errc:
+		return err
+	}
+}
+
+// Events returns the event channel used by the terminal to send input events.
+// Use [Terminal.SendEvent] to send events to the terminal event loop.
+func (t *Terminal) Events() <-chan Event {
 	return t.evch
 }
 
-// SendEvent is a helper function to send an event to the event channel. It
-// blocks until the event is sent or the context is done. If the context is
-// done, it will not send the event and will return immediately.
-// This is useful to control the terminal from outside the event loop.
-func (t *Terminal) SendEvent(ctx context.Context, ev Event) {
+// SendEvent sends the given event to the terminal event loop. This is
+// typically used to send custom events to the terminal, such as
+// application-specific events.
+func (t *Terminal) SendEvent(ev Event) {
 	select {
-	case <-ctx.Done():
+	case <-t.evctx.Done():
 	case t.evch <- ev:
 	}
 }
@@ -1085,25 +660,9 @@ func (t *Terminal) SendEvent(ctx context.Context, ev Event) {
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
 //
-// Note that this won't take any effect until the next [Terminal.Display] or
-// [Terminal.Flush] call.
-func (t *Terminal) PrependString(str string) error {
-	// We truncate the string to the terminal width.
-	var sb strings.Builder
-	lines := strings.Split(str, "\n")
-	for i, line := range lines {
-		if ansi.StringWidth(line) > t.size.Width {
-			sb.WriteString(ansi.Truncate(line, t.size.Width, ""))
-		} else {
-			sb.WriteString(line)
-		}
-		if i < len(lines)-1 {
-			sb.WriteByte('\n')
-		}
-	}
-
-	t.scr.PrependString(sb.String())
-	return nil
+// Note that this won't take any effect until the next [Terminal.Display] call.
+func (t *Terminal) PrependString(str string) {
+	t.state.prepend = append(t.state.prepend, str)
 }
 
 // PrependLines adds lines of cells to the top of the terminal screen. The
@@ -1117,19 +676,12 @@ func (t *Terminal) PrependString(str string) error {
 // the whole screen may not produce any visible effects. This is because once
 // the terminal writes the prepended lines, they will get overwritten by the
 // next frame.
-func (t *Terminal) PrependLines(lines ...Line) error {
-	truncatedLines := make([]Line, 0, len(lines))
+//
+// Note that this won't take any effect until the next [Terminal.Display] call.
+func (t *Terminal) PrependLines(lines ...Line) {
 	for _, l := range lines {
-		// We truncate the line to the terminal width.
-		if len(l) > t.size.Width {
-			truncatedLines = append(truncatedLines, l[:t.size.Width])
-		} else {
-			truncatedLines = append(truncatedLines, l)
-		}
+		t.state.prepend = append(t.state.prepend, l.Render())
 	}
-
-	t.scr.PrependLines(truncatedLines...)
-	return nil
 }
 
 // Write writes the given bytes to the underlying terminal renderer.
@@ -1156,4 +708,211 @@ func (t *Terminal) Write(p []byte) (n int, err error) {
 // [Terminal.Flush] call.
 func (t *Terminal) WriteString(s string) (n int, err error) {
 	return t.scr.WriteString(s)
+}
+
+func (t *Terminal) stop() error {
+	if !t.running.Load() {
+		return ErrNotRunning
+	}
+
+	if err := t.restore(); err != nil {
+		return fmt.Errorf("error restoring terminal: %w", err)
+	}
+
+	t.running.Store(false)
+	return nil
+}
+
+func (t *Terminal) initializeState() error {
+	if t.lastState == nil {
+		return nil
+	}
+
+	if t.lastState.altscreen {
+		t.scr.EnterAltScreen()
+		t.scr.SetRelativeCursor(false)
+	} else {
+		t.scr.EnterAltScreen()
+		t.scr.SetRelativeCursor(true)
+	}
+
+	if !t.lastState.curHidden {
+		t.ShowCursor()
+		if t.lastState.cur != Pos(-1, -1) {
+			t.MoveTo(t.lastState.cur.X, t.lastState.cur.Y)
+		}
+	}
+
+	return t.scr.Flush()
+}
+
+func (t *Terminal) initialize() error {
+	// Initialize the terminal IO streams.
+	if err := t.makeRaw(); err != nil {
+		return fmt.Errorf("error entering raw mode: %w", err)
+	}
+
+	// Initialize input.
+	cr, err := NewCancelReader(t.in)
+	if err != nil {
+		return fmt.Errorf("error creating cancel reader: %w", err)
+	}
+	t.cr = cr
+	t.rd = NewTerminalReader(t.cr, t.termtype)
+	t.rd.SetLogger(t.logger)
+	t.evloop = make(chan struct{})
+
+	// Start the window size notifier if it is available.
+	if t.winchn != nil {
+		if err := t.winchn.Start(); err != nil {
+			return fmt.Errorf("error starting window size notifier: %w", err)
+		}
+	}
+
+	// Send the initial window size to the event channel.
+	t.errg.Go(t.initialResizeEvent)
+
+	// Start SIGWINCH listener if available.
+	if t.winchn != nil {
+		t.errg.Go(t.resizeLoop)
+	}
+
+	// Input event loop.
+	t.errg.Go(t.inputLoop)
+
+	return nil
+}
+
+func (t *Terminal) initialResizeEvent() error {
+	cells, pixels, err := t.winchn.GetWindowSize()
+	if err != nil {
+		return err
+	}
+
+	events := []Event{
+		WindowSizeEvent(cells),
+	}
+	if pixels.Width > 0 && pixels.Height > 0 {
+		events = append(events, WindowPixelSizeEvent(pixels))
+	}
+	for _, c := range events {
+		select {
+		case <-t.evctx.Done():
+			return nil
+		case t.evch <- c:
+		}
+	}
+	return nil
+}
+
+func (t *Terminal) resizeLoop() error {
+	for {
+		select {
+		case <-t.evctx.Done():
+			return nil
+		case <-t.winchn.C:
+			cells, pixels, err := t.winchn.GetWindowSize()
+			if err != nil {
+				return err
+			}
+
+			t.m.Lock()
+			t.size = cells
+			if pixels.Width > 0 && pixels.Height > 0 {
+				t.pixSize = pixels
+			}
+			t.m.Unlock()
+
+			select {
+			case <-t.evctx.Done():
+				return nil
+			case t.evch <- WindowSizeEvent(cells):
+			}
+			if pixels.Width > 0 && pixels.Height > 0 {
+				select {
+				case <-t.evctx.Done():
+					return nil
+				case t.evch <- WindowPixelSizeEvent(pixels):
+				}
+			}
+		}
+	}
+}
+
+func (t *Terminal) inputLoop() error {
+	defer close(t.evloop)
+
+	if err := t.rd.StreamEvents(t.evctx, t.evch); err != nil {
+		return err
+	}
+	return nil
+}
+
+// restoreTTY restores the terminal TTY to its original state.
+func (t *Terminal) restoreTTY() error {
+	if t.inTtyState != nil {
+		if err := term.Restore(t.inTty.Fd(), t.inTtyState); err != nil {
+			return fmt.Errorf("error restoring input terminal state: %w", err)
+		}
+		t.inTtyState = nil
+	}
+	if t.outTtyState != nil {
+		if err := term.Restore(t.outTty.Fd(), t.outTtyState); err != nil {
+			return fmt.Errorf("error restoring output terminal state: %w", err)
+		}
+		t.outTtyState = nil
+	}
+	if t.winchn != nil {
+		if err := t.winchn.Stop(); err != nil {
+			return fmt.Errorf("error stopping window size notifier: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// restoreState restores the terminal state, including modes, colors, and
+// cursor position. If flush is false, it won't commit the changes to the
+// terminal immediately.
+func (t *Terminal) restoreState() error {
+	if t.cr != nil {
+		t.cr.Cancel()
+		select {
+		case <-t.evloop:
+		case <-time.After(500 * time.Millisecond):
+			// Timeout waiting for the event loop to exit.
+		}
+	}
+
+	// Go to the bottom of the screen.
+	t.scr.MoveTo(0, t.buf.Height()-1)
+	if ls := t.lastState; ls != nil {
+		if ls.altscreen {
+			t.scr.ExitAltScreen()
+			t.scr.SetRelativeCursor(true)
+		} else {
+			_, _ = t.WriteString("\r" + ansi.EraseScreenBelow)
+		}
+		if ls.curHidden {
+			t.scr.ShowCursor()
+		}
+	}
+
+	if err := t.scr.Flush(); err != nil {
+		return fmt.Errorf("error flushing terminal: %w", err)
+	}
+
+	return nil
+}
+
+// restore is a helper function that restores the terminal TTY and state. It also moves the cursor
+// to the bottom of the screen to avoid overwriting any terminal content.
+func (t *Terminal) restore() error {
+	if err := t.restoreState(); err != nil {
+		return err
+	}
+	if err := t.restoreTTY(); err != nil {
+		return err
+	}
+	return nil
 }
