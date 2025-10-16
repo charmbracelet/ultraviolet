@@ -1,7 +1,6 @@
 package uvtest
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -31,25 +30,16 @@ type EventHandler interface {
 // testing purposes.
 type TestTerminal struct {
 	*uv.Terminal
-	testing.TB
-	e      *vt.Emulator
-	p      xpty.Pty
-	mu     *sync.RWMutex
-	sigch  chan struct{}
-	evch   chan uv.Event
-	ctx    context.Context
-	cancel context.CancelFunc
+	tb testing.TB
+	e  *vt.Emulator
+	p  xpty.Pty
+	mu *sync.RWMutex
 
 	width  int
 	height int
 	env    []string
 
-	frame int
-}
-
-// Wait waits until the terminal is closed.
-func (tt *TestTerminal) Wait() {
-	<-tt.ctx.Done()
+	snaps int
 }
 
 // Resize resizes the terminal to the specified width and height.
@@ -57,11 +47,11 @@ func (tt *TestTerminal) Resize(width, height int) {
 	tt.mu.Lock()
 	defer tt.mu.Unlock()
 	if err := tt.p.Resize(width, height); err != nil {
-		tt.TB.Fatalf("failed to resize pty: %v", err)
+		tt.tb.Fatalf("failed to resize pty: %v", err)
 	}
 	tt.e.Resize(width, height)
 	if err := tt.Terminal.Resize(width, height); err != nil {
-		tt.TB.Fatalf("failed to resize terminal: %v", err)
+		tt.tb.Fatalf("failed to resize terminal: %v", err)
 	}
 }
 
@@ -96,75 +86,20 @@ func (tt *TestTerminal) Paste(text string) {
 
 // Close closes the terminal and its underlying pty.
 func (tt *TestTerminal) Close() error {
-	tt.cancel()
 	_ = tt.e.Close()
 	defer func() {
 		_ = tt.p.Close()
 	}()
-	return tt.Terminal.Close()
+	return tt.Terminal.Shutdown(tt.tb.Context())
 }
 
-// Run starts reading events from the terminal and rendering changes using the
-// provided [uv.Drawable]. It will record each render as a golden file using
-// the name provided by the testing.TB instance and the frame number.
-//
-// Use [TestTerminal.SendText], [TestTerminal.SendKey],
-// [TestTerminal.SendMouse], [TestTerminal.Paste], etc to send input to the
-// terminal which will trigger renders.
-func (tt *TestTerminal) Run(d uv.Drawable) {
-	if err := tt.Start(); err != nil {
-		tt.TB.Fatalf("failed to start terminal: %v", err)
-	}
-	if err := tt.Terminal.Resize(tt.width, tt.height); err != nil {
-		tt.TB.Fatalf("failed to resize terminal: %v", err)
-	}
-
-	go func() {
-		if err := tt.StreamEvents(tt.ctx, tt.evch); err != nil {
-			tt.TB.Fatalf("failed to stream events: %v", err)
-		}
-	}()
-
-	for {
-		select {
-		case <-tt.ctx.Done():
-			return
-		case ev := <-tt.evch:
-			tt.Logf("event: %T %#v", ev, ev)
-			switch d := d.(type) {
-			case EventHandler:
-				d.HandleEvent(ev)
-			default:
-				switch ev := ev.(type) {
-				case uv.WindowSizeEvent:
-					tt.Resize(ev.Width, ev.Height)
-				case uv.KeyEvent:
-					tt.SendKey(ev)
-				case uv.MouseEvent:
-					tt.SendMouse(ev)
-				case uv.PasteEvent:
-					tt.Paste(string(ev))
-				default:
-					tt.SendText(fmt.Sprint(ev))
-				}
-			}
-
-			tt.frame++
-			tt.Clear()
-			d.Draw(tt.Terminal, tt.Terminal.Bounds())
-			if err := tt.Display(); err != nil {
-				tt.TB.Errorf("failed to display frame %d: %v", tt.frame, err)
-			}
-
-			if tt.Buffered() > 0 {
-				// Wait for the display to complete before continuing.
-				tt.Logf("waiting for display to complete for frame %d", tt.frame)
-				<-tt.sigch
-			}
-
-			golden.RequireEqual(tname(tt, fmt.Sprintf("frame-%d", tt.frame)), tt.e.Render())
-		}
-	}
+// Snapshot records the current state of the terminal as a golden file using the name
+// provided by the testing.TB instance and the snapshot number.
+func (tt *TestTerminal) Snapshot() {
+	tt.mu.RLock()
+	defer tt.mu.RUnlock()
+	golden.RequireEqual(tname(tt.tb, fmt.Sprintf("snapshot-%d", tt.snaps)), tt.e.Render())
+	tt.snaps++
 }
 
 // Option is a functional option for configuring a [TestTerminal].
@@ -185,11 +120,11 @@ func WithEnvironment(env []string) Option {
 	}
 }
 
-// NewTestTerminal creates a new [TestTerminal] instance.
-func NewTestTerminal(t testing.TB, opts ...Option) *TestTerminal {
+// NewTestTerminal creates a new [TestTerminal] instance and starts it.
+func NewTestTerminal(t testing.TB, opts ...Option) (*TestTerminal, error) {
 	t.Helper()
 	tt := new(TestTerminal)
-	tt.TB = t
+	tt.tb = t
 
 	for _, opt := range opts {
 		opt(tt)
@@ -205,20 +140,17 @@ func NewTestTerminal(t testing.TB, opts ...Option) *TestTerminal {
 		tt.env = os.Environ()
 	}
 
-	tt.ctx, tt.cancel = context.WithCancel(t.Context())
-
-	t.Cleanup(tt.cancel)
-
-	pty, err := xpty.NewPty(tt.width, tt.height)
+	var err error
+	tt.p, err = xpty.NewPty(tt.width, tt.height)
 	if err != nil {
-		t.Fatalf("failed to create pty: %v", err)
+		return nil, fmt.Errorf("failed to create pty: %w", err)
 	}
 
 	var (
-		in  io.Reader = pty
-		out io.Writer = pty
+		in  io.Reader = tt.p
+		out io.Writer = tt.p
 	)
-	switch p := pty.(type) {
+	switch p := tt.p.(type) {
 	case *xpty.UnixPty:
 		in = p.Slave()
 		out = p.Slave()
@@ -226,57 +158,25 @@ func NewTestTerminal(t testing.TB, opts ...Option) *TestTerminal {
 		in = p.InPipe()
 		out = p.OutPipe()
 	default:
-		panic("unknown pty type")
+		return nil, fmt.Errorf("unknown pty type: %T", tt.p)
 	}
 
-	sigCh := make(chan struct{})
-	term := uv.NewTerminal(in, out, tt.env)
-	e := vt.NewEmulator(tt.width, tt.height)
-	mu := &sync.RWMutex{}
-	sw := SignalWriter(tt.ctx, e, sigCh)
+	tt.Terminal = uv.NewTerminal(in, out, tt.env)
+	tt.e = vt.NewEmulator(tt.width, tt.height)
+	tt.mu = &sync.RWMutex{}
 
-	go io.Copy(sw, pty) //nolint:errcheck
-	go io.Copy(pty, e)  //nolint:errcheck
-
-	tt.Terminal = term
-	tt.e = e
-	tt.p = pty
-	tt.mu = mu
-	tt.sigch = sigCh
-	tt.evch = make(chan uv.Event)
+	go io.Copy(tt.e, tt.p) //nolint:errcheck
+	go io.Copy(tt.p, tt.e) //nolint:errcheck
 
 	t.Cleanup(func() {
 		_ = tt.Close()
 	})
 
-	return tt
-}
-
-type signalWriter struct {
-	io.Writer
-	sigCh chan struct{}
-	ctx   context.Context
-}
-
-// Write implements [io.Writer].
-func (s *signalWriter) Write(p []byte) (n int, err error) {
-	n, err = s.Writer.Write(p)
-	// select {
-	// case <-s.ctx.Done():
-	// 	err = s.ctx.Err()
-	// case s.sigCh <- struct{}{}:
-	// }
-	return n, err
-}
-
-// SignalWriter wraps an [io.Writer] and sends a signal to the provided channel
-// whenever a write occurs.
-func SignalWriter(ctx context.Context, w io.Writer, sigCh chan struct{}) *signalWriter {
-	return &signalWriter{
-		Writer: w,
-		sigCh:  sigCh,
-		ctx:    ctx,
+	if err := tt.Terminal.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start terminal: %w", err)
 	}
+
+	return tt, nil
 }
 
 // tbName is a helper to change the name of a [testing.TB] instance.
