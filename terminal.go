@@ -314,11 +314,12 @@ func (t *Terminal) Erase() {
 	t.Clear()
 }
 
-// Render renders the given drawable component to the terminal screen buffer.
-// If the drawable is nil, it clears the screen buffer.
+// Draw draws the given drawable component to the terminal screen buffer. It
+// automatically resizes the screen buffer to match the size of the drawable
+// component.
 //
 // This won't take any effect until the next [Terminal.Display].
-func (t *Terminal) Render(d Drawable) {
+func (t *Terminal) Draw(d Drawable) {
 	frameArea := t.size.Bounds()
 	if d == nil {
 		// If the component is nil, we should clear the screen buffer.
