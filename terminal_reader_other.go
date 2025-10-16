@@ -8,6 +8,6 @@ import (
 )
 
 // streamData sends data from the input stream to the event channel.
-func (p *TerminalReader) streamData(ctx context.Context, readc chan []byte) error {
-	return p.sendBytes(ctx, readc)
+func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) error {
+	return d.sendBytes(ctx, readc)
 }
