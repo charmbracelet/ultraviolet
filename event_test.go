@@ -148,10 +148,10 @@ func TestKeyPressEventMethods(t *testing.T) {
 	})
 
 	t.Run("MatchStrings", func(t *testing.T) {
-		if !k.MatchStrings("ctrl+b", "ctrl+a", "ctrl+c") {
+		if !k.MatchString("ctrl+b", "ctrl+a", "ctrl+c") {
 			t.Error("MatchStrings() = false, want true")
 		}
-		if k.MatchStrings("ctrl+b", "ctrl+c") {
+		if k.MatchString("ctrl+b", "ctrl+c") {
 			t.Error("MatchStrings() = true, want false")
 		}
 	})
@@ -195,10 +195,10 @@ func TestKeyReleaseEventMethods(t *testing.T) {
 	})
 
 	t.Run("MatchStrings", func(t *testing.T) {
-		if !k.MatchStrings("alt+a", "alt+b", "alt+c") {
+		if !k.MatchString("alt+a", "alt+b", "alt+c") {
 			t.Error("MatchStrings() = false, want true")
 		}
-		if k.MatchStrings("alt+a", "alt+c") {
+		if k.MatchString("alt+a", "alt+c") {
 			t.Error("MatchStrings() = true, want false")
 		}
 	})

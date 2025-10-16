@@ -1875,7 +1875,7 @@ func TestMatchStrings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.key.MatchStrings(tt.inputs...)
+			got := tt.key.MatchString(tt.inputs...)
 			if got != tt.want {
 				t.Errorf("MatchStrings() = %v, want %v", got, tt.want)
 			}
