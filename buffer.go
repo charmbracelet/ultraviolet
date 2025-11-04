@@ -132,18 +132,6 @@ func (l Line) Render() string {
 func renderLine(buf io.StringWriter, l Line) {
 	var pen Style
 	var link Link
-	var pendingLine string
-	var pendingWidth int // this ignores space cells until we hit a non-space cell
-
-	writePending := func() {
-		// If there's no pending line, we don't need to do anything.
-		if len(pendingLine) == 0 {
-			return
-		}
-		_, _ = buf.WriteString(pendingLine)
-		pendingWidth = 0
-		pendingLine = ""
-	}
 
 	for _, cell := range l {
 		if cell.Width > 0 { //nolint:nestif
@@ -151,12 +139,10 @@ func renderLine(buf io.StringWriter, l Line) {
 			cellStyle := cell.Style
 			cellLink := cell.Link
 			if cellStyle.IsZero() && !pen.IsZero() {
-				writePending()
 				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
 			}
 			if !cellStyle.Equal(&pen) {
-				writePending()
 				seq := cellStyle.DiffSequence(pen)
 				_, _ = buf.WriteString(seq)
 				pen = cellStyle
@@ -164,25 +150,15 @@ func renderLine(buf io.StringWriter, l Line) {
 
 			// Write the URL escape sequence
 			if cellLink != link && link.URL != "" {
-				writePending()
 				_, _ = buf.WriteString(ansi.ResetHyperlink())
 				link = Link{}
 			}
 			if cellLink != link {
-				writePending()
 				_, _ = buf.WriteString(ansi.SetHyperlink(cellLink.URL, cellLink.Params))
 				link = cellLink
 			}
 
-			// We only write the cell content if it's not empty. If it is, we
-			// append it to the pending line and width to be evaluated later.
-			if cell.Equal(&EmptyCell) {
-				pendingLine += cell.String()
-				pendingWidth += cell.Width
-			} else {
-				writePending()
-				_, _ = buf.WriteString(cell.String())
-			}
+			_, _ = buf.WriteString(cell.String())
 		}
 	}
 	if link.URL != "" {
@@ -240,7 +216,7 @@ func (b *Buffer) Render() string {
 			_, _ = buf.WriteString("\r\n")
 		}
 	}
-	return strings.TrimRight(buf.String(), " ") // Trim trailing spaces
+	return buf.String()
 }
 
 // Line returns a pointer to the line at the given y position.
