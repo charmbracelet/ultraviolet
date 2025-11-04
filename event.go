@@ -227,11 +227,6 @@ func (k KeyReleaseEvent) Key() Key {
 type KeyEvent interface {
 	fmt.Stringer
 
-	// Text returns the text representation of the key event. This is useful
-	// for matching key events along with [Key.String].
-	// TODO: Use this instead of storing Text in the [Key] struct.
-	// Text() string
-
 	// Key returns the underlying key event.
 	Key() Key
 }
@@ -311,7 +306,9 @@ func (e MouseMotionEvent) Mouse() Mouse {
 
 // CursorPositionEvent represents a cursor position event. Where X is the
 // zero-based column and Y is the zero-based row.
-type CursorPositionEvent image.Point
+type CursorPositionEvent struct {
+	X, Y int
+}
 
 // FocusEvent represents a terminal focus event.
 // This occurs when the terminal gains focus.
@@ -333,7 +330,15 @@ type LightColorSchemeEvent struct{}
 
 // PasteEvent is an message that is emitted when a terminal receives pasted text
 // using bracketed-paste.
-type PasteEvent string
+type PasteEvent struct {
+	// Content is the pasted text content.
+	Content string
+}
+
+// String returns the pasted content as a string.
+func (e PasteEvent) String() string {
+	return e.Content
+}
 
 // PasteStartEvent is an message that is emitted when the terminal starts the
 // bracketed-paste text.
@@ -344,7 +349,14 @@ type PasteStartEvent struct{}
 type PasteEndEvent struct{}
 
 // TerminalVersionEvent is a message that represents the terminal version.
-type TerminalVersionEvent string
+type TerminalVersionEvent struct {
+	Name string
+}
+
+// String returns the terminal version as a string.
+func (e TerminalVersionEvent) String() string {
+	return e.Name
+}
 
 // ModifyOtherKeysEvent represents a modifyOtherKeys event.
 //
@@ -354,7 +366,9 @@ type TerminalVersionEvent string
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_
 // See: https://invisible-island.net/xterm/manpage/xterm.html#VT100-Widget-Resources:modifyOtherKeys
-type ModifyOtherKeysEvent uint8
+type ModifyOtherKeysEvent struct {
+	Mode int
+}
 
 // KittyGraphicsEvent represents a Kitty Graphics response event.
 //
@@ -365,11 +379,24 @@ type KittyGraphicsEvent struct {
 }
 
 // KeyboardEnhancementsEvent represents a keyboard enhancements report event.
-type KeyboardEnhancementsEvent uint8
+type KeyboardEnhancementsEvent struct {
+	// Flags are the Kitty Keyboard Enhancement flags.
+	//
+	// Bit values:
+	//
+	//	00000001:  Disambiguate escape codes
+	//	00000010:  Report event types
+	//	00000100:  Report alternate keys
+	//	00001000:  Report all keys as escape codes
+	//	00010000:  Report associated text
+	//
+	// See: https://sw.kovidgoyal.net/kitty/keyboard-protocol/#keyboard-enhancements
+	Flags int
+}
 
 // Contains reports whether m contains the given enhancements.
 func (e KeyboardEnhancementsEvent) Contains(enhancements int) bool {
-	return int(e)&enhancements == enhancements
+	return e.Flags&enhancements == enhancements
 }
 
 // PrimaryDeviceAttributesEvent is an event that represents the terminal

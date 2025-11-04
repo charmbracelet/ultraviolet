@@ -319,7 +319,7 @@ func (d *TerminalReader) scanEvents(buf []byte, expired bool) (total int, events
 				d.paste = d.paste[w:]
 			}
 			d.paste = nil // reset the paste buffer
-			events = append(events, PasteEvent(paste))
+			events = append(events, PasteEvent{string(paste)})
 		}
 
 		if !isUnknown && event != nil {

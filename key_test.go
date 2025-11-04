@@ -122,6 +122,14 @@ func TestBlur(t *testing.T) {
 func TestParseSequence(t *testing.T) {
 	td := buildBaseSeqTests()
 	td = append(td,
+		// OSC 11 response
+		seqTest{
+			[]byte("\x1b]11;rgb:ffff/0000/ffff\x07"),
+			[]Event{
+				BackgroundColorEvent{ansi.XParseColor("rgb:ff/00/ff")},
+			},
+		},
+
 		// Teritary Device Attributes (DA3)
 		seqTest{
 			[]byte("\x1bP!|4368726d\x1b\\"),
@@ -220,7 +228,7 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1b[>4;1m\x1b[>4m\x1b[>3m"),
 			[]Event{
-				ModifyOtherKeysEvent(1),
+				ModifyOtherKeysEvent{1},
 				UnknownCsiEvent("\x1b[>4m"),
 				UnknownCsiEvent("\x1b[>3m"),
 			},
@@ -255,8 +263,8 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1b[?16u\x1b[?u"),
 			[]Event{
-				KeyboardEnhancementsEvent(16),
-				KeyboardEnhancementsEvent(0),
+				KeyboardEnhancementsEvent{16},
+				KeyboardEnhancementsEvent{0},
 			},
 		},
 
@@ -295,7 +303,7 @@ func TestParseSequence(t *testing.T) {
 			[]Event{
 				KeyPressEvent{Code: KeyUp},
 				KeyPressEvent{Code: KeyUp},
-				TerminalVersionEvent("Ultraviolet"),
+				TerminalVersionEvent{"Ultraviolet"},
 				BackgroundColorEvent{ansi.XParseColor("#123456")},
 				UnknownSosEvent("\x98hi\x9c"),
 				UnknownApcEvent("\x9fhello\x9c"),
@@ -1152,7 +1160,7 @@ func TestReadInput(t *testing.T) {
 			},
 			[]Event{
 				PasteStartEvent{},
-				PasteEvent("a b"),
+				PasteEvent{"a b"},
 				PasteEndEvent{},
 				KeyPressEvent{Code: 'o', Text: "o"},
 			},
@@ -1166,7 +1174,7 @@ func TestReadInput(t *testing.T) {
 			},
 			[]Event{
 				PasteStartEvent{},
-				PasteEvent("a\x03\nb"),
+				PasteEvent{"a\x03\nb"},
 				PasteEndEvent{},
 			},
 		},

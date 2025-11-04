@@ -399,7 +399,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 	case 'u' | '?'<<parser.PrefixShift:
 		// Kitty keyboard flags
 		flags, _, _ := pa.Param(0, -1)
-		return i, KeyboardEnhancementsEvent(flags)
+		return i, KeyboardEnhancementsEvent{flags}
 	case 'R' | '?'<<parser.PrefixShift:
 		// This report may return a third parameter representing the page
 		// number, but we don't really need it.
@@ -424,7 +424,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		if !ok || val == -1 {
 			break
 		}
-		return i, ModifyOtherKeysEvent(val) //nolint:gosec
+		return i, ModifyOtherKeysEvent{val} //nolint:gosec
 	case 'n' | '?'<<parser.PrefixShift:
 		report, _, _ := pa.Param(0, -1)
 		darkLight, _, _ := pa.Param(1, -1)
@@ -1046,7 +1046,7 @@ func (p *EventDecoder) parseDcs(b []byte) (int, Event) {
 		}
 	case '|' | '>'<<parser.PrefixShift:
 		// XTVersion response
-		return i, TerminalVersionEvent(b[start:end])
+		return i, TerminalVersionEvent{string(b[start:end])}
 	case '|' | '!'<<parser.IntermedShift:
 		// Teritary Device Attributes
 		return i, parseTertiaryDevAttrs(b[start:end])

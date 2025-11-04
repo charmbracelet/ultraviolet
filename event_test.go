@@ -282,7 +282,7 @@ func TestMouseEventMethods(t *testing.T) {
 
 // TestKittyEnhancementsEventContains tests the Contains method
 func TestKittyEnhancementsEventContains(t *testing.T) {
-	e := KeyboardEnhancementsEvent(0b111) // Has bits 0, 1, and 2 set
+	e := KeyboardEnhancementsEvent{0b111} // Has bits 0, 1, and 2 set
 
 	tests := []struct {
 		name         string
@@ -400,11 +400,11 @@ func TestEventTypes(t *testing.T) {
 	_ = BlurEvent{}
 	_ = DarkColorSchemeEvent{}
 	_ = LightColorSchemeEvent{}
-	_ = PasteEvent("pasted text")
+	_ = PasteEvent{"pasted text"}
 	_ = PasteStartEvent{}
 	_ = PasteEndEvent{}
-	_ = TerminalVersionEvent("1.0.0")
-	_ = ModifyOtherKeysEvent(1)
+	_ = TerminalVersionEvent{"1.0.0"}
+	_ = ModifyOtherKeysEvent{1}
 	_ = KittyGraphicsEvent{
 		Options: kitty.Options{},
 		Payload: []byte("test"),
