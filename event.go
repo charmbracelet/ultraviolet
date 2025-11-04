@@ -399,6 +399,26 @@ func (e KeyboardEnhancementsEvent) Contains(enhancements int) bool {
 	return e.Flags&enhancements == enhancements
 }
 
+// SupportsKeyDisambiguation returns whether the terminal supports reporting
+// disambiguous keys as escape codes.
+func (e KeyboardEnhancementsEvent) SupportsKeyDisambiguation() bool {
+	return e.Flags&ansi.KittyDisambiguateEscapeCodes != 0
+}
+
+// SupportsKeyReleases returns whether the terminal supports key release
+// events.
+func (e KeyboardEnhancementsEvent) SupportsKeyReleases() bool {
+	return e.Flags&ansi.KittyReportEventTypes != 0
+}
+
+// SupportsUniformKeyLayout returns whether the terminal supports reporting key
+// events as though they were on a PC-101 layout.
+func (e KeyboardEnhancementsEvent) SupportsUniformKeyLayout() bool {
+	return e.SupportsKeyDisambiguation() &&
+		e.Flags&ansi.KittyReportAlternateKeys != 0 &&
+		e.Flags&ansi.KittyReportAllKeysAsEscapeCodes != 0
+}
+
 // PrimaryDeviceAttributesEvent is an event that represents the terminal
 // primary device attributes.
 //
@@ -505,7 +525,14 @@ type WindowOpEvent struct {
 // (XTGETTCAP) requests.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
-type CapabilityEvent string
+type CapabilityEvent struct {
+	Value string
+}
+
+// String returns the capability value.
+func (e CapabilityEvent) String() string {
+	return e.Value
+}
 
 // ClipboardSelection represents a clipboard selection. The most common
 // clipboard selections are "system" and "primary" and selections.
