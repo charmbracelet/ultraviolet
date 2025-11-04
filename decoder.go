@@ -1792,7 +1792,7 @@ func isDarkColor(c color.Color) bool {
 func parseTermcap(data []byte) CapabilityEvent {
 	// XTGETTCAP
 	if len(data) == 0 {
-		return CapabilityEvent("")
+		return CapabilityEvent{""}
 	}
 
 	var tc strings.Builder
@@ -1800,7 +1800,7 @@ func parseTermcap(data []byte) CapabilityEvent {
 	for _, s := range split {
 		parts := bytes.SplitN(s, []byte{'='}, 2)
 		if len(parts) == 0 {
-			return CapabilityEvent("")
+			return CapabilityEvent{""}
 		}
 
 		name, err := hex.DecodeString(string(parts[0]))
@@ -1826,7 +1826,7 @@ func parseTermcap(data []byte) CapabilityEvent {
 		}
 	}
 
-	return CapabilityEvent(tc.String())
+	return CapabilityEvent{tc.String()}
 }
 
 // parseWin32InputKeyEvent converts a Windows Input Record Key Event into a

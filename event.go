@@ -526,12 +526,12 @@ type WindowOpEvent struct {
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands
 type CapabilityEvent struct {
-	Value string
+	Content string
 }
 
-// String returns the capability value.
+// String returns the capability content.
 func (e CapabilityEvent) String() string {
-	return e.Value
+	return e.Content
 }
 
 // ClipboardSelection represents a clipboard selection. The most common

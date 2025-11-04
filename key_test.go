@@ -142,7 +142,7 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1bP1+r524742\x1b\\"),
 			[]Event{
-				CapabilityEvent("RGB"),
+				CapabilityEvent{"RGB"},
 			},
 		},
 

@@ -420,6 +420,6 @@ func TestEventTypes(t *testing.T) {
 		Op:   1,
 		Args: []int{100, 200},
 	}
-	_ = CapabilityEvent("RGB")
+	_ = CapabilityEvent{"RGB"}
 	_ = ignoredEvent("ignored")
 }

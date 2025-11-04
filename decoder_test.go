@@ -325,27 +325,27 @@ func TestParseTermcap(t *testing.T) {
 		{
 			name:        "RGB capability",
 			input:       []byte("524742"),
-			expectEvent: CapabilityEvent("RGB"),
+			expectEvent: CapabilityEvent{"RGB"},
 		},
 		{
 			name:        "Co capability",
 			input:       []byte("436F=323536"),
-			expectEvent: CapabilityEvent("Co=256"),
+			expectEvent: CapabilityEvent{"Co=256"},
 		},
 		{
 			name:        "Empty input",
 			input:       []byte(""),
-			expectEvent: CapabilityEvent(""),
+			expectEvent: CapabilityEvent{""},
 		},
 		{
 			name:        "Invalid hex",
 			input:       []byte("GGGG"),
-			expectEvent: CapabilityEvent(""),
+			expectEvent: CapabilityEvent{""},
 		},
 		{
 			name:        "Odd length hex",
 			input:       []byte("52474"),
-			expectEvent: CapabilityEvent(""),
+			expectEvent: CapabilityEvent{""},
 		},
 	}
 
