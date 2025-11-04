@@ -3,7 +3,7 @@ module github.com/charmbracelet/ultraviolet
 go 1.24.2
 
 require (
-	github.com/charmbracelet/colorprofile v0.3.2
+	github.com/charmbracelet/colorprofile v0.3.3
 	github.com/charmbracelet/x/ansi v0.10.3
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/termios v0.1.1
