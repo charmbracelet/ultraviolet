@@ -1293,6 +1293,76 @@ func TestRendererEraseCharacterOptimization(t *testing.T) {
 	}
 }
 
+func TestRendererUpdates(t *testing.T) {
+	cases := []struct {
+		name     string
+		frames   []string
+		expected []string // expected ANSI escape sequence after each frame
+	}{
+		{
+			name: "simple style change",
+			frames: []string{
+				"A",
+				"\x1b[1mA",
+			},
+			expected: []string{
+				"\x1b[?25l\rA\r\n\n",
+				"\x1b[2A\x1b[1mA\x1b[m",
+			},
+		},
+		{
+			name:   "style and link change",
+			frames: []string{"A", "\x1b[31m\x1b]8;;https://example.com\x1b\\A\x1b]8;;\x1b\\"}, // red + link
+			expected: []string{
+				"\x1b[?25l\rA\r\n\n",
+				"\x1b[2A\x1b[31m\x1b]8;;https://example.com\aA\x1b[m\x1b]8;;\a",
+			},
+		},
+		{
+			// Covers comparing stored downsampled colors vs new true color styles
+			// See commit 75d1e37ff1bb
+			name: "the same true color style frames",
+			frames: []string{
+				" \x1b[38;2;255;128;0mABC\n DEF", // orange
+				" \x1b[38;2;255;128;0mABC\n DEF", // orange
+				" \x1b[38;2;255;128;0mABC\n DEF", // orange
+			},
+			expected: []string{
+				"\x1b[?25l\r \x1b[38;5;208mABC\x1b[m\r\n\x1b[38;5;208m DEF\x1b[m\r\n",
+				"",
+				"",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color", "TTY_FORCE=1"})
+			t.Logf("Profile: %v", r.profile)
+			r.HideCursor()            // We don't want the cursor to be hidden in between flushes
+			r.SetRelativeCursor(true) // Use absolute cursor movements since we're drawing fullscreen
+
+			scr := NewScreenBuffer(5, 3)
+			for i, frameStr := range tc.frames {
+				NewStyledString(frameStr).Draw(scr, scr.Bounds())
+				r.Render(scr.Buffer)
+				if err := r.Flush(); err != nil {
+					t.Fatalf("failed to flush renderer: %v", err)
+				}
+
+				output := buf.String()
+				expected := tc.expected[i]
+				if output != expected {
+					t.Errorf("frame %d: expected output %q, got %q", i, expected, output)
+				}
+
+				buf.Reset()
+			}
+		})
+	}
+}
+
 // Helper type for testing logger
 type testLogger struct {
 	buf *bytes.Buffer
