@@ -656,6 +656,17 @@ func TestLineRenderLine(t *testing.T) {
 	}
 }
 
+func BenchmarkBufferSetCell(b *testing.B) {
+	buf := NewBuffer(80, 24)
+	cell := &Cell{Content: "A", Width: 1}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		x := i % 80
+		y := (i / 80) % 24
+		buf.SetCell(x, y, cell)
+	}
+}
+
 func width(s string) int {
 	width := 0
 	for _, line := range strings.Split(s, "\n") {
