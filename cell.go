@@ -115,7 +115,7 @@ func (h *Link) String() string {
 
 // Equal returns whether the hyperlink is equal to the other hyperlink.
 func (h *Link) Equal(o *Link) bool {
-	return o != nil && h.URL == o.URL && h.Params == o.Params
+	return o != nil && *h == *o
 }
 
 // IsZero returns whether the hyperlink is empty.
