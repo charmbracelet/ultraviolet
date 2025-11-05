@@ -540,18 +540,12 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 		cell = &EmptyCell
 	}
 
-	// Copy to avoid modifying the original cell.
-	newStyle := cell.Style
-	newLink := cell.Link
-	oldStyle := s.cur.Style
-	oldLink := s.cur.Link
-	if s.profile != 0 {
-		// Downsample colors to the given color profile.
-		newStyle = ConvertStyle(cell.Style, s.profile)
-		newLink = ConvertLink(cell.Link, s.profile)
-		oldStyle = ConvertStyle(s.cur.Style, s.profile)
-		oldLink = ConvertLink(s.cur.Link, s.profile)
-	}
+	// Downsample pen when we don't have a [colorprofile.TrueColor],
+	// otherwise, use the original style.
+	newStyle := ConvertStyle(cell.Style, s.profile)
+	newLink := ConvertLink(cell.Link, s.profile)
+	oldStyle := ConvertStyle(s.cur.Style, s.profile)
+	oldLink := ConvertLink(s.cur.Link, s.profile)
 
 	if !newStyle.Equal(&oldStyle) {
 		seq := newStyle.DiffSequence(oldStyle)
