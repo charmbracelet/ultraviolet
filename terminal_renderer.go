@@ -540,23 +540,30 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 		cell = &EmptyCell
 	}
 
+	// Copy to avoid modifying the original cell.
+	newStyle := cell.Style
+	newLink := cell.Link
+	oldStyle := s.cur.Style
+	oldLink := s.cur.Link
 	if s.profile != 0 {
 		// Downsample colors to the given color profile.
-		cell.Style = ConvertStyle(cell.Style, s.profile)
-		cell.Link = ConvertLink(cell.Link, s.profile)
+		newStyle = ConvertStyle(cell.Style, s.profile)
+		newLink = ConvertLink(cell.Link, s.profile)
+		oldStyle = ConvertStyle(s.cur.Style, s.profile)
+		oldLink = ConvertLink(s.cur.Link, s.profile)
 	}
 
-	if !cell.Style.Equal(&s.cur.Style) {
-		seq := cell.Style.DiffSequence(s.cur.Style)
-		if cell.Style.IsZero() && len(seq) > len(ansi.ResetStyle) {
+	if !newStyle.Equal(&oldStyle) {
+		seq := newStyle.DiffSequence(oldStyle)
+		if newStyle.IsZero() && len(seq) > len(ansi.ResetStyle) {
 			seq = ansi.ResetStyle
 		}
 		_, _ = s.buf.WriteString(seq)
-		s.cur.Style = cell.Style
+		s.cur.Style = cell.Style // Copy the original style
 	}
-	if !cell.Link.Equal(&s.cur.Link) {
-		_, _ = s.buf.WriteString(ansi.SetHyperlink(cell.Link.URL, cell.Link.Params))
-		s.cur.Link = cell.Link
+	if !newLink.Equal(&oldLink) {
+		_, _ = s.buf.WriteString(ansi.SetHyperlink(newLink.URL, newLink.Params))
+		s.cur.Link = cell.Link // Copy the original link
 	}
 }
 
