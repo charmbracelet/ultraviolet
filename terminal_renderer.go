@@ -765,191 +765,176 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 	newLine := newbuf.Line(y)
 
 	// Find the first changed cell in the line
-	var lineChanged bool
-	for i := 0; i < newbuf.Width(); i++ {
-		if !cellEqual(newLine.At(i), oldLine.At(i)) {
-			lineChanged = true
-			break
+	blank := newLine.At(0)
+
+	// It might be cheaper to clear leading spaces with [ansi.EL] 1 i.e.
+	// [ansi.EraseLineLeft].
+	if blank == nil || blank.IsBlank() { //nolint:nestif
+		var oFirstCell, nFirstCell int
+		for oFirstCell = 0; oFirstCell < s.curbuf.Width(); oFirstCell++ {
+			if !cellEqual(oldLine.At(oFirstCell), blank) {
+				break
+			}
+		}
+		for nFirstCell = 0; nFirstCell < newbuf.Width(); nFirstCell++ {
+			if !cellEqual(newLine.At(nFirstCell), blank) {
+				break
+			}
+		}
+
+		if nFirstCell == oFirstCell {
+			firstCell = nFirstCell
+
+			// Find the first differing cell
+			for firstCell < newbuf.Width() &&
+				cellEqual(oldLine.At(firstCell), newLine.At(firstCell)) {
+				firstCell++
+			}
+		} else if oFirstCell > nFirstCell {
+			firstCell = nFirstCell
+		} else if oFirstCell < nFirstCell {
+			firstCell = oFirstCell
+			el1Cost := len(ansi.EraseLineLeft)
+			if el1Cost < nFirstCell-oFirstCell {
+				if nFirstCell >= newbuf.Width() {
+					s.move(newbuf, 0, y)
+					s.updatePen(blank)
+					_, _ = s.buf.WriteString(ansi.EraseLineRight)
+				} else {
+					s.move(newbuf, nFirstCell-1, y)
+					s.updatePen(blank)
+					_, _ = s.buf.WriteString(ansi.EraseLineLeft)
+				}
+
+				for firstCell < nFirstCell {
+					oldLine.Set(firstCell, blank)
+					firstCell++
+				}
+			}
+		}
+	} else {
+		// Find the first differing cell
+		for firstCell < newbuf.Width() && cellEqual(newLine.At(firstCell), oldLine.At(firstCell)) {
+			firstCell++
 		}
 	}
 
-	const ceolStandoutGlitch = false
-	if ceolStandoutGlitch && lineChanged { //nolint:nestif
-		s.move(newbuf, 0, y)
-		s.clearToEnd(newbuf, nil, false)
-		s.putRange(newbuf, oldLine, newLine, y, 0, newbuf.Width()-1)
-	} else {
-		blank := newLine.At(0)
+	// If we didn't find one, we're done
+	if firstCell >= newbuf.Width() {
+		return
+	}
 
-		// It might be cheaper to clear leading spaces with [ansi.EL] 1 i.e.
-		// [ansi.EraseLineLeft].
-		if blank == nil || blank.IsBlank() {
-			var oFirstCell, nFirstCell int
-			for oFirstCell = 0; oFirstCell < s.curbuf.Width(); oFirstCell++ {
-				if !cellEqual(oldLine.At(oFirstCell), blank) {
-					break
-				}
-			}
-			for nFirstCell = 0; nFirstCell < newbuf.Width(); nFirstCell++ {
-				if !cellEqual(newLine.At(nFirstCell), blank) {
-					break
-				}
-			}
-
-			if nFirstCell == oFirstCell {
-				firstCell = nFirstCell
-
-				// Find the first differing cell
-				for firstCell < newbuf.Width() &&
-					cellEqual(oldLine.At(firstCell), newLine.At(firstCell)) {
-					firstCell++
-				}
-			} else if oFirstCell > nFirstCell {
-				firstCell = nFirstCell
-			} else if oFirstCell < nFirstCell {
-				firstCell = oFirstCell
-				el1Cost := len(ansi.EraseLineLeft)
-				if el1Cost < nFirstCell-oFirstCell {
-					if nFirstCell >= newbuf.Width() {
-						s.move(newbuf, 0, y)
-						s.updatePen(blank)
-						_, _ = s.buf.WriteString(ansi.EraseLineRight)
-					} else {
-						s.move(newbuf, nFirstCell-1, y)
-						s.updatePen(blank)
-						_, _ = s.buf.WriteString(ansi.EraseLineLeft)
-					}
-
-					for firstCell < nFirstCell {
-						oldLine.Set(firstCell, blank)
-						firstCell++
-					}
-				}
-			}
-		} else {
-			// Find the first differing cell
-			for firstCell < newbuf.Width() && cellEqual(newLine.At(firstCell), oldLine.At(firstCell)) {
-				firstCell++
-			}
-		}
-
-		// If we didn't find one, we're done
-		if firstCell >= newbuf.Width() {
-			return
-		}
-
-		blank = newLine.At(newbuf.Width() - 1)
-		if blank != nil && !blank.IsBlank() {
-			// Find the last differing cell
-			nLastCell = newbuf.Width() - 1
-			for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), oldLine.At(nLastCell)) {
-				nLastCell--
-			}
-
-			if nLastCell >= firstCell {
-				s.move(newbuf, firstCell, y)
-				s.putRange(newbuf, oldLine, newLine, y, firstCell, nLastCell)
-				if firstCell < len(oldLine) && firstCell < len(newLine) {
-					copy(oldLine[firstCell:], newLine[firstCell:])
-				} else {
-					copy(oldLine, newLine)
-				}
-			}
-
-			return
-		}
-
-		// Find last non-blank cell in the old line.
-		oLastCell = s.curbuf.Width() - 1
-		for oLastCell > firstCell && cellEqual(oldLine.At(oLastCell), blank) {
-			oLastCell--
-		}
-
-		// Find last non-blank cell in the new line.
+	blank = newLine.At(newbuf.Width() - 1)
+	if blank != nil && !blank.IsBlank() {
+		// Find the last differing cell
 		nLastCell = newbuf.Width() - 1
-		for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), blank) {
+		for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), oldLine.At(nLastCell)) {
 			nLastCell--
 		}
 
-		if nLastCell == firstCell && s.el0Cost() < oLastCell-nLastCell {
+		if nLastCell >= firstCell {
 			s.move(newbuf, firstCell, y)
-			if !cellEqual(newLine.At(firstCell), blank) {
-				s.putCell(newbuf, newLine.At(firstCell))
+			s.putRange(newbuf, oldLine, newLine, y, firstCell, nLastCell)
+			if firstCell < len(oldLine) && firstCell < len(newLine) {
+				copy(oldLine[firstCell:], newLine[firstCell:])
+			} else {
+				copy(oldLine, newLine)
+			}
+		}
+
+		return
+	}
+
+	// Find last non-blank cell in the old line.
+	oLastCell = s.curbuf.Width() - 1
+	for oLastCell > firstCell && cellEqual(oldLine.At(oLastCell), blank) {
+		oLastCell--
+	}
+
+	// Find last non-blank cell in the new line.
+	nLastCell = newbuf.Width() - 1
+	for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), blank) {
+		nLastCell--
+	}
+
+	if nLastCell == firstCell && s.el0Cost() < oLastCell-nLastCell { //nolint:nestif
+		s.move(newbuf, firstCell, y)
+		if !cellEqual(newLine.At(firstCell), blank) {
+			s.putCell(newbuf, newLine.At(firstCell))
+		}
+		s.clearToEnd(newbuf, blank, false)
+	} else if nLastCell != oLastCell &&
+		!cellEqual(newLine.At(nLastCell), oldLine.At(oLastCell)) {
+		s.move(newbuf, firstCell, y)
+		if oLastCell-nLastCell > s.el0Cost() {
+			if s.putRange(newbuf, oldLine, newLine, y, firstCell, nLastCell) {
+				s.move(newbuf, nLastCell+1, y)
 			}
 			s.clearToEnd(newbuf, blank, false)
-		} else if nLastCell != oLastCell &&
-			!cellEqual(newLine.At(nLastCell), oldLine.At(oLastCell)) {
+		} else {
+			n := max(nLastCell, oLastCell)
+			s.putRange(newbuf, oldLine, newLine, y, firstCell, n)
+		}
+	} else {
+		nLastNonBlank := nLastCell
+		oLastNonBlank := oLastCell
+
+		// Find the last cells that really differ.
+		// Can be -1 if no cells differ.
+		for cellEqual(newLine.At(nLastCell), oldLine.At(oLastCell)) {
+			if !cellEqual(newLine.At(nLastCell-1), oldLine.At(oLastCell-1)) {
+				break
+			}
+			nLastCell--
+			oLastCell--
+			if nLastCell == -1 || oLastCell == -1 {
+				break
+			}
+		}
+
+		n := min(oLastCell, nLastCell)
+		if n >= firstCell {
 			s.move(newbuf, firstCell, y)
-			if oLastCell-nLastCell > s.el0Cost() {
-				if s.putRange(newbuf, oldLine, newLine, y, firstCell, nLastCell) {
-					s.move(newbuf, nLastCell+1, y)
+			s.putRange(newbuf, oldLine, newLine, y, firstCell, n)
+		}
+
+		if oLastCell < nLastCell {
+			m := max(nLastNonBlank, oLastNonBlank)
+			if n != 0 {
+				for n > 0 {
+					wide := newLine.At(n + 1)
+					if wide == nil || !wide.IsZero() {
+						break
+					}
+					n--
+					oLastCell--
+				}
+			} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
+				next := newLine.At(n + 1)
+				for next != nil && next.IsZero() {
+					n++
+					oLastCell++
+				}
+			}
+
+			s.move(newbuf, n+1, y)
+			ichCost := 3 + nLastCell - oLastCell
+			if s.caps.Contains(capICH) && (nLastCell < nLastNonBlank || ichCost > (m-n)) {
+				s.putRange(newbuf, oldLine, newLine, y, n+1, m)
+			} else {
+				s.insertCells(newbuf, newLine[n+1:], nLastCell-oLastCell)
+			}
+		} else if oLastCell > nLastCell {
+			s.move(newbuf, n+1, y)
+			dchCost := 3 + oLastCell - nLastCell
+			if dchCost > len(ansi.EraseLineRight)+nLastNonBlank-(n+1) {
+				if s.putRange(newbuf, oldLine, newLine, y, n+1, nLastNonBlank) {
+					s.move(newbuf, nLastNonBlank+1, y)
 				}
 				s.clearToEnd(newbuf, blank, false)
 			} else {
-				n := max(nLastCell, oLastCell)
-				s.putRange(newbuf, oldLine, newLine, y, firstCell, n)
-			}
-		} else {
-			nLastNonBlank := nLastCell
-			oLastNonBlank := oLastCell
-
-			// Find the last cells that really differ.
-			// Can be -1 if no cells differ.
-			for cellEqual(newLine.At(nLastCell), oldLine.At(oLastCell)) {
-				if !cellEqual(newLine.At(nLastCell-1), oldLine.At(oLastCell-1)) {
-					break
-				}
-				nLastCell--
-				oLastCell--
-				if nLastCell == -1 || oLastCell == -1 {
-					break
-				}
-			}
-
-			n := min(oLastCell, nLastCell)
-			if n >= firstCell {
-				s.move(newbuf, firstCell, y)
-				s.putRange(newbuf, oldLine, newLine, y, firstCell, n)
-			}
-
-			if oLastCell < nLastCell {
-				m := max(nLastNonBlank, oLastNonBlank)
-				if n != 0 {
-					for n > 0 {
-						wide := newLine.At(n + 1)
-						if wide == nil || !wide.IsZero() {
-							break
-						}
-						n--
-						oLastCell--
-					}
-				} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
-					next := newLine.At(n + 1)
-					for next != nil && next.IsZero() {
-						n++
-						oLastCell++
-					}
-				}
-
-				s.move(newbuf, n+1, y)
-				ichCost := 3 + nLastCell - oLastCell
-				if s.caps.Contains(capICH) && (nLastCell < nLastNonBlank || ichCost > (m-n)) {
-					s.putRange(newbuf, oldLine, newLine, y, n+1, m)
-				} else {
-					s.insertCells(newbuf, newLine[n+1:], nLastCell-oLastCell)
-				}
-			} else if oLastCell > nLastCell {
-				s.move(newbuf, n+1, y)
-				dchCost := 3 + oLastCell - nLastCell
-				if dchCost > len(ansi.EraseLineRight)+nLastNonBlank-(n+1) {
-					if s.putRange(newbuf, oldLine, newLine, y, n+1, nLastNonBlank) {
-						s.move(newbuf, nLastNonBlank+1, y)
-					}
-					s.clearToEnd(newbuf, blank, false)
-				} else {
-					s.updatePen(blank)
-					s.deleteCells(oLastCell - nLastCell)
-				}
+				s.updatePen(blank)
+				s.deleteCells(oLastCell - nLastCell)
 			}
 		}
 	}
