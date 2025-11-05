@@ -72,9 +72,12 @@ func (c *Cell) IsBlank() bool {
 	if c.Width <= 0 {
 		return false
 	}
-	for _, r := range c.Content {
-		if !unicode.IsSpace(r) {
-			return false
+	// OPTIM: Special case for single space performance.
+	if len(c.Content) != 1 || c.Content != " " {
+		for _, r := range c.Content {
+			if !unicode.IsSpace(r) {
+				return false
+			}
 		}
 	}
 	return c.Style.IsBlank() && c.Link.IsZero()
