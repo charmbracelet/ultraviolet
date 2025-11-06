@@ -5,9 +5,9 @@ go 1.24.2
 replace github.com/charmbracelet/ultraviolet => ../
 
 require (
-	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.1.0.20250603140710-946081c6f1a5
-	github.com/charmbracelet/ultraviolet v0.0.0-00010101000000-000000000000
-	github.com/charmbracelet/x/ansi v0.10.3
+	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251106193318-19329a3e8410
+	github.com/charmbracelet/ultraviolet v0.0.0-20251106190538-99ea45596692
+	github.com/charmbracelet/x/ansi v0.11.0
 	github.com/charmbracelet/x/mosaic v0.0.0-20250509021451-13796e822d86
 	github.com/lucasb-eyer/go-colorful v1.3.0
 	github.com/mattn/go-runewidth v0.0.19
@@ -16,8 +16,7 @@ require (
 
 require (
 	github.com/bits-and-blooms/bitset v1.24.3 // indirect
-	github.com/charmbracelet/colorprofile v0.3.2 // indirect
-	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
+	github.com/charmbracelet/colorprofile v0.3.3 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect

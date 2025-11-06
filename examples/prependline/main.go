@@ -36,7 +36,8 @@ func main() {
 
 	var st uv.Style
 	bg := 1
-	st = st.Background(ansi.BasicColor(bg)).Foreground(ansi.Black)
+	st.Bg = ansi.BasicColor(bg)
+	st.Fg = ansi.Black
 	display := func() {
 		// This is the program display. It takes a function that receives a
 		// [uv.Frame]. The frame contains the last displayed buffer, cursor
@@ -100,7 +101,7 @@ LOOP:
 					cancel()
 				}
 
-				st = st.Background(ansi.BasicColor(rand.Intn(16)))
+				st.Bg = ansi.BasicColor(rand.Intn(16))
 			case uv.WindowSizeEvent:
 				w = ev.Width
 				t.Resize(w, frameHeight)
@@ -110,7 +111,7 @@ LOOP:
 			t.PrependString(fmt.Sprintf("%T %v", ev, ev))
 
 			rd := rand.Intn(8)
-			st.Background(ansi.BasicColor(rd))
+			st.Bg = ansi.BasicColor(rd)
 			display()
 		}
 	}

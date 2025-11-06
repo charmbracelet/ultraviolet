@@ -73,7 +73,10 @@ func main() {
 	t.EnterAltScreen() //nolint:errcheck
 
 	// Enable mouse support.
-	t.EnableMouse() //nolint:errcheck
+	t.WriteString(ansi.SetMode(
+		ansi.ModeMouseButtonEvent,
+		ansi.ModeMouseExtSgr,
+	))
 
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
@@ -326,92 +329,97 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	evch := make(chan uv.Event)
-	go func() {
-		defer close(evch)
-		_ = t.StreamEvents(ctx, evch)
-	}()
-
 	// Listen for input events.
-	for ev := range evch {
-		switch ev := ev.(type) {
-		case uv.WindowPixelSizeEvent:
-			// XXX: This is only emitted with traditional Unix systems. On
-			// Windows, we would need to use [ansi.RequestWindowSizeWinOp] to
-			// get the pixel size.
-			pixSize = ev
-			imgCellW, imgCellH = imgCellSize()
-			imgOffsetX = winSize.Width/2 - imgCellW/2
-			imgOffsetY = winSize.Height/2 - imgCellH/2
-			displayImg()
-		case uv.WindowSizeEvent:
-			winSize = ev
-			imgCellW, imgCellH = imgCellSize()
-			imgOffsetX = winSize.Width/2 - imgCellW/2
-			imgOffsetY = winSize.Height/2 - imgCellH/2
-			t.Erase()
-			log.Printf("image cell size: %d x %d", imgCellW, imgCellH)
-			if err := t.Resize(ev.Width, ev.Height); err != nil {
-				log.Fatalf("failed to resize program: %v", err)
-			}
+LOOP:
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			switch ev := ev.(type) {
+			case uv.WindowPixelSizeEvent:
+				// XXX: This is only emitted with traditional Unix systems. On
+				// Windows, we would need to use [ansi.RequestWindowSizeWinOp] to
+				// get the pixel size.
+				pixSize = ev
+				imgCellW, imgCellH = imgCellSize()
+				imgOffsetX = winSize.Width/2 - imgCellW/2
+				imgOffsetY = winSize.Height/2 - imgCellH/2
+				displayImg()
+			case uv.WindowSizeEvent:
+				winSize = ev
+				imgCellW, imgCellH = imgCellSize()
+				imgOffsetX = winSize.Width/2 - imgCellW/2
+				imgOffsetY = winSize.Height/2 - imgCellH/2
+				t.Erase()
+				log.Printf("image cell size: %d x %d", imgCellW, imgCellH)
+				if err := t.Resize(ev.Width, ev.Height); err != nil {
+					log.Fatalf("failed to resize program: %v", err)
+				}
 
-			displayImg()
-		case uv.KeyPressEvent:
-			switch {
-			case ev.MatchStrings("q", "ctrl+c"):
-				cancel() // This will stop the loop
-			case ev.MatchStrings("up", "k"):
-				imgOffsetY--
-			case ev.MatchStrings("down", "j"):
-				imgOffsetY++
-			case ev.MatchStrings("left", "h"):
-				imgOffsetX--
-			case ev.MatchStrings("right", "l"):
-				imgOffsetX++
-			}
+				displayImg()
+			case uv.KeyPressEvent:
+				switch {
+				case ev.MatchString("q", "ctrl+c"):
+					cancel() // This will stop the loop
+				case ev.MatchString("up", "k"):
+					imgOffsetY--
+				case ev.MatchString("down", "j"):
+					imgOffsetY++
+				case ev.MatchString("left", "h"):
+					imgOffsetX--
+				case ev.MatchString("right", "l"):
+					imgOffsetX++
+				}
 
-			displayImg()
-		case uv.MouseClickEvent:
-			imgOffsetX = ev.X - (imgCellW / 2)
-			imgOffsetY = ev.Y - (imgCellH / 2)
+				displayImg()
+			case uv.MouseClickEvent:
+				imgOffsetX = ev.X - (imgCellW / 2)
+				imgOffsetY = ev.Y - (imgCellH / 2)
 
-			displayImg()
-		case uv.PrimaryDeviceAttributesEvent:
-			if slices.Contains(ev, 4) {
-				upgradeEnc(sixelEncoding)
+				displayImg()
+			case uv.PrimaryDeviceAttributesEvent:
+				if slices.Contains(ev, 4) {
+					upgradeEnc(sixelEncoding)
+					displayImg()
+				}
+
+			case uv.TerminalVersionEvent:
+				if strings.Contains(ev.Name, "iTerm") || strings.Contains(ev.Name, "WezTerm") {
+					upgradeEnc(itermEncoding)
+					displayImg()
+				}
+
+			case uv.WindowOpEvent:
+				// Here 4 corresponds to the window size response.
+				if ev.Op == 4 && len(ev.Args) >= 2 {
+					pixSize.Height = ev.Args[0]
+					pixSize.Width = ev.Args[1]
+				}
+			case uv.KittyGraphicsEvent:
+				if strings.Contains(termType, "wezterm") ||
+					strings.Contains(termVersion, "WezTerm") ||
+					strings.Contains(termProg, "WezTerm") {
+					// WezTerm doesn't support Kitty Unicode Graphics
+					break
+				}
+				if ev.Options.ID == 31 {
+					upgradeEnc(kittyEncoding)
+				}
+
 				displayImg()
 			}
-
-		case uv.TerminalVersionEvent:
-			if strings.Contains(string(ev), "iTerm") || strings.Contains(string(ev), "WezTerm") {
-				upgradeEnc(itermEncoding)
-				displayImg()
-			}
-
-		case uv.WindowOpEvent:
-			// The [ansi.RequestWindowSizeWinOp] request responds with a "4" or
-			// [ansi.ResizeWindowWinOp] first parameter.
-			if ev.Op == ansi.ResizeWindowWinOp && len(ev.Args) >= 2 {
-				pixSize.Height = ev.Args[0]
-				pixSize.Width = ev.Args[1]
-			}
-		case uv.KittyGraphicsEvent:
-			if strings.Contains(termType, "wezterm") ||
-				strings.Contains(termVersion, "WezTerm") ||
-				strings.Contains(termProg, "WezTerm") {
-				// WezTerm doesn't support Kitty Unicode Graphics
-				break
-			}
-			if ev.Options.ID == 31 {
-				upgradeEnc(kittyEncoding)
-			}
-
-			displayImg()
 		}
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	// Disable mouse support.
+	t.WriteString(ansi.ResetMode(
+		ansi.ModeMouseButtonEvent,
+		ansi.ModeMouseExtSgr,
+	))
 
 	if err := t.Shutdown(ctx); err != nil {
 		log.Fatalf("failed to shutdown program: %v", err)
