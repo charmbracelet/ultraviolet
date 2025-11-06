@@ -614,7 +614,7 @@ func TestLineRenderLine(t *testing.T) {
 			name: "render with styles",
 			setup: func() Line {
 				l := make(Line, 5)
-				l[0] = Cell{Content: "H", Width: 1, Style: NewStyle().Foreground(ansi.Red)}
+				l[0] = Cell{Content: "H", Width: 1, Style: Style{Fg: ansi.Red}}
 				l[1] = Cell{Content: "i", Width: 1}
 				return l
 			},

@@ -126,188 +126,73 @@ func (h *Link) IsZero() bool {
 	return *h == Link{}
 }
 
-// StyleAttrs is a bitmask for text attributes that can change the look of text.
+// StyleAttr is a bitmask for text attributes that can change the look of text.
 // These attributes can be combined to create different styles.
-type StyleAttrs uint8
+type StyleAttr uint8
 
 // These are the available text attributes that can be combined to create
 // different styles.
 const (
-	BoldAttr StyleAttrs = 1 << iota
-	FaintAttr
-	ItalicAttr
-	SlowBlinkAttr
-	RapidBlinkAttr
-	ReverseAttr
-	ConcealAttr
-	StrikethroughAttr
+	AttrBold StyleAttr = 1 << iota
+	AttrFaint
+	AttrItalic
+	AttrBlink
+	AttrRapidBlink // Not widely supported
+	AttrReverse
+	AttrConceal
+	AttrStrikethrough
 
-	ResetAttr StyleAttrs = 0
+	AttrReset StyleAttr = 0
 )
 
-// Add adds the attribute to the attribute mask.
-func (a StyleAttrs) Add(attr StyleAttrs) StyleAttrs {
-	return a | attr
-}
-
-// Remove removes the attribute from the attribute mask.
-func (a StyleAttrs) Remove(attr StyleAttrs) StyleAttrs {
-	return a &^ attr
-}
-
-// Contains returns whether the attribute mask contains the attribute.
-func (a StyleAttrs) Contains(attr StyleAttrs) bool {
-	return a&attr == attr
-}
+// AttrSlowBlink is an alias for AttrBlink.
+//
+// Deprecated: Use [AttrBlink] instead.
+const (
+	AttrSlowBlink = AttrBlink
+)
 
 // UnderlineStyle is the style of underline to use for text.
 type UnderlineStyle = ansi.UnderlineStyle
 
 // These are the available underline styles.
 const (
-	NoUnderline     = ansi.NoUnderlineStyle
-	SingleUnderline = ansi.SingleUnderlineStyle
-	DoubleUnderline = ansi.DoubleUnderlineStyle
-	CurlyUnderline  = ansi.CurlyUnderlineStyle
-	DottedUnderline = ansi.DottedUnderlineStyle
-	DashedUnderline = ansi.DashedUnderlineStyle
+	UnderlineStyleNone   = ansi.NoUnderlineStyle
+	UnderlineStyleSingle = ansi.SingleUnderlineStyle
+	UnderlineStyleDouble = ansi.DoubleUnderlineStyle
+	UnderlineStyleCurly  = ansi.CurlyUnderlineStyle
+	UnderlineStyleDotted = ansi.DottedUnderlineStyle
+	UnderlineStyleDashed = ansi.DashedUnderlineStyle
 )
 
-// Style represents the Style of a cell.
+// Style represents the style of a cell.
 type Style struct {
-	Fg      color.Color
-	Bg      color.Color
-	Ul      color.Color
-	UlStyle UnderlineStyle
-	Attrs   StyleAttrs
-}
-
-// NewStyle is a convenience function to create a new [Style].
-func NewStyle() Style {
-	return Style{}
-}
-
-// Foreground returns a new style with the foreground color set to the given color.
-func (s Style) Foreground(c color.Color) Style {
-	s.Fg = c
-	return s
-}
-
-// Background returns a new style with the background color set to the given color.
-func (s Style) Background(c color.Color) Style {
-	s.Bg = c
-	return s
-}
-
-// Underline returns a new style with the underline color set to the given color.
-func (s Style) Underline(c color.Color) Style {
-	s.Ul = c
-	return s
-}
-
-// UnderlineStyle returns a new style with the underline style set to the
-// given style.
-func (s Style) UnderlineStyle(st UnderlineStyle) Style {
-	s.UlStyle = st
-	return s
-}
-
-// Bold returns a new style with the bold attribute set to the given value.
-func (s Style) Bold(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(BoldAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(BoldAttr)
-	}
-	return s
-}
-
-// Faint returns a new style with the faint attribute set to the given value.
-func (s Style) Faint(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(FaintAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(FaintAttr)
-	}
-	return s
-}
-
-// Italic returns a new style with the italic attribute set to the given value.
-func (s Style) Italic(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(ItalicAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(ItalicAttr)
-	}
-	return s
-}
-
-// SlowBlink returns a new style with the slow blink attribute set to the
-// given value.
-func (s Style) SlowBlink(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(SlowBlinkAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(SlowBlinkAttr)
-	}
-	return s
-}
-
-// RapidBlink returns a new style with the rapid blink attribute set to
-// the given value.
-func (s Style) RapidBlink(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(RapidBlinkAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(RapidBlinkAttr)
-	}
-	return s
-}
-
-// Reverse returns a new style with the reverse attribute set to the given
-// value.
-func (s Style) Reverse(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(ReverseAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(ReverseAttr)
-	}
-	return s
-}
-
-// Conceal returns a new style with the conceal attribute set to the given
-// value.
-func (s Style) Conceal(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(ConcealAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(ConcealAttr)
-	}
-	return s
-}
-
-// Strikethrough returns a new style with the strikethrough attribute set to
-// the given value.
-func (s Style) Strikethrough(v bool) Style {
-	if v {
-		s.Attrs = s.Attrs.Add(StrikethroughAttr)
-	} else {
-		s.Attrs = s.Attrs.Remove(StrikethroughAttr)
-	}
-	return s
+	Fg             color.Color
+	Bg             color.Color
+	UnderlineColor color.Color
+	Underline      UnderlineStyle
+	Attrs          StyleAttr
 }
 
 // Equal returns true if the style is equal to the other style.
 func (s *Style) Equal(o *Style) bool {
 	return s.Attrs == o.Attrs &&
-		s.UlStyle == o.UlStyle &&
+		s.Underline == o.Underline &&
 		colorEqual(s.Fg, o.Fg) &&
 		colorEqual(s.Bg, o.Bg) &&
-		colorEqual(s.Ul, o.Ul)
+		colorEqual(s.UnderlineColor, o.UnderlineColor)
 }
 
-// Sequence returns the ANSI sequence that sets the style.
-func (s *Style) Sequence() string {
+// Styled wraps the given string with the style's ANSI sequences and resets.
+func (s *Style) Styled(str string) string {
+	if s.IsZero() {
+		return str
+	}
+	return s.String() + str + ansi.ResetStyle
+}
+
+// String returns the ANSI SGR sequence for the style.
+func (s *Style) String() string {
 	if s.IsZero() {
 		return ansi.ResetStyle
 	}
@@ -315,43 +200,43 @@ func (s *Style) Sequence() string {
 	var b ansi.Style
 
 	if s.Attrs != 0 { //nolint:nestif
-		if s.Attrs&BoldAttr != 0 {
+		if s.Attrs&AttrBold != 0 {
 			b = b.Bold()
 		}
-		if s.Attrs&FaintAttr != 0 {
+		if s.Attrs&AttrFaint != 0 {
 			b = b.Faint()
 		}
-		if s.Attrs&ItalicAttr != 0 {
-			b = b.Italic()
+		if s.Attrs&AttrItalic != 0 {
+			b = b.Italic(true)
 		}
-		if s.Attrs&SlowBlinkAttr != 0 {
-			b = b.SlowBlink()
+		if s.Attrs&AttrBlink != 0 {
+			b = b.Blink(true)
 		}
-		if s.Attrs&RapidBlinkAttr != 0 {
-			b = b.RapidBlink()
+		if s.Attrs&AttrRapidBlink != 0 {
+			b = b.RapidBlink(true)
 		}
-		if s.Attrs&ReverseAttr != 0 {
-			b = b.Reverse()
+		if s.Attrs&AttrReverse != 0 {
+			b = b.Reverse(true)
 		}
-		if s.Attrs&ConcealAttr != 0 {
-			b = b.Conceal()
+		if s.Attrs&AttrConceal != 0 {
+			b = b.Conceal(true)
 		}
-		if s.Attrs&StrikethroughAttr != 0 {
-			b = b.Strikethrough()
+		if s.Attrs&AttrStrikethrough != 0 {
+			b = b.Strikethrough(true)
 		}
 	}
-	if s.UlStyle != NoUnderline {
-		switch s.UlStyle {
-		case SingleUnderline:
-			b = b.Underline()
-		case DoubleUnderline:
-			b = b.DoubleUnderline()
-		case CurlyUnderline:
-			b = b.CurlyUnderline()
-		case DottedUnderline:
-			b = b.DottedUnderline()
-		case DashedUnderline:
-			b = b.DashedUnderline()
+	if s.Underline != UnderlineStyleNone {
+		switch s.Underline {
+		case UnderlineStyleSingle:
+			b = b.Underline(true)
+		case UnderlineStyleDouble:
+			b = b.UnderlineStyle(UnderlineStyleDouble)
+		case UnderlineStyleCurly:
+			b = b.UnderlineStyle(UnderlineStyleCurly)
+		case UnderlineStyleDotted:
+			b = b.UnderlineStyle(UnderlineStyleDotted)
+		case UnderlineStyleDashed:
+			b = b.UnderlineStyle(UnderlineStyleDashed)
 		}
 	}
 	if s.Fg != nil {
@@ -360,102 +245,168 @@ func (s *Style) Sequence() string {
 	if s.Bg != nil {
 		b = b.BackgroundColor(s.Bg)
 	}
-	if s.Ul != nil {
-		b = b.UnderlineColor(s.Ul)
+	if s.UnderlineColor != nil {
+		b = b.UnderlineColor(s.UnderlineColor)
 	}
 
 	return b.String()
 }
 
-// DiffSequence returns the ANSI sequence that sets the style as a diff from
+// Diff returns the ANSI sequence that sets the style as a diff from
 // another style.
-func (s *Style) DiffSequence(o Style) string {
-	if o.IsZero() {
-		return s.Sequence()
+func (s *Style) Diff(from *Style) string {
+	return StyleDiff(from, s)
+}
+
+// StyleDiff returns the SGR ANSI sequence necessary to transition from the
+// "from" style to the "to" style.
+func StyleDiff(from, to *Style) string {
+	if from == nil && to == nil {
+		return ""
 	}
+	if from != nil && to != nil && from.Equal(to) {
+		return ""
+	}
+	if from == nil {
+		return to.String()
+	}
+	if to == nil || to.IsZero() {
+		// Resetting all styles is cheaper than calculating diffs.
+		// "\x1b[m" is 3 bytes vs potentially much longer sequences.
+		return ansi.ResetStyle
+	}
+
+	// TODO: Optimize further by checking if a full reset is cheaper than
+	// calculating diffs. Often, it might be cheaper to reset everything and
+	// then set the desired styles rather than calculating diffs. Also more
+	// compatible with terminals that have buggy SGR implementations.
 
 	var b ansi.Style
 
-	if !colorEqual(s.Fg, o.Fg) {
-		b = b.ForegroundColor(s.Fg)
+	if !colorEqual(from.Fg, to.Fg) {
+		b = b.ForegroundColor(to.Fg)
 	}
 
-	if !colorEqual(s.Bg, o.Bg) {
-		b = b.BackgroundColor(s.Bg)
+	if !colorEqual(from.Bg, to.Bg) {
+		b = b.BackgroundColor(to.Bg)
 	}
 
-	if !colorEqual(s.Ul, o.Ul) {
-		b = b.UnderlineColor(s.Ul)
+	if !colorEqual(from.UnderlineColor, to.UnderlineColor) {
+		// TODO: Investigate this. For backward compatibility, we might want to
+		// set this at the end instead. Because on terminals that don't support
+		// underline color, this might mess up some other attributes if set in
+		// the middle.
+		b = b.UnderlineColor(to.UnderlineColor)
 	}
 
-	var (
-		noBlink  bool
-		isNormal bool
-	)
+	fromBold := from.Attrs&AttrBold != 0
+	fromFaint := from.Attrs&AttrFaint != 0
+	fromItalic := from.Attrs&AttrItalic != 0
+	fromUnderline := from.Underline != UnderlineStyleNone
+	fromBlink := from.Attrs&AttrBlink != 0
+	fromRapidBlink := from.Attrs&AttrRapidBlink != 0
+	fromReverse := from.Attrs&AttrReverse != 0
+	fromConceal := from.Attrs&AttrConceal != 0
+	fromStrikethrough := from.Attrs&AttrStrikethrough != 0
+	toBold := to.Attrs&AttrBold != 0
+	toFaint := to.Attrs&AttrFaint != 0
+	toItalic := to.Attrs&AttrItalic != 0
+	toUnderline := to.Underline != UnderlineStyleNone
+	toBlink := to.Attrs&AttrBlink != 0
+	toRapidBlink := to.Attrs&AttrRapidBlink != 0
+	toReverse := to.Attrs&AttrReverse != 0
+	toConceal := to.Attrs&AttrConceal != 0
+	toStrikethrough := to.Attrs&AttrStrikethrough != 0
 
-	if s.Attrs != o.Attrs { //nolint:nestif
-		if s.Attrs&BoldAttr != o.Attrs&BoldAttr {
-			if s.Attrs&BoldAttr != 0 {
-				b = b.Bold()
-			} else if !isNormal {
-				isNormal = true
-				b = b.NormalIntensity()
-			}
-		}
-		if s.Attrs&FaintAttr != o.Attrs&FaintAttr {
-			if s.Attrs&FaintAttr != 0 {
-				b = b.Faint()
-			} else if !isNormal {
-				b = b.NormalIntensity()
-			}
-		}
-		if s.Attrs&ItalicAttr != o.Attrs&ItalicAttr {
-			if s.Attrs&ItalicAttr != 0 {
-				b = b.Italic()
-			} else {
-				b = b.NoItalic()
-			}
-		}
-		if s.Attrs&SlowBlinkAttr != o.Attrs&SlowBlinkAttr {
-			if s.Attrs&SlowBlinkAttr != 0 {
-				b = b.SlowBlink()
-			} else if !noBlink {
-				noBlink = true
-				b = b.NoBlink()
-			}
-		}
-		if s.Attrs&RapidBlinkAttr != o.Attrs&RapidBlinkAttr {
-			if s.Attrs&RapidBlinkAttr != 0 {
-				b = b.RapidBlink()
-			} else if !noBlink {
-				b = b.NoBlink()
-			}
-		}
-		if s.Attrs&ReverseAttr != o.Attrs&ReverseAttr {
-			if s.Attrs&ReverseAttr != 0 {
-				b = b.Reverse()
-			} else {
-				b = b.NoReverse()
-			}
-		}
-		if s.Attrs&ConcealAttr != o.Attrs&ConcealAttr {
-			if s.Attrs&ConcealAttr != 0 {
-				b = b.Conceal()
-			} else {
-				b = b.NoConceal()
-			}
-		}
-		if s.Attrs&StrikethroughAttr != o.Attrs&StrikethroughAttr {
-			if s.Attrs&StrikethroughAttr != 0 {
-				b = b.Strikethrough()
-			} else {
-				b = b.NoStrikethrough()
-			}
+	// We perform the resets first since they are single attributes and
+	// shouldn't interfere with others being set.
+
+	boldChanged := fromBold != toBold
+	faintChanged := fromFaint != toFaint
+	if boldChanged || faintChanged {
+		if fromBold && !toBold || fromFaint && !toFaint {
+			b = b.Normal()
+			boldChanged = true
+			faintChanged = true
 		}
 	}
 
-	if s.UlStyle != o.UlStyle {
-		b = b.UnderlineStyle(s.UlStyle)
+	italicChanged := fromItalic != toItalic
+	if italicChanged && !toItalic {
+		b = b.Italic(false)
+	}
+
+	underlineChanged := fromUnderline != toUnderline || from.Underline != to.Underline
+	if underlineChanged && !toUnderline {
+		b = b.Underline(false)
+	}
+
+	blinkChanged := fromBlink != toBlink
+	rapidBlinkChanged := fromRapidBlink != toRapidBlink
+	if blinkChanged || rapidBlinkChanged {
+		if fromBlink && !toBlink || fromRapidBlink && !toRapidBlink {
+			b = b.Blink(false)
+			blinkChanged = true
+			rapidBlinkChanged = true
+		}
+	}
+
+	reverseChanged := fromReverse != toReverse
+	if reverseChanged && !toReverse {
+		b = b.Reverse(false)
+	}
+
+	concealChanged := fromConceal != toConceal
+	if concealChanged && !toConceal {
+		b = b.Conceal(false)
+	}
+
+	strikethroughChanged := fromStrikethrough != toStrikethrough
+	if strikethroughChanged && !toStrikethrough {
+		b = b.Strikethrough(false)
+	}
+
+	if boldChanged && toBold {
+		b = b.Bold()
+	}
+
+	if faintChanged && toFaint {
+		b = b.Faint()
+	}
+
+	if italicChanged && toItalic {
+		b = b.Italic(true)
+	}
+
+	if underlineChanged && toUnderline && to.Underline == UnderlineStyleSingle {
+		// We only handle single underline here since others require more
+		// specific handling at the end.
+		b = b.Underline(true)
+	}
+
+	if blinkChanged && toBlink {
+		b = b.Blink(true)
+	}
+
+	if rapidBlinkChanged && toRapidBlink {
+		b = b.RapidBlink(true)
+	}
+
+	if reverseChanged && toReverse {
+		b = b.Reverse(true)
+	}
+
+	if concealChanged && toConceal {
+		b = b.Conceal(true)
+	}
+
+	if strikethroughChanged && toStrikethrough {
+		b = b.Strikethrough(true)
+	}
+
+	// Handle special underline styles.
+	if underlineChanged && toUnderline && to.Underline > UnderlineStyleSingle {
+		b = b.UnderlineStyle(to.Underline)
 	}
 
 	return b.String()
@@ -481,11 +432,11 @@ func (s *Style) IsZero() bool {
 // IsBlank returns whether the style consists of only attributes that don't
 // affect appearance of a space character.
 func (s *Style) IsBlank() bool {
-	return s.UlStyle == NoUnderline &&
-		s.Attrs&^(BoldAttr|FaintAttr|ItalicAttr|SlowBlinkAttr|RapidBlinkAttr) == 0 &&
+	return s.Underline == UnderlineStyleNone &&
+		s.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
 		s.Fg == nil &&
 		s.Bg == nil &&
-		s.Ul == nil
+		s.UnderlineColor == nil
 }
 
 // ConvertStyle converts a style to respect the given color profile.
@@ -497,7 +448,7 @@ func ConvertStyle(s Style, p colorprofile.Profile) Style {
 	case colorprofile.Ascii:
 		s.Fg = nil
 		s.Bg = nil
-		s.Ul = nil
+		s.UnderlineColor = nil
 	case colorprofile.NoTTY:
 		return Style{}
 	}
@@ -508,8 +459,8 @@ func ConvertStyle(s Style, p colorprofile.Profile) Style {
 	if s.Bg != nil {
 		s.Bg = p.Convert(s.Bg)
 	}
-	if s.Ul != nil {
-		s.Ul = p.Convert(s.Ul)
+	if s.UnderlineColor != nil {
+		s.UnderlineColor = p.Convert(s.UnderlineColor)
 	}
 	return s
 }

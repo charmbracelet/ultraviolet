@@ -207,11 +207,11 @@ func ReadStyle(params ansi.Params, pen *Style) {
 		case 0: // Reset
 			*pen = Style{}
 		case 1: // Bold
-			*pen = pen.Bold(true)
+			pen.Attrs |= AttrBold
 		case 2: // Dim/Faint
-			*pen = pen.Faint(true)
+			pen.Attrs |= AttrFaint
 		case 3: // Italic
-			*pen = pen.Italic(true)
+			pen.Attrs |= AttrItalic
 		case 4: // Underline
 			nextParam, _, ok := params.Param(i+1, 0)
 			if hasMore && ok { // Only accept subparameters i.e. separated by ":"
@@ -220,82 +220,82 @@ func ReadStyle(params ansi.Params, pen *Style) {
 					i++
 					switch nextParam {
 					case 0: // No Underline
-						*pen = pen.UnderlineStyle(NoUnderline)
+						pen.Underline = UnderlineStyleNone
 					case 1: // Single Underline
-						*pen = pen.UnderlineStyle(SingleUnderline)
+						pen.Underline = UnderlineStyleSingle
 					case 2: // Double Underline
-						*pen = pen.UnderlineStyle(DoubleUnderline)
+						pen.Underline = UnderlineStyleDouble
 					case 3: // Curly Underline
-						*pen = pen.UnderlineStyle(CurlyUnderline)
+						pen.Underline = UnderlineStyleCurly
 					case 4: // Dotted Underline
-						*pen = pen.UnderlineStyle(DottedUnderline)
+						pen.Underline = UnderlineStyleDotted
 					case 5: // Dashed Underline
-						*pen = pen.UnderlineStyle(DashedUnderline)
+						pen.Underline = UnderlineStyleDashed
 					}
 				}
 			} else {
 				// Single Underline
-				*pen = pen.UnderlineStyle(SingleUnderline)
+				pen.Underline = UnderlineStyleSingle
 			}
 		case 5: // Slow Blink
-			*pen = pen.SlowBlink(true)
+			pen.Attrs |= AttrBlink
 		case 6: // Rapid Blink
-			*pen = pen.RapidBlink(true)
+			pen.Attrs |= AttrRapidBlink
 		case 7: // Reverse
-			*pen = pen.Reverse(true)
+			pen.Attrs |= AttrReverse
 		case 8: // Conceal
-			*pen = pen.Conceal(true)
+			pen.Attrs |= AttrConceal
 		case 9: // Crossed-out/Strikethrough
-			*pen = pen.Strikethrough(true)
+			pen.Attrs |= AttrStrikethrough
 		case 22: // Normal Intensity (not bold or faint)
-			*pen = pen.Bold(false).Faint(false)
+			pen.Attrs &^= (AttrBold | AttrFaint)
 		case 23: // Not italic, not Fraktur
-			*pen = pen.Italic(false)
+			pen.Attrs &^= AttrItalic
 		case 24: // Not underlined
-			*pen = pen.UnderlineStyle(NoUnderline)
+			pen.Underline = UnderlineStyleNone
 		case 25: // Blink off
-			*pen = pen.SlowBlink(false).RapidBlink(false)
+			pen.Attrs &^= (AttrBlink | AttrRapidBlink)
 		case 27: // Positive (not reverse)
-			*pen = pen.Reverse(false)
+			pen.Attrs &^= AttrReverse
 		case 28: // Reveal
-			*pen = pen.Conceal(false)
+			pen.Attrs &^= AttrConceal
 		case 29: // Not crossed out
-			*pen = pen.Strikethrough(false)
+			pen.Attrs &^= AttrStrikethrough
 		case 30, 31, 32, 33, 34, 35, 36, 37: // Set foreground
-			*pen = pen.Foreground(ansi.Black + ansi.BasicColor(param-30)) //nolint:gosec
+			pen.Fg = ansi.Black + ansi.BasicColor(param-30) //nolint:gosec
 		case 38: // Set foreground 256 or truecolor
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				*pen = pen.Foreground(c)
+				pen.Fg = c
 				i += n - 1
 			}
 		case 39: // Default foreground
-			*pen = pen.Foreground(nil)
+			pen.Fg = nil
 		case 40, 41, 42, 43, 44, 45, 46, 47: // Set background
-			*pen = pen.Background(ansi.Black + ansi.BasicColor(param-40)) //nolint:gosec
+			pen.Bg = ansi.Black + ansi.BasicColor(param-40) //nolint:gosec
 		case 48: // Set background 256 or truecolor
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				*pen = pen.Background(c)
+				pen.Bg = c
 				i += n - 1
 			}
 		case 49: // Default Background
-			*pen = pen.Background(nil)
+			pen.Bg = nil
 		case 58: // Set underline color
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				*pen = pen.Underline(c)
+				pen.UnderlineColor = c
 				i += n - 1
 			}
 		case 59: // Default underline color
-			*pen = pen.Underline(nil)
+			pen.UnderlineColor = nil
 		case 90, 91, 92, 93, 94, 95, 96, 97: // Set bright foreground
-			*pen = pen.Foreground(ansi.BrightBlack + ansi.BasicColor(param-90)) //nolint:gosec
+			pen.Fg = ansi.BrightBlack + ansi.BasicColor(param-90) //nolint:gosec
 		case 100, 101, 102, 103, 104, 105, 106, 107: // Set bright background
-			*pen = pen.Background(ansi.BrightBlack + ansi.BasicColor(param-100)) //nolint:gosec
+			pen.Bg = ansi.BrightBlack + ansi.BasicColor(param-100) //nolint:gosec
 		}
 	}
 }

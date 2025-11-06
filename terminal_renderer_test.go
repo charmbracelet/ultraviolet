@@ -180,7 +180,7 @@ func TestRendererColorProfile(t *testing.T) {
 			cell := Cell{
 				Content: "X",
 				Width:   1,
-				Style:   NewStyle().Foreground(color.RGBA{R: 255, G: 0, B: 0, A: 255}),
+				Style:   Style{Fg: color.RGBA{R: 255, G: 0, B: 0, A: 255}},
 			}
 			cellbuf.SetCell(0, 0, &cell)
 
@@ -647,10 +647,10 @@ func TestRendererStyledText(t *testing.T) {
 
 	// Test various styles
 	styles := []Style{
-		NewStyle().Bold(true),
-		NewStyle().Foreground(color.RGBA{R: 255, G: 0, B: 0, A: 255}),
-		NewStyle().Background(color.RGBA{R: 0, G: 255, B: 0, A: 255}),
-		NewStyle().Bold(true).Foreground(color.RGBA{R: 0, G: 0, B: 255, A: 255}),
+		{Attrs: AttrBold},
+		{Fg: color.RGBA{R: 255, G: 0, B: 0, A: 255}},
+		{Bg: color.RGBA{R: 0, G: 255, B: 0, A: 255}},
+		{Attrs: AttrBold, Fg: color.RGBA{R: 0, G: 0, B: 255, A: 255}},
 	}
 
 	for i, style := range styles {
@@ -1055,11 +1055,11 @@ func TestRendererUnderlineStyles(t *testing.T) {
 
 	// Test different underline styles
 	styles := []Style{
-		NewStyle().UnderlineStyle(SingleUnderline),
-		NewStyle().UnderlineStyle(DoubleUnderline),
-		NewStyle().UnderlineStyle(CurlyUnderline),
-		NewStyle().UnderlineStyle(DottedUnderline),
-		NewStyle().UnderlineStyle(DashedUnderline),
+		{Underline: UnderlineStyleSingle},
+		{Underline: UnderlineStyleDouble},
+		{Underline: UnderlineStyleCurly},
+		{Underline: UnderlineStyleDotted},
+		{Underline: UnderlineStyleDashed},
 	}
 
 	for i, style := range styles {
@@ -1089,11 +1089,11 @@ func TestRendererTextAttributes(t *testing.T) {
 
 	// Test various text attributes
 	styles := []Style{
-		NewStyle().Italic(true),
-		NewStyle().Faint(true),
-		NewStyle().SlowBlink(true),
-		NewStyle().Reverse(true),
-		NewStyle().Strikethrough(true),
+		{Attrs: AttrItalic},
+		{Attrs: AttrFaint},
+		{Attrs: AttrBlink},
+		{Attrs: AttrReverse},
+		{Attrs: AttrStrikethrough},
 	}
 
 	for i, style := range styles {
@@ -1160,7 +1160,7 @@ func TestRendererColorDownsampling(t *testing.T) {
 			cell := Cell{
 				Content: "C",
 				Width:   1,
-				Style:   NewStyle().Foreground(color.RGBA{R: 123, G: 234, B: 45, A: 255}),
+				Style:   Style{Fg: color.RGBA{R: 123, G: 234, B: 45, A: 255}},
 			}
 			cellbuf.SetCell(0, 0, &cell)
 

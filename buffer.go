@@ -143,7 +143,7 @@ func renderLine(buf io.StringWriter, l Line) {
 				pen = Style{}
 			}
 			if !cellStyle.Equal(&pen) {
-				seq := cellStyle.DiffSequence(pen)
+				seq := cellStyle.Diff(&pen)
 				_, _ = buf.WriteString(seq)
 				pen = cellStyle
 			}

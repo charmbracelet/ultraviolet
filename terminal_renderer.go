@@ -548,7 +548,7 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 	oldLink := ConvertLink(s.cur.Link, s.profile)
 
 	if !newStyle.Equal(&oldStyle) {
-		seq := newStyle.DiffSequence(oldStyle)
+		seq := newStyle.Diff(&oldStyle)
 		if newStyle.IsZero() && len(seq) > len(ansi.ResetStyle) {
 			seq = ansi.ResetStyle
 		}

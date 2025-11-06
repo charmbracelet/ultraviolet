@@ -111,7 +111,7 @@ func TestBorderConstructors(t *testing.T) {
 
 func TestBorderStyleAndLink(t *testing.T) {
 	base := NormalBorder()
-	style := NewStyle().Bold(true)
+	style := Style{Attrs: AttrBold}
 	link := NewLink("https://example.com", "id=1")
 
 	b := base.Style(style).Link(link)
@@ -182,7 +182,7 @@ func TestBorderDrawNormal(t *testing.T) {
 func TestBorderDrawHiddenStyleLink(t *testing.T) {
 	dst := NewScreenBuffer(10, 6)
 	area := Rect(2, 2, 5, 3)
-	style := NewStyle().Bold(true)
+	style := Style{Attrs: AttrBold}
 	link := NewLink("https://example.com")
 	b := HiddenBorder().Style(style).Link(link)
 	b.Draw(&dst, area)
