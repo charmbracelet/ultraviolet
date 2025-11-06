@@ -928,14 +928,13 @@ func (t *Terminal) restoreState() error {
 			// Timeout waiting for the event loop to exit.
 		}
 	}
-
-	// Go to the bottom of the screen.
-	t.scr.MoveTo(0, t.buf.Height()-1)
 	if ls := t.lastState; ls != nil {
 		if ls.altscreen {
 			t.scr.ExitAltScreen()
 			t.scr.SetRelativeCursor(true)
 		} else {
+			// Go to the bottom of the screen.
+			t.scr.MoveTo(0, t.buf.Height()-1)
 			_, _ = t.WriteString("\r" + ansi.EraseScreenBelow)
 		}
 		if ls.curHidden {
