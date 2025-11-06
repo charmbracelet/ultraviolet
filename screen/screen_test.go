@@ -90,10 +90,10 @@ func (m *minimalMockScreen) WidthMethod() uv.WidthMethod {
 
 // nilCellMockScreen is a screen that can return nil for certain cells
 type nilCellMockScreen struct {
-	cells      map[string]*uv.Cell
-	width      int
-	height     int
-	method     ansi.Method
+	cells        map[string]*uv.Cell
+	width        int
+	height       int
+	method       ansi.Method
 	nilPositions map[string]bool
 }
 
@@ -796,12 +796,12 @@ func TestEdgeCases(t *testing.T) {
 		styledCell := &uv.Cell{
 			Content: "S",
 			Width:   1,
-			Style:   uv.NewStyle().Bold(true).Italic(true),
+			Style:   uv.Style{Attrs: uv.AttrBold | uv.AttrItalic},
 		}
 		scr.SetCell(0, 0, styledCell)
 
 		cloned := Clone(scr)
-		if cell := cloned.CellAt(0, 0); cell == nil || cell.Content != "S" || !cell.Style.Attrs.Contains(uv.BoldAttr) || !cell.Style.Attrs.Contains(uv.ItalicAttr) {
+		if cell := cloned.CellAt(0, 0); cell == nil || cell.Content != "S" || (cell.Style.Attrs&uv.AttrBold == 0) || (cell.Style.Attrs&uv.AttrItalic == 0) {
 			t.Errorf("Styled cell not cloned correctly, got %v", cell)
 		}
 	})
@@ -827,16 +827,16 @@ func TestEdgeCases(t *testing.T) {
 func TestMinimalScreenFallbacks(t *testing.T) {
 	t.Run("Clear fallback", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		// Set some cells
 		testCell := &uv.Cell{Content: "X", Width: 1}
 		scr.SetCell(0, 0, testCell)
 		scr.SetCell(2, 1, testCell)
 		scr.SetCell(4, 2, testCell)
-		
+
 		// Clear should use Fill fallback
 		Clear(scr)
-		
+
 		// Verify all cells are cleared
 		for y := 0; y < 3; y++ {
 			for x := 0; x < 5; x++ {
@@ -847,10 +847,10 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("ClearArea fallback", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		// Set cells across the screen
 		testCell := &uv.Cell{Content: "X", Width: 1}
 		for y := 0; y < 3; y++ {
@@ -858,11 +858,11 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 				scr.SetCell(x, y, testCell)
 			}
 		}
-		
+
 		// ClearArea should use FillArea fallback
 		area := uv.Rect(1, 0, 3, 2)
 		ClearArea(scr, area)
-		
+
 		// Verify only the area is cleared
 		for y := 0; y < 3; y++ {
 			for x := 0; x < 5; x++ {
@@ -881,14 +881,14 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("Fill fallback", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		fillCell := &uv.Cell{Content: "F", Width: 1}
 		// Fill should use FillArea fallback
 		Fill(scr, fillCell)
-		
+
 		// Verify all cells are filled
 		for y := 0; y < 3; y++ {
 			for x := 0; x < 5; x++ {
@@ -899,15 +899,15 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("FillArea fallback loop", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		fillCell := &uv.Cell{Content: "A", Width: 1}
 		area := uv.Rect(1, 1, 2, 1)
 		// FillArea should use the loop fallback
 		FillArea(scr, fillCell, area)
-		
+
 		// Verify only the area is filled
 		for y := 0; y < 3; y++ {
 			for x := 0; x < 5; x++ {
@@ -926,27 +926,27 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("Clone fallback", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		// Set some cells
 		scr.SetCell(0, 0, &uv.Cell{Content: "A", Width: 1})
 		scr.SetCell(2, 1, &uv.Cell{Content: "B", Width: 1})
 		scr.SetCell(4, 2, &uv.Cell{Content: "C", Width: 1})
-		
+
 		// Clone should use CloneArea fallback
 		cloned := Clone(scr)
-		
+
 		if cloned == nil {
 			t.Fatal("Clone returned nil")
 		}
-		
+
 		// Verify cloned buffer has same dimensions
 		if cloned.Width() != 5 || cloned.Height() != 3 {
 			t.Errorf("Cloned buffer has wrong dimensions: %dx%d", cloned.Width(), cloned.Height())
 		}
-		
+
 		// Check specific cells
 		if cell := cloned.CellAt(0, 0); cell == nil || cell.Content != "A" {
 			t.Errorf("Cloned cell at (0,0) incorrect, got %v", cell)
@@ -958,10 +958,10 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			t.Errorf("Cloned cell at (4,2) incorrect, got %v", cell)
 		}
 	})
-	
+
 	t.Run("CloneArea fallback loop", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		// Set cells across the screen
 		for y := 0; y < 3; y++ {
 			for x := 0; x < 5; x++ {
@@ -969,24 +969,24 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 				scr.SetCell(x, y, &uv.Cell{Content: content, Width: 1})
 			}
 		}
-		
+
 		// CloneArea should use the loop fallback
 		area := uv.Rect(1, 0, 3, 2)
 		cloned := CloneArea(scr, area)
-		
+
 		if cloned == nil {
 			t.Fatal("CloneArea returned nil")
 		}
-		
+
 		// Verify cloned buffer has correct dimensions
 		if cloned.Width() != 3 || cloned.Height() != 2 {
 			t.Errorf("Cloned buffer has wrong dimensions: %dx%d, expected 3x2", cloned.Width(), cloned.Height())
 		}
-		
+
 		// Verify content matches the cloned area
 		for y := 0; y < 2; y++ {
 			for x := 0; x < 3; x++ {
-				expectedContent := string(rune('A' + y*5 + (x+1)))
+				expectedContent := string(rune('A' + y*5 + (x + 1)))
 				cell := cloned.CellAt(x, y)
 				if cell == nil || cell.Content != expectedContent {
 					t.Errorf("Cloned cell at (%d,%d) incorrect, expected %s, got %v", x, y, expectedContent, cell)
@@ -994,24 +994,24 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("CloneArea with nil and zero cells", func(t *testing.T) {
 		scr := newMinimalMockScreen(5, 3)
-		
+
 		// Set some cells but leave some as zero/empty
 		scr.SetCell(1, 0, &uv.Cell{Content: "A", Width: 1})
 		scr.SetCell(3, 1, &uv.Cell{Content: "B", Width: 1})
 		// Set a zero cell explicitly
 		scr.SetCell(2, 0, &uv.Cell{})
 		// Leave other cells as empty
-		
+
 		area := uv.Rect(0, 0, 5, 2)
 		cloned := CloneArea(scr, area)
-		
+
 		if cloned == nil {
 			t.Fatal("CloneArea returned nil")
 		}
-		
+
 		// Check that non-zero cells are cloned
 		if cell := cloned.CellAt(1, 0); cell == nil || cell.Content != "A" {
 			t.Errorf("Cell at (1,0) should be 'A', got %v", cell)
@@ -1019,7 +1019,7 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 		if cell := cloned.CellAt(3, 1); cell == nil || cell.Content != "B" {
 			t.Errorf("Cell at (3,1) should be 'B', got %v", cell)
 		}
-		
+
 		// Check that empty cells remain empty
 		if cell := cloned.CellAt(0, 0); cell != nil && !cell.IsZero() && cell.Content != " " {
 			t.Errorf("Cell at (0,0) should be empty, got %v", cell)
@@ -1031,24 +1031,24 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 			t.Errorf("Cell at (2,1) should be empty, got %v", cell)
 		}
 	})
-	
+
 	t.Run("CloneArea with nil cells", func(t *testing.T) {
 		scr := newNilCellMockScreen(5, 3)
-		
+
 		// Set some cells
 		scr.SetCell(1, 0, &uv.Cell{Content: "A", Width: 1})
 		scr.SetCell(3, 1, &uv.Cell{Content: "B", Width: 1})
-		
+
 		// Make position (2, 1) return nil
 		scr.SetNilAt(2, 1)
-		
+
 		area := uv.Rect(0, 0, 5, 2)
 		cloned := CloneArea(scr, area)
-		
+
 		if cloned == nil {
 			t.Fatal("CloneArea returned nil")
 		}
-		
+
 		// Check that non-nil cells are cloned
 		if cell := cloned.CellAt(1, 0); cell == nil || cell.Content != "A" {
 			t.Errorf("Cell at (1,0) should be 'A', got %v", cell)
@@ -1056,7 +1056,7 @@ func TestMinimalScreenFallbacks(t *testing.T) {
 		if cell := cloned.CellAt(3, 1); cell == nil || cell.Content != "B" {
 			t.Errorf("Cell at (3,1) should be 'B', got %v", cell)
 		}
-		
+
 		// Check that nil cell position remains empty in cloned buffer
 		if cell := cloned.CellAt(2, 1); cell != nil && !cell.IsZero() && cell.Content != " " {
 			t.Errorf("Cell at (2,1) should be empty (was nil), got %v", cell)
