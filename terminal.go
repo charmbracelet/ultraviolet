@@ -34,8 +34,7 @@ var (
 )
 
 // Terminal represents a terminal screen that can be manipulated and drawn to.
-// It handles reading events from the terminal using [WinChReceiver],
-// [SequenceReceiver], and [ConReceiver].
+// It handles reading events from the terminal using [TerminalReader].
 type Terminal struct {
 	// Terminal I/O streams and state.
 	in          io.Reader
