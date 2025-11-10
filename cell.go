@@ -157,12 +157,12 @@ type UnderlineStyle = ansi.UnderlineStyle
 
 // These are the available underline styles.
 const (
-	UnderlineStyleNone   = ansi.NoUnderlineStyle
-	UnderlineStyleSingle = ansi.SingleUnderlineStyle
-	UnderlineStyleDouble = ansi.DoubleUnderlineStyle
-	UnderlineStyleCurly  = ansi.CurlyUnderlineStyle
-	UnderlineStyleDotted = ansi.DottedUnderlineStyle
-	UnderlineStyleDashed = ansi.DashedUnderlineStyle
+	UnderlineStyleNone   = ansi.UnderlineStyleNone
+	UnderlineStyleSingle = ansi.UnderlineStyleSingle
+	UnderlineStyleDouble = ansi.UnderlineStyleDouble
+	UnderlineStyleCurly  = ansi.UnderlineStyleCurly
+	UnderlineStyleDotted = ansi.UnderlineStyleDotted
+	UnderlineStyleDashed = ansi.UnderlineStyleDashed
 )
 
 // Style represents the style of a cell.

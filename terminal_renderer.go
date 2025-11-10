@@ -273,7 +273,7 @@ func (s *TerminalRenderer) SetRelativeCursor(v bool) {
 // queues a screen clear command.
 func (s *TerminalRenderer) EnterAltScreen() {
 	if !s.flags.Contains(tAltScreen) {
-		_, _ = s.buf.WriteString(ansi.SetAltScreenSaveCursorMode)
+		_, _ = s.buf.WriteString(ansi.SetModeAltScreenSaveCursor)
 		s.saved = s.cur
 		s.clear = true
 	}
@@ -287,7 +287,7 @@ func (s *TerminalRenderer) EnterAltScreen() {
 // screen clear command.
 func (s *TerminalRenderer) ExitAltScreen() {
 	if s.flags.Contains(tAltScreen) {
-		_, _ = s.buf.WriteString(ansi.ResetAltScreenSaveCursorMode)
+		_, _ = s.buf.WriteString(ansi.ResetModeAltScreenSaveCursor)
 		s.cur = s.saved
 		s.clear = true
 	}
@@ -525,12 +525,12 @@ func (s *TerminalRenderer) putCellLR(newbuf *Buffer, cell *Cell) {
 	// Optimize for the lower right corner cell.
 	curX := s.cur.X
 	if cell == nil || !cell.IsZero() {
-		_, _ = s.buf.WriteString(ansi.ResetAutoWrapMode)
+		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
 		s.putAttrCell(newbuf, cell)
 		// Writing to lower-right corner cell should not wrap.
 		s.atPhantom = false
 		s.cur.X = curX
-		_, _ = s.buf.WriteString(ansi.SetAutoWrapMode)
+		_, _ = s.buf.WriteString(ansi.SetModeAutoWrap)
 	}
 }
 
@@ -733,7 +733,7 @@ func (s *TerminalRenderer) insertCells(newbuf *Buffer, line Line, count int) {
 		_, _ = s.buf.WriteString(ansi.InsertCharacter(count))
 	} else {
 		// Otherwise, use [ansi.IRM] mode.
-		_, _ = s.buf.WriteString(ansi.SetInsertReplaceMode)
+		_, _ = s.buf.WriteString(ansi.SetModeInsertReplace)
 	}
 
 	for i := 0; count > 0; i++ {
@@ -742,7 +742,7 @@ func (s *TerminalRenderer) insertCells(newbuf *Buffer, line Line, count int) {
 	}
 
 	if !supportsICH {
-		_, _ = s.buf.WriteString(ansi.ResetInsertReplaceMode)
+		_, _ = s.buf.WriteString(ansi.ResetModeInsertReplace)
 	}
 }
 
