@@ -148,17 +148,34 @@ const (
 	AttrSlowBlink = AttrBlink
 )
 
+// Underline is the style of underline to use for text.
+type Underline = ansi.Underline
+
 // UnderlineStyle is the style of underline to use for text.
-type UnderlineStyle = ansi.UnderlineStyle
+//
+// Deprecated: Use [Underline] instead.
+type UnderlineStyle = ansi.Underline
 
 // These are the available underline styles.
 const (
-	UnderlineStyleNone   = ansi.UnderlineStyleNone
-	UnderlineStyleSingle = ansi.UnderlineStyleSingle
-	UnderlineStyleDouble = ansi.UnderlineStyleDouble
-	UnderlineStyleCurly  = ansi.UnderlineStyleCurly
-	UnderlineStyleDotted = ansi.UnderlineStyleDotted
-	UnderlineStyleDashed = ansi.UnderlineStyleDashed
+	UnderlineNone   = ansi.UnderlineNone
+	UnderlineSingle = ansi.UnderlineSingle
+	UnderlineDouble = ansi.UnderlineDouble
+	UnderlineCurly  = ansi.UnderlineCurly
+	UnderlineDotted = ansi.UnderlineDotted
+	UnderlineDashed = ansi.UnderlineDashed
+)
+
+// These are the available underline styles.
+//
+// Deprecated: Use the constants from [Underline] instead.
+const (
+	UnderlineStyleNone   = ansi.UnderlineNone
+	UnderlineStyleSingle = ansi.UnderlineSingle
+	UnderlineStyleDouble = ansi.UnderlineDouble
+	UnderlineStyleCurly  = ansi.UnderlineCurly
+	UnderlineStyleDotted = ansi.UnderlineDotted
+	UnderlineStyleDashed = ansi.UnderlineDashed
 )
 
 // Style represents the style of a cell.
@@ -166,7 +183,7 @@ type Style struct {
 	Fg             color.Color
 	Bg             color.Color
 	UnderlineColor color.Color
-	Underline      UnderlineStyle
+	Underline      Underline
 	Attrs          uint8
 }
 
