@@ -126,14 +126,10 @@ func (h *Link) IsZero() bool {
 	return *h == Link{}
 }
 
-// StyleAttr is a bitmask for text attributes that can change the look of text.
-// These attributes can be combined to create different styles.
-type StyleAttr uint8
-
 // These are the available text attributes that can be combined to create
 // different styles.
 const (
-	AttrBold StyleAttr = 1 << iota
+	AttrBold = 1 << iota
 	AttrFaint
 	AttrItalic
 	AttrBlink
@@ -142,7 +138,7 @@ const (
 	AttrConceal
 	AttrStrikethrough
 
-	AttrReset StyleAttr = 0
+	AttrReset = 0
 )
 
 // AttrSlowBlink is an alias for AttrBlink.
@@ -171,7 +167,7 @@ type Style struct {
 	Bg             color.Color
 	UnderlineColor color.Color
 	Underline      UnderlineStyle
-	Attrs          StyleAttr
+	Attrs          uint8
 }
 
 // Equal returns true if the style is equal to the other style.
