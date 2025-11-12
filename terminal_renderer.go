@@ -463,8 +463,11 @@ func cellEqual(a, b *Cell) bool {
 	if a == b {
 		return true
 	}
-	if a == nil || b == nil {
-		return false
+	if a == nil {
+		a = &EmptyCell
+	}
+	if b == nil {
+		b = &EmptyCell
 	}
 	return a.Equal(b)
 }

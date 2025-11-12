@@ -402,6 +402,35 @@ func TestStyledString(t *testing.T) {
 	}
 }
 
+func TestStyledStringNilCellEqual(t *testing.T) {
+	// This test ensures that a nil value is equivalent to an empty [Cell] with
+	// a space character and no style or link.
+	input := "\x1b[31;1;4mHello, \x1b[32;22;4mWorld!\x1b[0m"
+	ss := NewStyledString(input)
+	scr := NewScreenBuffer(5, 3)
+	ss.Draw(scr, scr.Bounds())
+	expected := &Buffer{
+		Lines: []Line{
+			{
+				newWcCell("H", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
+				newWcCell("e", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
+				newWcCell("l", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
+				newWcCell("l", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
+				newWcCell("o", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
+			},
+			{},
+			{},
+		},
+	}
+	for y, line := range scr.Lines {
+		for x, cell := range line {
+			if !cellEqual(expected.CellAt(x, y), &cell) {
+				t.Errorf("expected cell (%d, %d) %#v, got %#v", x, y, expected.CellAt(x, y), &cell)
+			}
+		}
+	}
+}
+
 func newWcCell(s string, style *Style, link *Link) Cell {
 	c := NewCell(ansi.WcWidth, s)
 	if style != nil {
