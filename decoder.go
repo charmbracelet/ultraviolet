@@ -424,7 +424,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		if !ok || val == -1 {
 			break
 		}
-		return i, ModifyOtherKeysEvent{val} //nolint:gosec
+		return i, ModifyOtherKeysEvent{val}
 	case 'n' | '?'<<parser.PrefixShift:
 		report, _, _ := pa.Param(0, -1)
 		darkLight, _, _ := pa.Param(1, -1)
