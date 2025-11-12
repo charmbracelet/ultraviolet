@@ -116,6 +116,10 @@ func TestRendererOutput(t *testing.T) {
 				"COLORTERM=truecolor", // Enable true color support
 			})
 
+			// XXX: Always hide cursor during rendering until we remove this
+			// from the renderer itself.
+			s.SetAutoHideCursor(true)
+
 			s.SetRelativeCursor(c.relative)
 			if c.altscreen {
 				s.EnterAltScreen()

@@ -17,6 +17,10 @@ func TestSimpleRendererOutput(t *testing.T) {
 		"COLORTERM=truecolor", // This will enable true color support for the renderer
 	})
 
+	// XXX: Always hide cursor during rendering until we remove this
+	// from the renderer itself.
+	r.SetAutoHideCursor(true)
+
 	r.EnterAltScreen()
 
 	// r.SetTabStops(5) // Use tab character \t for cursor movements.
@@ -52,6 +56,10 @@ func TestInlineRendererOutput(t *testing.T) {
 		"TERM=xterm-256color", // This will enable 256 colors for the renderer
 		"COLORTERM=truecolor", // This will enable true color support for the renderer
 	})
+
+	// XXX: Always hide cursor during rendering until we remove this
+	// from the renderer itself.
+	r.SetAutoHideCursor(true)
 
 	r.SetRelativeCursor(true) // Use relative cursor movements.
 
@@ -696,6 +704,10 @@ func TestRendererHyperlinks(t *testing.T) {
 func TestRendererSwitchBuffer(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+
+	// XXX: Always hide cursor during rendering until we remove this
+	// from the renderer itself.
+	r.SetAutoHideCursor(true)
 
 	// Start with small buffer
 	cellbuf := NewBuffer(5, 3)
