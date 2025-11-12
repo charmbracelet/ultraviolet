@@ -693,8 +693,7 @@ func TestRendererHyperlinks(t *testing.T) {
 	}
 }
 
-// Test buffer resizing during render
-func TestRendererBufferResize(t *testing.T) {
+func TestRendererSwitchBuffer(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
@@ -708,8 +707,6 @@ func TestRendererBufferResize(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	buf.Reset()
-
 	// Resize to larger buffer
 	largeBuf := NewBuffer(10, 6)
 	largeBuf.SetCell(0, 0, &cell) // Place at visible position
@@ -720,8 +717,10 @@ func TestRendererBufferResize(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "X") {
-		t.Errorf("expected output to contain 'X' after resize, got: %q", output)
+	expected := "\x1b[?25l\x1b[1;1HX\r\n\n\x1b[?25h" +
+		"\x1b[?25l\n\n\n\x1b[?25h"
+	if output != expected {
+		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
 	}
 }
 
