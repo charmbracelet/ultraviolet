@@ -134,7 +134,7 @@ func renderLine(buf io.StringWriter, l Line) {
 	var link Link
 
 	for _, cell := range l {
-		if cell.Width > 0 { //nolint:nestif
+		if cell.Width > 0 {
 			// Convert the cell's style and link to the given color profile.
 			cellStyle := cell.Style
 			cellLink := cell.Link
