@@ -17,11 +17,10 @@ func TestSimpleRendererOutput(t *testing.T) {
 		"COLORTERM=truecolor", // This will enable true color support for the renderer
 	})
 
-	// XXX: Always hide cursor during rendering until we remove this
-	// from the renderer itself.
-	r.SetAutoHideCursor(true)
-
-	r.EnterAltScreen()
+	r.SetFullscreen(true)
+	r.SetRelativeCursor(false)
+	r.SaveCursor()
+	r.Erase()
 
 	// r.SetTabStops(5) // Use tab character \t for cursor movements.
 	// r.SetBackspace(true) // Use backspace character \b for cursor movements.
@@ -39,12 +38,11 @@ func TestSimpleRendererOutput(t *testing.T) {
 	cellbuf.SetCell(2, 2, &cell)
 
 	r.Render(cellbuf)
-	r.ExitAltScreen()
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	expected := "\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JX\nX\nX\x1b[?1049l\x1b[?25h"
+	expected := "\x1b[H\x1b[2JX\nX\nX"
 	if buf.String() != expected {
 		t.Errorf("expected output:\n%q\nbut got:\n%q", expected, buf.String())
 	}
@@ -56,10 +54,6 @@ func TestInlineRendererOutput(t *testing.T) {
 		"TERM=xterm-256color", // This will enable 256 colors for the renderer
 		"COLORTERM=truecolor", // This will enable true color support for the renderer
 	})
-
-	// XXX: Always hide cursor during rendering until we remove this
-	// from the renderer itself.
-	r.SetAutoHideCursor(true)
 
 	r.SetRelativeCursor(true) // Use relative cursor movements.
 
@@ -78,75 +72,9 @@ func TestInlineRendererOutput(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	expected := "\x1b[?25l\rHello, World!\r\n\n\x1b[?25h"
+	expected := "\rHello, World!\r\n\n"
 	if buf.String() != expected {
 		t.Errorf("expected output:\n%q\nbut got:\n%q", expected, buf.String())
-	}
-}
-
-func TestRendererCursorVisibility(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
-
-	// Test initial state
-	if r.CursorHidden() {
-		t.Error("expected cursor to be visible initially")
-	}
-
-	// Test hiding cursor
-	r.HideCursor()
-	if !r.CursorHidden() {
-		t.Error("expected cursor to be hidden after HideCursor()")
-	}
-
-	// Test showing cursor
-	r.ShowCursor()
-	if r.CursorHidden() {
-		t.Error("expected cursor to be visible after ShowCursor()")
-	}
-
-	// Test setting cursor state directly
-	r.SetCursorHidden(true)
-	if !r.CursorHidden() {
-		t.Error("expected cursor to be hidden after SetCursorHidden(true)")
-	}
-
-	r.SetCursorHidden(false)
-	if r.CursorHidden() {
-		t.Error("expected cursor to be visible after SetCursorHidden(false)")
-	}
-}
-
-func TestRendererAltScreen(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
-
-	// Test initial state
-	if r.AltScreen() {
-		t.Error("expected alt screen to be disabled initially")
-	}
-
-	// Test entering alt screen
-	r.EnterAltScreen()
-	if !r.AltScreen() {
-		t.Error("expected alt screen to be enabled after EnterAltScreen()")
-	}
-
-	// Test exiting alt screen
-	r.ExitAltScreen()
-	if r.AltScreen() {
-		t.Error("expected alt screen to be disabled after ExitAltScreen()")
-	}
-
-	// Test setting alt screen state directly
-	r.SetAltScreen(true)
-	if !r.AltScreen() {
-		t.Error("expected alt screen to be enabled after SetAltScreen(true)")
-	}
-
-	r.SetAltScreen(false)
-	if r.AltScreen() {
-		t.Error("expected alt screen to be disabled after SetAltScreen(false)")
 	}
 }
 
@@ -203,37 +131,6 @@ func TestRendererColorProfile(t *testing.T) {
 				t.Errorf("expected output to contain 'X', got: %q", output)
 			}
 		})
-	}
-}
-
-func TestRendererBuffering(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
-
-	// Test that operations are buffered
-	r.HideCursor()
-	r.ShowCursor()
-
-	// Should have buffered content but not written to output yet
-	if r.Buffered() == 0 {
-		t.Error("expected buffered content before flush")
-	}
-
-	if buf.Len() != 0 {
-		t.Error("expected no output before flush")
-	}
-
-	// Flush should write to output and clear buffer
-	if err := r.Flush(); err != nil {
-		t.Fatalf("failed to flush renderer: %v", err)
-	}
-
-	if r.Buffered() != 0 {
-		t.Error("expected no buffered content after flush")
-	}
-
-	if buf.Len() == 0 {
-		t.Error("expected output after flush")
 	}
 }
 
@@ -705,10 +602,6 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	// XXX: Always hide cursor during rendering until we remove this
-	// from the renderer itself.
-	r.SetAutoHideCursor(true)
-
 	// Start with small buffer
 	cellbuf := NewBuffer(5, 3)
 	cell := Cell{Content: "X", Width: 1}
@@ -729,8 +622,8 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[?25l\x1b[1;1HX\r\n\n\x1b[?25h" +
-		"\x1b[?25l\n\n\n\x1b[?25h"
+	expected := "\x1b[1;1HX\r\n\n" +
+		"\n\n\n"
 	if output != expected {
 		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
 	}
@@ -812,7 +705,7 @@ func TestRendererScrollOptimization(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	r.EnterAltScreen() // Scroll optimization is enabled in alt screen mode
+	r.SetFullscreen(true) // Scroll optimization is enabled in alt screen mode
 
 	cellbuf := NewBuffer(10, 5)
 
@@ -1125,28 +1018,6 @@ func TestRendererTextAttributes(t *testing.T) {
 	}
 }
 
-// Test concurrent access safety (basic test)
-func TestRendererConcurrency(t *testing.T) {
-	var buf bytes.Buffer
-	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
-
-	cellbuf := NewBuffer(10, 1)
-	cell := Cell{Content: "X", Width: 1}
-	cellbuf.SetCell(0, 0, &cell)
-
-	// Test that basic operations don't panic when called in sequence
-	// Note: The renderer is not thread-safe, so this is just a basic test
-	r.HideCursor()
-	r.ShowCursor()
-	r.EnterAltScreen()
-	r.Render(cellbuf)
-	r.ExitAltScreen()
-
-	if err := r.Flush(); err != nil {
-		t.Fatalf("failed to flush renderer: %v", err)
-	}
-}
-
 // Test color downsampling
 func TestRendererColorDownsampling(t *testing.T) {
 	tests := []struct {
@@ -1192,13 +1063,15 @@ func TestRendererColorDownsampling(t *testing.T) {
 func TestRendererPhantomCursor(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetColorProfile(colorprofile.TrueColor)
 
-	r.EnterAltScreen()
+	r.SetFullscreen(true) // Use fullscreen rendering optimizations
+	r.SetRelativeCursor(false)
 	cellbuf := NewBuffer(5, 3)
 
 	// Fill the last column to trigger phantom cursor behavior
 	cell := Cell{Content: "X", Width: 1}
-	for y := 0; y < 3; y++ {
+	for y := 0; y < cellbuf.Height(); y++ {
 		cellbuf.SetCell(4, y, &cell) // Last column
 	}
 
@@ -1208,8 +1081,9 @@ func TestRendererPhantomCursor(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "X") {
-		t.Errorf("expected output to contain 'X', got: %q", output)
+	expected := "\x1b[1;5HX\r\n\x1b[5GX\r\n\x1b[5G\x1b[?7lX\x1b[?7h"
+	if output != expected {
+		t.Errorf("expected no output for phantom cursor case, got: %q", output)
 	}
 }
 
@@ -1317,7 +1191,7 @@ func TestRendererUpdates(t *testing.T) {
 				"\x1b[1mA",
 			},
 			expected: []string{
-				"\x1b[?25l\rA\r\n\n",
+				"\rA\r\n\n",
 				"\x1b[2A\x1b[1mA\x1b[m",
 			},
 		},
@@ -1325,7 +1199,7 @@ func TestRendererUpdates(t *testing.T) {
 			name:   "style and link change",
 			frames: []string{"A", "\x1b[31m\x1b]8;;https://example.com\x1b\\A\x1b]8;;\x1b\\"}, // red + link
 			expected: []string{
-				"\x1b[?25l\rA\r\n\n",
+				"\rA\r\n\n",
 				"\x1b[2A\x1b[31m\x1b]8;;https://example.com\aA\x1b[m\x1b]8;;\a",
 			},
 		},
@@ -1339,7 +1213,7 @@ func TestRendererUpdates(t *testing.T) {
 				" \x1b[38;2;255;128;0mABC\n DEF", // orange
 			},
 			expected: []string{
-				"\x1b[?25l\r \x1b[38;5;208mABC\x1b[m\r\n\x1b[38;5;208m DEF\x1b[m\r\n",
+				"\r \x1b[38;5;208mABC\x1b[m\r\n\x1b[38;5;208m DEF\x1b[m\r\n",
 				"",
 				"",
 			},
@@ -1351,7 +1225,6 @@ func TestRendererUpdates(t *testing.T) {
 			var buf bytes.Buffer
 			r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color", "TTY_FORCE=1"})
 			t.Logf("Profile: %v", r.profile)
-			r.HideCursor()            // We don't want the cursor to be hidden in between flushes
 			r.SetRelativeCursor(true) // Use absolute cursor movements since we're drawing fullscreen
 
 			scr := NewScreenBuffer(5, 3)
@@ -1371,6 +1244,32 @@ func TestRendererUpdates(t *testing.T) {
 				buf.Reset()
 			}
 		})
+	}
+}
+
+func TestRendererPrependOneLine(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+
+	r.Resize(10, 5)
+	cellbuf := NewScreenBuffer(10, 5)
+	NewStyledString("This-is-a .").Draw(cellbuf, cellbuf.Bounds())
+	r.Render(cellbuf.Buffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	NewStyledString("This-is-a .").Draw(cellbuf, cellbuf.Bounds())
+	r.PrependString(cellbuf.Buffer, "Prepended-a-new-line")
+	r.Render(cellbuf.Buffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	output := buf.String()
+	expected := "\x1b[1;1HThis-is-a\r\n\n\n\n\n\n\x1b[H\x1b[2LPrepended-a-new-line\r\n"
+	if output != expected {
+		t.Errorf("expected output to be %q, got: %q", expected, output)
 	}
 }
 
