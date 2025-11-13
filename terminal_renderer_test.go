@@ -343,7 +343,7 @@ func TestRendererCapabilities(t *testing.T) {
 			test: func(t *testing.T, r *TerminalRenderer) {
 				// xterm should support all capabilities
 				if !r.caps.Contains(capCHA) {
-					t.Error("expected xterm to support VPA")
+					t.Error("expected xterm to support CHA")
 				}
 				// NOTE: We have disabled HPA for xterm due to some terminals
 				// not supporting it correctly i.e. Konsole.
