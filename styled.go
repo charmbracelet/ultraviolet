@@ -157,11 +157,11 @@ func printString[T []byte | string](
 					s.SetCell(x, y, &cell)
 					x += width
 				}
-
-				// String is too long for the line, truncate it.
-				// Make sure we reset the cell for the next iteration.
-				cell = Cell{}
 			}
+
+			// String is too long for the line, truncate it.
+			// Make sure we reset the cell for the next iteration.
+			cell = Cell{}
 		default:
 			// Valid sequences always have a non-zero Cmd.
 			// TODO: Handle cursor movement and other sequences

@@ -432,7 +432,7 @@ func prependLine(t *Terminal, line string) {
 		// If the line is wider than the screen, truncate it.
 		strLines[i] = ansi.Truncate(line, t.size.Width, "")
 	}
-	t.scr.PrependString(strings.Join(strLines, "\n"))
+	t.scr.PrependString(t.buf, strings.Join(strLines, "\n"))
 }
 
 // Buffered returns the number of bytes buffered for the flush operation.
