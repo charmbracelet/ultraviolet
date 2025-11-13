@@ -389,7 +389,7 @@ func TestRendererPrependString(t *testing.T) {
 	r.Resize(10, 5)
 	cellbuf := NewBuffer(10, 5)
 
-	r.PrependString("Prepended line")
+	r.PrependString(cellbuf, "Prepended line")
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
@@ -414,7 +414,7 @@ func TestRendererPrependLines(t *testing.T) {
 		line[i] = Cell{Content: string(ch), Width: 1}
 	}
 
-	r.PrependLines(line)
+	r.PrependString(cellbuf, line.Render())
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
@@ -854,8 +854,8 @@ func TestRendererMultiplePrepends(t *testing.T) {
 	cellbuf := NewBuffer(20, 10)
 
 	// Prepend multiple strings
-	r.PrependString("First line")
-	r.PrependString("Second line")
+	r.PrependString(cellbuf, "First line")
+	r.PrependString(cellbuf, "Second line")
 
 	// Prepend multiple lines
 	line1 := make(Line, 10)
@@ -871,7 +871,7 @@ func TestRendererMultiplePrepends(t *testing.T) {
 		}
 	}
 
-	r.PrependLines(line1, line2)
+	r.PrependString(cellbuf, strings.Join([]string{line1.Render(), line2.Render()}, "\n"))
 
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {

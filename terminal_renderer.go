@@ -320,12 +320,8 @@ func (s *TerminalRenderer) HideCursor() {
 // the whole screen may not produce any visible effects. This is because
 // once the terminal writes the prepended lines, they will get overwritten
 // by the next frame.
-func (s *TerminalRenderer) PrependString(str string) {
-	s.prependStringLines(strings.Split(str, "\n")...)
-}
-
-func (s *TerminalRenderer) prependStringLines(lines ...string) {
-	if len(lines) == 0 {
+func (s *TerminalRenderer) PrependString(newbuf *Buffer, str string) {
+	if len(str) == 0 {
 		return
 	}
 
@@ -335,35 +331,32 @@ func (s *TerminalRenderer) prependStringLines(lines ...string) {
 	// We need to scroll the screen up by the number of lines in the queue.
 	// We can't use [ansi.SU] because we want the cursor to move down until
 	// it reaches the bottom of the screen.
-	s.move(s.curbuf, 0, s.curbuf.Height()-1)
-	s.buf.WriteString(strings.Repeat("\n", len(lines)))
-	s.cur.Y += len(lines)
+	w, h := newbuf.Width(), newbuf.Height()
+	s.move(newbuf, 0, h-1)
+	lines := strings.Split(str, "\n")
+	offset := 0
+	for _, line := range lines {
+		lineWidth := ansi.StringWidth(line)
+		if w > 0 && lineWidth > w {
+			offset += (lineWidth / w)
+		}
+		if lineWidth == 0 || lineWidth%w != 0 {
+			offset++
+		}
+	}
+
+	s.buf.WriteString(strings.Repeat("\n", offset))
+	s.cur.Y += offset
 	// XXX: Now go to the top of the screen, insert new lines, and write
 	// the queued strings. It is important to use [Screen.moveCursor]
 	// instead of [Screen.move] because we don't want to perform any checks
 	// on the cursor position.
-	s.moveCursor(s.curbuf, 0, 0, false)
-	s.buf.WriteString(ansi.InsertLine(len(lines)))
+	s.moveCursor(newbuf, 0, 0, false)
+	s.buf.WriteString(ansi.InsertLine(offset))
 	for _, line := range lines {
 		s.buf.WriteString(line)
 		s.buf.WriteString("\r\n")
 	}
-}
-
-// PrependLines adds lines of cells to the top of the terminal screen. The
-// added lines are unmanaged and will not be cleared or updated by the
-// renderer.
-//
-// Using this when the terminal is using the alternate screen or when occupying
-// the whole screen may not produce any visible effects. This is because once
-// the terminal writes the prepended lines, they will get overwritten by the
-// next frame.
-func (s *TerminalRenderer) PrependLines(lines ...Line) {
-	strLines := make([]string, len(lines))
-	for i, line := range lines {
-		strLines[i] = line.Render()
-	}
-	s.prependStringLines(strLines...)
 }
 
 // moveCursor moves the cursor to the specified position.
