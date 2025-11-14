@@ -1100,18 +1100,13 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		return
 	}
 
-	if s.curbuf == nil {
+	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
 		// Initialize the current buffer
 		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
 	}
 
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
 	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
-
-	// Do we have a buffer to compare to?
-	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
-		s.curbuf = NewBuffer(newWidth, newHeight)
-	}
 
 	if curWidth != newWidth || curHeight != newHeight {
 		s.oldhash, s.newhash = nil, nil
