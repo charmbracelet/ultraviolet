@@ -1276,6 +1276,7 @@ func TestRendererPrependOneLine(t *testing.T) {
 func TestRendererEnterExitAltScreen(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	cellbuf := NewBuffer(3, 3)
 
 	// Simulate cursor change
 	r.MoveTo(1, 1)
@@ -1288,6 +1289,9 @@ func TestRendererEnterExitAltScreen(t *testing.T) {
 
 	// Enter alt screen
 	r.EnterAltScreen()
+
+	// Ensure we render before processing further
+	r.Render(cellbuf)
 
 	// Check fullscreen is enabled
 	if !r.flags.Contains(tFullscreen) {
@@ -1317,7 +1321,7 @@ func TestRendererEnterExitAltScreen(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[2;2H\x1b[?1049h\x1b[H\x1b[?1049l"
+	expected := "\x1b[2;2H\x1b[?1049h\x1b[H\x1b[2J\x1b[?1049l"
 	if output != expected {
 		t.Errorf("expected output to be %q, got: %q", expected, output)
 	}

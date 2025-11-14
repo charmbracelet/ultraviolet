@@ -263,30 +263,31 @@ func (s *TerminalRenderer) RestoreCursor() {
 // EnterAltScreen is a helper that queues the [ansi.ModeAltScreenSaveCursor]
 // escape sequence to enter the alternate screen buffer and save cursor mode.
 //
-// It saves the current cursor properties, move the cursor to home, enables
-// [TerminalRenderer.SetFullscreen] flag, disables
-// [TerminalRenderer.SetRelativeCursor] flag, and marks the [TerminalRenderer]
-// for a full update on the next [TerminalRenderer.Render] call.
+// It saves the current cursor properties, enables
+// [TerminalRenderer.SetFullscreen] flag, and disables
+// [TerminalRenderer.SetRelativeCursor] flag. On the next call to
+// [TerminalRenderer.Render], it will move the cursor home and clear the screen
+// to prepare for rendering the new buffer.
 //
 // Note: you might want to reapply the cursor visibility state after calling
 // this method, as some terminals reset the cursor visibility when switching to
 // the alternate screen.
 func (s *TerminalRenderer) EnterAltScreen() {
 	s.SaveCursor()
-	s.buf.WriteString(ansi.SetModeAltScreenSaveCursor + ansi.CursorHomePosition)
+	s.buf.WriteString(ansi.SetModeAltScreenSaveCursor)
 	s.SetFullscreen(true)
 	s.SetRelativeCursor(false)
 	s.Erase()
-	s.SetPosition(0, 0)
 }
 
 // ExitAltScreen is a helper that queues the [ansi.ModeAltScreenSaveCursor]
 // escape sequence to exit the alternate screen buffer and restore cursor mode.
 //
 // It restores the saved cursor properties, disables
-// [TerminalRenderer.SetFullscreen] flag, enables
-// [TerminalRenderer.SetRelativeCursor] flag, and marks the [TerminalRenderer]
-// for a full update on the next [TerminalRenderer.Render] call.
+// [TerminalRenderer.SetFullscreen] flag, and enables
+// [TerminalRenderer.SetRelativeCursor] flag. On the next call to
+// [TerminalRenderer.Render], it will move the cursor to the first line and
+// clear everything below the cursor to prepare for rendering the new buffer.
 //
 // Note: you might want to reapply the cursor visibility state after calling
 // this method, as some terminals reset the cursor visibility when switching to
