@@ -374,12 +374,14 @@ func (t *Terminal) Display() error {
 	state := t.state // Capture the current state.
 
 	// alternate screen buffer.
-	if t.lastState == nil || t.lastState.altscreen != state.altscreen {
+	altscreenChanged := t.lastState == nil || t.lastState.altscreen != state.altscreen
+	if altscreenChanged {
 		setAltScreen(t, state.altscreen)
 	}
 
 	// cursor visibility.
-	if t.lastState == nil || t.lastState.curHidden != state.curHidden {
+	cursorVisChanged := t.lastState == nil || t.lastState.curHidden != state.curHidden
+	if cursorVisChanged || altscreenChanged {
 		if state.curHidden {
 			_, _ = t.scr.WriteString(ansi.ResetModeTextCursorEnable)
 		} else {
@@ -725,17 +727,10 @@ func (t *Terminal) stop() error {
 
 func setAltScreen(t *Terminal, enable bool) {
 	if enable {
-		_, _ = t.scr.WriteString(ansi.SetModeAltScreenSaveCursor)
-		t.scr.SetRelativeCursor(false)
-		t.scr.SetFullscreen(true)
-		t.scr.SaveCursor()
+		t.scr.EnterAltScreen()
 	} else {
-		_, _ = t.scr.WriteString(ansi.ResetModeAltScreenSaveCursor)
-		t.scr.SetRelativeCursor(true)
-		t.scr.SetFullscreen(false)
-		t.scr.RestoreCursor()
+		t.scr.ExitAltScreen()
 	}
-	t.scr.Erase()
 }
 
 func (t *Terminal) initializeState() error {
@@ -746,11 +741,13 @@ func (t *Terminal) initializeState() error {
 
 	setAltScreen(t, t.lastState.altscreen)
 
-	if !t.lastState.curHidden {
-		t.ShowCursor()
-		if t.lastState.cur != Pos(-1, -1) {
-			t.MoveTo(t.lastState.cur.X, t.lastState.cur.Y)
-		}
+	if t.lastState.curHidden {
+		_, _ = t.scr.WriteString(ansi.ResetModeTextCursorEnable)
+	} else {
+		_, _ = t.scr.WriteString(ansi.SetModeTextCursorEnable)
+	}
+	if t.lastState.cur != Pos(-1, -1) {
+		t.MoveTo(t.lastState.cur.X, t.lastState.cur.Y)
 	}
 
 	return t.scr.Flush()
@@ -951,6 +948,9 @@ func (t *Terminal) restoreState() error {
 	if err := t.scr.Flush(); err != nil {
 		return fmt.Errorf("error flushing terminal: %w", err)
 	}
+
+	// Reset cursor position for next start.
+	t.scr.SetPosition(-1, -1)
 
 	return nil
 }
