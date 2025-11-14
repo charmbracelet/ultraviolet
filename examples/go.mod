@@ -7,7 +7,7 @@ replace github.com/charmbracelet/ultraviolet => ../
 require (
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251106193318-19329a3e8410
 	github.com/charmbracelet/ultraviolet v0.0.0-20251106190538-99ea45596692
-	github.com/charmbracelet/x/ansi v0.11.1-0.20251110210702-903592506081
+	github.com/charmbracelet/x/ansi v0.11.1
 	github.com/charmbracelet/x/mosaic v0.0.0-20250509021451-13796e822d86
 	github.com/lucasb-eyer/go-colorful v1.3.0
 	github.com/mattn/go-runewidth v0.0.19

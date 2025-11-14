@@ -374,19 +374,19 @@ func (t *Terminal) Display() error {
 	state := t.state // Capture the current state.
 
 	// alternate screen buffer.
-	if state.altscreen {
-		t.scr.EnterAltScreen()
-		t.scr.SetRelativeCursor(false)
-	} else {
-		t.scr.ExitAltScreen()
-		t.scr.SetRelativeCursor(true)
+	altscreenChanged := t.lastState == nil || t.lastState.altscreen != state.altscreen
+	if altscreenChanged {
+		setAltScreen(t, state.altscreen)
 	}
 
 	// cursor visibility.
-	if state.curHidden {
-		t.scr.HideCursor()
-	} else {
-		t.scr.ShowCursor()
+	cursorVisChanged := t.lastState == nil || t.lastState.curHidden != state.curHidden
+	if cursorVisChanged || altscreenChanged {
+		if state.curHidden {
+			_, _ = t.scr.WriteString(ansi.ResetModeTextCursorEnable)
+		} else {
+			_, _ = t.scr.WriteString(ansi.SetModeTextCursorEnable)
+		}
 	}
 
 	// render the buffer.
@@ -400,7 +400,7 @@ func (t *Terminal) Display() error {
 		t.prepend = t.prepend[:0]
 	}
 
-	if !state.curHidden && state.cur != Pos(-1, -1) {
+	if state.cur != Pos(-1, -1) {
 		// MoveTo must come after [TerminalRenderer.Render] because the cursor
 		// position might get updated during rendering.
 		t.scr.MoveTo(state.cur.X, state.cur.Y)
@@ -725,24 +725,29 @@ func (t *Terminal) stop() error {
 	return nil
 }
 
+func setAltScreen(t *Terminal, enable bool) {
+	if enable {
+		t.scr.EnterAltScreen()
+	} else {
+		t.scr.ExitAltScreen()
+	}
+}
+
 func (t *Terminal) initializeState() error {
 	if t.lastState == nil {
+		setAltScreen(t, true)
 		return nil
 	}
 
-	if t.lastState.altscreen {
-		t.scr.EnterAltScreen()
-		t.scr.SetRelativeCursor(false)
-	} else {
-		t.scr.EnterAltScreen()
-		t.scr.SetRelativeCursor(true)
-	}
+	setAltScreen(t, t.lastState.altscreen)
 
-	if !t.lastState.curHidden {
-		t.ShowCursor()
-		if t.lastState.cur != Pos(-1, -1) {
-			t.MoveTo(t.lastState.cur.X, t.lastState.cur.Y)
-		}
+	if t.lastState.curHidden {
+		_, _ = t.scr.WriteString(ansi.ResetModeTextCursorEnable)
+	} else {
+		_, _ = t.scr.WriteString(ansi.SetModeTextCursorEnable)
+	}
+	if t.lastState.cur != Pos(-1, -1) {
+		t.MoveTo(t.lastState.cur.X, t.lastState.cur.Y)
 	}
 
 	return t.scr.Flush()
@@ -929,21 +934,23 @@ func (t *Terminal) restoreState() error {
 	}
 	if ls := t.lastState; ls != nil {
 		if ls.altscreen {
-			t.scr.ExitAltScreen()
-			t.scr.SetRelativeCursor(true)
+			setAltScreen(t, false)
 		} else {
 			// Go to the bottom of the screen.
 			t.scr.MoveTo(0, t.buf.Height()-1)
 			_, _ = t.WriteString("\r" + ansi.EraseScreenBelow)
 		}
 		if ls.curHidden {
-			t.scr.ShowCursor()
+			_, _ = t.scr.WriteString(ansi.SetModeTextCursorEnable)
 		}
 	}
 
 	if err := t.scr.Flush(); err != nil {
 		return fmt.Errorf("error flushing terminal: %w", err)
 	}
+
+	// Reset cursor position for next start.
+	t.scr.SetPosition(-1, -1)
 
 	return nil
 }

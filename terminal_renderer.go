@@ -86,8 +86,7 @@ type tFlag uint
 // Terminal writer flags.
 const (
 	tRelativeCursor tFlag = 1 << iota
-	tCursorHidden
-	tAltScreen
+	tFullscreen
 	tMapNewline
 )
 
@@ -164,7 +163,6 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.w = w
 	s.profile = colorprofile.Detect(w, env)
 	s.buf = new(bytes.Buffer)
-	s.curbuf = NewBuffer(0, 0)
 	s.term = Environ(env).Getenv("TERM")
 	s.caps = xtermCaps(s.term)
 	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
@@ -219,42 +217,22 @@ func (s *TerminalRenderer) SetTabStops(width int) {
 	}
 }
 
-// SetAltScreen sets whether the alternate screen is enabled. This is used to
-// control the internal alternate screen state when it was changed outside the
-// renderer.
-func (s *TerminalRenderer) SetAltScreen(v bool) {
+// SetFullscreen sets whether whole screen is being used. This is usually
+// paired with the alternate screen mode, and used to control cursor movements
+// and optimizations when the terminal is occupying the whole screen.
+func (s *TerminalRenderer) SetFullscreen(v bool) {
 	if v {
-		s.flags.Set(tAltScreen)
+		s.flags.Set(tFullscreen)
 	} else {
-		s.flags.Reset(tAltScreen)
+		s.flags.Reset(tFullscreen)
 	}
 }
 
-// AltScreen returns whether the alternate screen is enabled. This returns the
-// state of the renderer's alternate screen which does not necessarily reflect
-// the actual alternate screen state of the terminal if it was changed outside
-// the renderer.
-func (s *TerminalRenderer) AltScreen() bool {
-	return s.flags.Contains(tAltScreen)
-}
-
-// SetCursorHidden sets whether the cursor is hidden. This is used to control
-// the internal cursor visibility state when it was changed outside the
-// renderer.
-func (s *TerminalRenderer) SetCursorHidden(v bool) {
-	if v {
-		s.flags.Set(tCursorHidden)
-	} else {
-		s.flags.Reset(tCursorHidden)
-	}
-}
-
-// CursorHidden returns the current cursor visibility state. This returns the
-// state of the renderer's cursor visibility which does not necessarily reflect
-// the actual cursor visibility state of the terminal if it was changed outside
-// the renderer.
-func (s *TerminalRenderer) CursorHidden() bool {
-	return s.flags.Contains(tCursorHidden)
+// Fullscreen returns whether whole screen is being used. This is usually
+// paired with the alternate screen mode, and used to control cursor movements
+// and optimizations when the terminal is occupying the whole screen.
+func (s *TerminalRenderer) Fullscreen() bool {
+	return s.flags.Contains(tFullscreen)
 }
 
 // SetRelativeCursor sets whether to use relative cursor movements.
@@ -266,50 +244,60 @@ func (s *TerminalRenderer) SetRelativeCursor(v bool) {
 	}
 }
 
-// EnterAltScreen enters the alternate screen. This is used to switch to a
-// different screen buffer.
-// This queues the escape sequence command to enter the alternate screen, the
-// current cursor visibility state, saves the current cursor properties, and
-// queues a screen clear command.
+// SaveCursor saves the current cursor position and styles. This can be used
+// when a program enters the alternate screen buffer mode using DECSET 1049
+// [ansi.ModeAltScreenSaveCursor] and wants to restore the cursor position and
+// styles later.
+func (s *TerminalRenderer) SaveCursor() {
+	s.saved = s.cur
+}
+
+// RestoreCursor restores the saved cursor position and styles. This can be
+// used when a program exits the alternate screen buffer mode using DECRST 1049
+// [ansi.ModeAltScreenSaveCursor] and wants to restore the cursor position and
+// styles saved earlier.
+func (s *TerminalRenderer) RestoreCursor() {
+	s.cur = s.saved
+}
+
+// EnterAltScreen is a helper that queues the [ansi.ModeAltScreenSaveCursor]
+// escape sequence to enter the alternate screen buffer and save cursor mode.
+//
+// It saves the current cursor properties, enables
+// [TerminalRenderer.SetFullscreen] flag, and disables
+// [TerminalRenderer.SetRelativeCursor] flag. On the next call to
+// [TerminalRenderer.Render], it will move the cursor home and clear the screen
+// to prepare for rendering the new buffer.
+//
+// Note: you might want to reapply the cursor visibility state after calling
+// this method, as some terminals reset the cursor visibility when switching to
+// the alternate screen.
 func (s *TerminalRenderer) EnterAltScreen() {
-	if !s.flags.Contains(tAltScreen) {
-		_, _ = s.buf.WriteString(ansi.SetModeAltScreenSaveCursor)
-		s.saved = s.cur
-		s.clear = true
-	}
-	s.flags.Set(tAltScreen)
+	s.SaveCursor()
+	s.buf.WriteString(ansi.SetModeAltScreenSaveCursor)
+	s.SetFullscreen(true)
+	s.SetRelativeCursor(false)
+	s.Erase()
 }
 
-// ExitAltScreen exits the alternate screen. This is used to switch back to the
-// main screen buffer.
-// This queues the escape sequence command to exit the alternate screen, , the
-// last cursor visibility state, restores the cursor properties, and queues a
-// screen clear command.
+// ExitAltScreen is a helper that queues the [ansi.ModeAltScreenSaveCursor]
+// escape sequence to exit the alternate screen buffer and restore cursor mode.
+//
+// It restores the saved cursor properties, disables
+// [TerminalRenderer.SetFullscreen] flag, and enables
+// [TerminalRenderer.SetRelativeCursor] flag. On the next call to
+// [TerminalRenderer.Render], it will move the cursor to the first line and
+// clear everything below the cursor to prepare for rendering the new buffer.
+//
+// Note: you might want to reapply the cursor visibility state after calling
+// this method, as some terminals reset the cursor visibility when switching to
+// the alternate screen.
 func (s *TerminalRenderer) ExitAltScreen() {
-	if s.flags.Contains(tAltScreen) {
-		_, _ = s.buf.WriteString(ansi.ResetModeAltScreenSaveCursor)
-		s.cur = s.saved
-		s.clear = true
-	}
-	s.flags.Reset(tAltScreen)
-}
-
-// ShowCursor queues the escape sequence to show the cursor. This is used to
-// make the text cursor visible on the screen.
-func (s *TerminalRenderer) ShowCursor() {
-	if s.flags.Contains(tCursorHidden) {
-		_, _ = s.buf.WriteString(ansi.ShowCursor)
-	}
-	s.flags.Reset(tCursorHidden)
-}
-
-// HideCursor queues the escape sequence to hide the cursor. This is used to
-// make the text cursor invisible on the screen.
-func (s *TerminalRenderer) HideCursor() {
-	if !s.flags.Contains(tCursorHidden) {
-		_, _ = s.buf.WriteString(ansi.HideCursor)
-	}
-	s.flags.Set(tCursorHidden)
+	s.Erase()
+	s.SetRelativeCursor(true)
+	s.SetFullscreen(false)
+	s.buf.WriteString(ansi.ResetModeAltScreenSaveCursor)
+	s.RestoreCursor()
 }
 
 // PrependString adds the lines of the given string to the top of the terminal
@@ -364,7 +352,7 @@ func (s *TerminalRenderer) PrependString(newbuf *Buffer, str string) {
 // It is safe to call this function with a nil [Buffer], in that case, it won't
 // be using any optimizations that depend on the buffer.
 func (s *TerminalRenderer) moveCursor(newbuf *Buffer, x, y int, overwrite bool) {
-	if !s.flags.Contains(tAltScreen) && s.flags.Contains(tRelativeCursor) &&
+	if !s.flags.Contains(tFullscreen) && s.flags.Contains(tRelativeCursor) &&
 		s.cur.X == -1 && s.cur.Y == -1 {
 		// First cursor movement in inline mode, move the cursor to the first
 		// column before moving to the target position.
@@ -385,7 +373,10 @@ func (s *TerminalRenderer) moveCursor(newbuf *Buffer, x, y int, overwrite bool) 
 func (s *TerminalRenderer) move(newbuf *Buffer, x, y int) {
 	// XXX: Make sure we use the max height and width of the buffer in case
 	// we're in the middle of a resize operation.
-	width, height := s.curbuf.Width(), s.curbuf.Height()
+	var width, height int
+	if s.curbuf != nil {
+		width, height = s.curbuf.Width(), s.curbuf.Height()
+	}
 	if newbuf != nil {
 		width = max(newbuf.Width(), width)
 		height = max(newbuf.Height(), height)
@@ -468,7 +459,7 @@ func cellEqual(a, b *Cell) bool {
 // putCell draws a cell at the current cursor position.
 func (s *TerminalRenderer) putCell(newbuf *Buffer, cell *Cell) {
 	width, height := newbuf.Width(), newbuf.Height()
-	if s.flags.Contains(tAltScreen) && s.cur.X == width-1 && s.cur.Y == height-1 {
+	if s.flags.Contains(tFullscreen) && s.cur.X == width-1 && s.cur.Y == height-1 {
 		s.putCellLR(newbuf, cell)
 	} else {
 		s.putAttrCell(newbuf, cell)
@@ -1039,7 +1030,7 @@ func (s *TerminalRenderer) clearBelow(newbuf *Buffer, blank *Cell, row int) {
 func (s *TerminalRenderer) clearUpdate(newbuf *Buffer) {
 	blank := s.clearBlank()
 	var nonEmpty int
-	if s.flags.Contains(tAltScreen) {
+	if s.flags.Contains(tFullscreen) {
 		// XXX: We're using the maximum height of the two buffers to ensure we
 		// write newly added lines to the screen in
 		// [terminalWriter.transformLine].
@@ -1075,14 +1066,6 @@ func (s *TerminalRenderer) Flush() (err error) {
 	// Write the buffer
 	if n := s.buf.Len(); n > 0 {
 		bts := s.buf.Bytes()
-		if !s.flags.Contains(tCursorHidden) && !bytes.HasSuffix(bts, []byte(ansi.ShowCursor)) {
-			// Hide the cursor during the flush operation.
-			buf := make([]byte, len(bts)+len(ansi.HideCursor)+len(ansi.ShowCursor))
-			copy(buf, ansi.HideCursor)
-			copy(buf[len(ansi.HideCursor):], bts)
-			copy(buf[len(ansi.HideCursor)+len(bts):], ansi.ShowCursor)
-			bts = buf
-		}
 		if s.logger != nil {
 			s.logf("output: %q", bts)
 		}
@@ -1121,13 +1104,13 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		return
 	}
 
+	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
+		// Initialize the current buffer
+		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
+	}
+
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
 	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
-
-	// Do we have a buffer to compare to?
-	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
-		s.curbuf = NewBuffer(newWidth, newHeight)
-	}
 
 	if curWidth != newWidth || curHeight != newHeight {
 		s.oldhash, s.newhash = nil, nil
@@ -1150,7 +1133,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	// lines at the bottom of the screen. This is because in inline mode, we
 	// don't use the full screen height and the current buffer size might be
 	// larger than the new buffer size.
-	partialClear := !s.flags.Contains(tAltScreen) && s.cur.X != -1 && s.cur.Y != -1 &&
+	partialClear := !s.flags.Contains(tFullscreen) && s.cur.X != -1 && s.cur.Y != -1 &&
 		curWidth == newWidth &&
 		curHeight > 0 &&
 		curHeight > newHeight
@@ -1167,7 +1150,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		// misbehaves and moves the cursor outside of the scrolling region. For
 		// now, we disable the optimizations completely on Windows.
 		// See https://github.com/microsoft/terminal/issues/19016
-		if s.flags.Contains(tAltScreen) && !isWindows {
+		if s.flags.Contains(tFullscreen) && !isWindows {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].
@@ -1177,7 +1160,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		var changedLines int
 		var i int
 
-		if s.flags.Contains(tAltScreen) {
+		if s.flags.Contains(tFullscreen) {
 			nonEmpty = min(curHeight, newHeight)
 		} else {
 			nonEmpty = newHeight
@@ -1205,7 +1188,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		}
 	}
 
-	if !s.flags.Contains(tAltScreen) && s.scrollHeight < newHeight-1 {
+	if !s.flags.Contains(tFullscreen) && s.scrollHeight < newHeight-1 {
 		s.move(newbuf, 0, newHeight-1)
 	}
 
@@ -1261,7 +1244,6 @@ func (s *TerminalRenderer) Position() (x, y int) {
 // buffers.
 func (s *TerminalRenderer) SetPosition(x, y int) {
 	s.cur.X, s.cur.Y = x, y
-	s.saved.X, s.saved.Y = x, y
 }
 
 // WriteString writes the given string to the underlying buffer.
@@ -1320,7 +1302,7 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 			if cud := ansi.CursorDown(n); yseq == "" || len(cud) < len(yseq) {
 				yseq = cud
 			}
-			shouldScroll := !s.flags.Contains(tAltScreen) && ty > s.scrollHeight
+			shouldScroll := !s.flags.Contains(tFullscreen) && ty > s.scrollHeight
 			if lf := strings.Repeat("\n", n); shouldScroll || len(lf) < len(yseq) {
 				yseq = lf
 				scrollHeight = ty

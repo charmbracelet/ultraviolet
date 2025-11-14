@@ -17,7 +17,7 @@ func TestRendererOutput(t *testing.T) {
 		{
 			name:     "scroll to bottom in inline mode",
 			input:    []string{"ABC", "XXX"},
-			expected: []string{"\x1b[?25l\rABC\r\n\n\n\n\x1b[?25h", "\x1b[?25l\x1b[4AXXX\x1b[?25h"},
+			expected: []string{"\rABC\r\n\n\n\n", "\x1b[4AXXX"},
 			relative: true,
 		},
 		{
@@ -33,13 +33,13 @@ func TestRendererOutput(t *testing.T) {
 			expected: func() []string {
 				if isWindows {
 					return []string{
-						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
-						"\x1b[?25l\x1b[Hm dolor si\r\nt amet, co\r\nnsectetur\x1b[K\r\nadipiscing\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
+						"\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h",
+						"\x1b[Hm dolor si\r\nt amet, co\r\nnsectetur\x1b[K\r\nadipiscing\r\n elit. Vi\x1b[?7lv\x1b[?7h",
 					}
 				} else {
 					return []string{
-						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
-						"\x1b[?25l\r\n elit. Vi\x1b[?7lv\x1b[?7h\x1b[?25h",
+						"\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h",
+						"\r\n elit. Vi\x1b[?7lv\x1b[?7h",
 					}
 				}
 			}(),
@@ -58,13 +58,13 @@ func TestRendererOutput(t *testing.T) {
 			expected: func() []string {
 				if isWindows {
 					return []string{
-						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
-						"\x1b[?25l\x1b[Ht amet, co\r\nnsectetur\x1b[K\r\nadipiscing\r\n elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
+						"\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h",
+						"\x1b[Ht amet, co\r\nnsectetur\x1b[K\r\nadipiscing\r\n elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h",
 					}
 				} else {
 					return []string{
-						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h\x1b[?25h",
-						"\x1b[?25l\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h\x1b[?25h",
+						"\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h",
+						"\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h",
 					}
 				}
 			}(),
@@ -83,13 +83,13 @@ func TestRendererOutput(t *testing.T) {
 			expected: func() []string {
 				if isWindows {
 					return []string{
-						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JABC\r\nDEF\r\nGHI\x1b[?25h",
-						"\x1b[?25l\r\x1bM\x1b[K\nDEF\r\nGHI\x1b[?25h",
+						"\x1b[H\x1b[2JABC\r\nDEF\r\nGHI",
+						"\r\x1bM\x1b[K\nDEF\r\nGHI",
 					}
 				} else {
 					return []string{
-						"\x1b[?25l\x1b[?1049h\x1b[H\x1b[2JABC\r\nDEF\r\nGHI\x1b[?25h",
-						"\x1b[?25l\r\x1bM\x1b[L\x1b[?25h",
+						"\x1b[H\x1b[2JABC\r\nDEF\r\nGHI",
+						"\r\x1bM\x1b[L",
 					}
 				}
 			}(),
@@ -102,8 +102,8 @@ func TestRendererOutput(t *testing.T) {
 				"\nABCE      ",
 			},
 			expected: []string{
-				"\x1b[?25l\x1b[2;1HABCEFGHIJK\r\n\n\n\x1b[?25h",
-				"\x1b[?25l\x1b[2;5H\x1b[K\x1b[?25h",
+				"\x1b[2;1HABCEFGHIJK\r\n\n\n",
+				"\x1b[2;5H\x1b[K",
 			},
 		},
 	}
@@ -116,9 +116,11 @@ func TestRendererOutput(t *testing.T) {
 				"COLORTERM=truecolor", // Enable true color support
 			})
 
+			s.SetFullscreen(c.altscreen)
 			s.SetRelativeCursor(c.relative)
 			if c.altscreen {
-				s.EnterAltScreen()
+				s.SaveCursor()
+				s.Erase()
 			}
 
 			scr := NewScreenBuffer(10, 5)
