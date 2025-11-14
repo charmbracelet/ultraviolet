@@ -262,7 +262,8 @@ func (s *TerminalRenderer) RestoreCursor() {
 
 // EnterAltScreen is a helper that queues the [ansi.ModeAltScreenSaveCursor]
 // escape sequence to enter the alternate screen buffer and save cursor mode.
-// It saves the current cursor properties, enables
+//
+// It saves the current cursor properties, move the cursor to home, enables
 // [TerminalRenderer.SetFullscreen] flag, disables
 // [TerminalRenderer.SetRelativeCursor] flag, and marks the [TerminalRenderer]
 // for a full update on the next [TerminalRenderer.Render] call.
@@ -271,15 +272,17 @@ func (s *TerminalRenderer) RestoreCursor() {
 // this method, as some terminals reset the cursor visibility when switching to
 // the alternate screen.
 func (s *TerminalRenderer) EnterAltScreen() {
-	s.buf.WriteString(ansi.SetModeAltScreenSaveCursor)
 	s.SaveCursor()
+	s.buf.WriteString(ansi.SetModeAltScreenSaveCursor + ansi.CursorHomePosition)
 	s.SetFullscreen(true)
 	s.SetRelativeCursor(false)
 	s.Erase()
+	s.SetPosition(0, 0)
 }
 
 // ExitAltScreen is a helper that queues the [ansi.ModeAltScreenSaveCursor]
 // escape sequence to exit the alternate screen buffer and restore cursor mode.
+//
 // It restores the saved cursor properties, disables
 // [TerminalRenderer.SetFullscreen] flag, enables
 // [TerminalRenderer.SetRelativeCursor] flag, and marks the [TerminalRenderer]
@@ -289,11 +292,11 @@ func (s *TerminalRenderer) EnterAltScreen() {
 // this method, as some terminals reset the cursor visibility when switching to
 // the alternate screen.
 func (s *TerminalRenderer) ExitAltScreen() {
+	s.Erase()
+	s.SetRelativeCursor(true)
+	s.SetFullscreen(false)
 	s.buf.WriteString(ansi.ResetModeAltScreenSaveCursor)
 	s.RestoreCursor()
-	s.SetFullscreen(false)
-	s.SetRelativeCursor(true)
-	s.Erase()
 }
 
 // PrependString adds the lines of the given string to the top of the terminal
@@ -1240,7 +1243,6 @@ func (s *TerminalRenderer) Position() (x, y int) {
 // buffers.
 func (s *TerminalRenderer) SetPosition(x, y int) {
 	s.cur.X, s.cur.Y = x, y
-	s.saved.X, s.saved.Y = x, y
 }
 
 // WriteString writes the given string to the underlying buffer.

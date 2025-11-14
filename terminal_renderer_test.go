@@ -1273,6 +1273,56 @@ func TestRendererPrependOneLine(t *testing.T) {
 	}
 }
 
+func TestRendererEnterExitAltScreen(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+
+	// Simulate cursor change
+	r.MoveTo(1, 1)
+
+	// Save cursor to compare later
+	cur := r.cur
+	if cur.X != 1 || cur.Y != 1 {
+		t.Errorf("expected cursor to be at (1,1), got (%d,%d)", cur.X, cur.Y)
+	}
+
+	// Enter alt screen
+	r.EnterAltScreen()
+
+	// Check fullscreen is enabled
+	if !r.flags.Contains(tFullscreen) {
+		t.Errorf("expected fullscreen to be enabled in alt screen mode")
+	}
+
+	// Check cursor position reset
+	if r.cur.X != 0 || r.cur.Y != 0 {
+		t.Errorf("expected cursor to be reset to (0,0) in alt screen mode, got (%d,%d)", r.cur.X, r.cur.Y)
+	}
+
+	// Exit alt screen
+	r.ExitAltScreen()
+
+	// Check relative cursor are disabled
+	if !r.flags.Contains(tRelativeCursor) {
+		t.Errorf("expected relative cursor to be enabled after exiting alt screen mode")
+	}
+
+	// Check cursor position restored
+	if r.cur.X != 1 || r.cur.Y != 1 {
+		t.Errorf("expected cursor to be restored to (1,1) after exiting alt screen mode, got (%d,%d)", r.cur.X, r.cur.Y)
+	}
+
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	output := buf.String()
+	expected := "\x1b[2;2H\x1b[?1049h\x1b[H\x1b[?1049l"
+	if output != expected {
+		t.Errorf("expected output to be %q, got: %q", expected, output)
+	}
+}
+
 // Helper type for testing logger
 type testLogger struct {
 	buf *bytes.Buffer
