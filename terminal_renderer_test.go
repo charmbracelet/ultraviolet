@@ -1294,7 +1294,7 @@ func TestRendererEnterExitAltScreen(t *testing.T) {
 	r.Render(cellbuf)
 
 	// Check fullscreen is enabled
-	if !r.flags.Contains(tFullscreen) {
+	if !r.Fullscreen() {
 		t.Errorf("expected fullscreen to be enabled in alt screen mode")
 	}
 
