@@ -3,7 +3,6 @@ package uv
 import (
 	"image/color"
 	"strings"
-	"unicode"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -64,23 +63,6 @@ func (c *Cell) Equal(o *Cell) bool {
 // IsZero returns whether the cell is an empty cell.
 func (c *Cell) IsZero() bool {
 	return *c == Cell{}
-}
-
-// IsBlank returns whether the cell represents a blank cell consisting of a
-// space character.
-func (c *Cell) IsBlank() bool {
-	if c.Width <= 0 {
-		return false
-	}
-	// OPTIM: Special case for single space performance.
-	if len(c.Content) != 1 || c.Content != " " {
-		for _, r := range c.Content {
-			if !unicode.IsSpace(r) {
-				return false
-			}
-		}
-	}
-	return c.Style.IsBlank() && c.Link.IsZero()
 }
 
 // Clone returns a copy of the cell.
@@ -440,16 +422,6 @@ func colorEqual(c, o color.Color) bool {
 // IsZero returns true if the style is empty.
 func (s *Style) IsZero() bool {
 	return *s == Style{}
-}
-
-// IsBlank returns whether the style consists of only attributes that don't
-// affect appearance of a space character.
-func (s *Style) IsBlank() bool {
-	return s.Underline == UnderlineStyleNone &&
-		s.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
-		s.Fg == nil &&
-		s.Bg == nil &&
-		s.UnderlineColor == nil
 }
 
 // ConvertStyle converts a style to respect the given color profile.

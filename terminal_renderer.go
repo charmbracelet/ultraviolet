@@ -548,6 +548,20 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 	}
 }
 
+// canClearWith checks whether the given cell can be used by clearing commands
+// like [ansi.EL] to clear the screen. It tests if a cell is empty i.e. space
+// or blank and doesn't include any bad style attributes such as [AttrReverse].
+func canClearWith(c *Cell) bool {
+	if c.Width != 1 || len(c.Content) != 1 || c.Content != " " {
+		return false
+	}
+	// NOTE: This assumes that the terminal supports bce terminfo capability
+	// which all xterm-compatible terminals and terminals that use xterm*
+	// terminal types do.
+	return c.Style.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
+		c.Link.IsZero()
+}
+
 // emitRange emits a range of cells to the buffer. It it equivalent to calling
 // tscreen.putCell] for each cell in the range. This is optimized to use
 // [ansi.ECH] and [ansi.REP].
@@ -579,7 +593,7 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 			ech := ansi.EraseCharacter(count)
 			cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
 			rep := ansi.RepeatPreviousCharacter(count)
-			if hasECH && count > len(ech)+len(cup) && cell0.IsBlank() {
+			if hasECH && count > len(ech)+len(cup) && canClearWith(&cell0) {
 				s.updatePen(&cell0)
 				_, _ = s.buf.WriteString(ech)
 
@@ -757,7 +771,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 
 	// It might be cheaper to clear leading spaces with [ansi.EL] 1 i.e.
 	// [ansi.EraseLineLeft].
-	if blank == nil || blank.IsBlank() { //nolint:nestif
+	if blank == nil || canClearWith(blank) { //nolint:nestif
 		var oFirstCell, nFirstCell int
 		for oFirstCell = 0; oFirstCell < s.curbuf.Width(); oFirstCell++ {
 			if !cellEqual(oldLine.At(oFirstCell), blank) {
@@ -813,7 +827,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 	}
 
 	blank = newLine.At(newbuf.Width() - 1)
-	if blank != nil && !blank.IsBlank() {
+	if blank != nil && !canClearWith(blank) {
 		// Find the last differing cell
 		nLastCell = newbuf.Width() - 1
 		for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), oldLine.At(nLastCell)) {
@@ -971,7 +985,7 @@ func (s *TerminalRenderer) clearBottom(newbuf *Buffer, total int) (top int) {
 	top = total
 	last := min(s.curbuf.Width(), newbuf.Width())
 	blank := s.clearBlank()
-	canClearWithBlank := blank == nil || blank.IsBlank()
+	canClearWithBlank := blank == nil || canClearWith(blank)
 
 	if canClearWithBlank { //nolint:nestif
 		var row int
