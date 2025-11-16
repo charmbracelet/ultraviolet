@@ -558,7 +558,8 @@ func canClearWith(c *Cell) bool {
 	// NOTE: This assumes that the terminal supports bce terminfo capability
 	// which all xterm-compatible terminals and terminals that use xterm*
 	// terminal types do.
-	return c.Style.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
+	return c.Style.Underline == UnderlineNone &&
+		c.Style.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
 		c.Link.IsZero()
 }
 
