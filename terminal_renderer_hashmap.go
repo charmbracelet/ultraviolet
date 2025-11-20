@@ -286,9 +286,11 @@ func (s *TerminalRenderer) updateCost(newbuf *Buffer, from, to Line) (cost int) 
 }
 
 func (s *TerminalRenderer) updateCostBlank(newbuf *Buffer, to Line) (cost int) {
+	// This assumes bce capability.
+	blank := s.clearBlank()
 	var tidx int
 	for i := newbuf.Width() - 1; i > 0; i, tidx = i-1, tidx+1 {
-		if !cellEqual(nil, to.At(tidx)) {
+		if !cellEqual(blank, to.At(tidx)) {
 			cost++
 		}
 	}

@@ -719,10 +719,8 @@ func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) {
 // clearBlank returns a blank cell based on the current cursor background color.
 func (s *TerminalRenderer) clearBlank() *Cell {
 	c := EmptyCell
-	if !s.cur.Style.IsZero() || !s.cur.Link.IsZero() {
-		c.Style = s.cur.Style
-		c.Link = s.cur.Link
-	}
+	c.Style = s.cur.Style
+	c.Link = s.cur.Link
 	return &c
 }
 
