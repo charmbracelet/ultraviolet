@@ -405,12 +405,14 @@ func (b *Buffer) Draw(scr Screen, area Rectangle) {
 	}
 
 	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
+		for x := area.Min.X; x < area.Max.X; {
 			c := b.CellAt(x-area.Min.X, y-area.Min.Y)
 			if c == nil || c.IsZero() {
+				x++
 				continue
 			}
 			scr.SetCell(x, y, c)
+			x += c.Width
 		}
 	}
 }
