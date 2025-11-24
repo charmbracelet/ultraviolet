@@ -69,11 +69,6 @@ func (s *TerminalRenderer) scrollOptimize(newbuf *Buffer) {
 
 // scrolln scrolls the screen up by n lines.
 func (s *TerminalRenderer) scrolln(newbuf *Buffer, n, top, bot, maxY int) (v bool) { //nolint:unparam
-	const (
-		nonDestScrollRegion = false
-		memoryBelow         = false
-	)
-
 	blank := s.clearBlank()
 	if n > 0 { //nolint:nestif
 		// Scroll up (forward)
@@ -91,20 +86,6 @@ func (s *TerminalRenderer) scrolln(newbuf *Buffer, n, top, bot, maxY int) (v boo
 		if !v {
 			v = s.scrollIdl(newbuf, n, top, bot-n+1, blank)
 		}
-
-		// Clear newly shifted-in lines.
-		if v &&
-			(nonDestScrollRegion || (memoryBelow && bot == maxY)) {
-			if bot == maxY {
-				s.move(newbuf, 0, bot-n+1)
-				s.clearToBottom(nil)
-			} else {
-				for i := 0; i < n; i++ {
-					s.move(newbuf, 0, bot-i)
-					s.clearToEnd(newbuf, nil, false)
-				}
-			}
-		}
 	} else if n < 0 {
 		// Scroll down (backward)
 		v = s.scrollDown(newbuf, -n, top, bot, 0, maxY, blank)
@@ -119,15 +100,6 @@ func (s *TerminalRenderer) scrolln(newbuf *Buffer, n, top, bot, maxY int) (v boo
 
 			if !v {
 				v = s.scrollIdl(newbuf, -n, bot+n+1, top, blank)
-			}
-
-			// Clear newly shifted-in lines.
-			if v &&
-				(nonDestScrollRegion || (memoryBelow && top == 0)) {
-				for i := 0; i < -n; i++ {
-					s.move(newbuf, 0, top+i)
-					s.clearToEnd(newbuf, nil, false)
-				}
 			}
 		}
 	}
