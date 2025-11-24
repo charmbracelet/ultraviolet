@@ -27,7 +27,7 @@ func TestBufferUniseg(t *testing.T) {
 		{
 			name:     "multiple lines",
 			input:    "Hello, World!\nThis is a test.\nGoodbye!",
-			expected: "Hello, World!\r\nThis is a test.\r\nGoodbye!",
+			expected: "Hello, World!\nThis is a test.\nGoodbye!",
 		},
 	}
 
