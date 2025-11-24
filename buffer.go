@@ -200,20 +200,20 @@ func (b *Buffer) String() string {
 	for i, l := range b.Lines {
 		buf.WriteString(l.String())
 		if i < len(b.Lines)-1 {
-			_, _ = buf.WriteString("\r\n")
+			_ = buf.WriteByte('\n')
 		}
 	}
 	return buf.String()
 }
 
-// Render renders the buffer to a string with all the required attributes and
-// styles.
+// Render renders the buffer to a styled string with all the required
+// attributes and styles.
 func (b *Buffer) Render() string {
 	var buf strings.Builder
 	for i, l := range b.Lines {
 		renderLine(&buf, l)
 		if i < len(b.Lines)-1 {
-			_, _ = buf.WriteString("\r\n")
+			_ = buf.WriteByte('\n')
 		}
 	}
 	return buf.String()
