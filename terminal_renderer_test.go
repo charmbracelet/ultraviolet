@@ -622,7 +622,7 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[1;1HX\r\n\n" +
+	expected := "\x1b[HX\r\n\n" +
 		"\n\n\n"
 	if output != expected {
 		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
@@ -1267,7 +1267,7 @@ func TestRendererPrependOneLine(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[1;1HThis-is-a\r\n\n\n\n\n\n\x1b[H\x1b[2LPrepended-a-new-line\r\n"
+	expected := "\x1b[HThis-is-a\r\n\n\n\n\n\n\x1b[H\x1b[2LPrepended-a-new-line\r\n"
 	if output != expected {
 		t.Errorf("expected output to be %q, got: %q", expected, output)
 	}
