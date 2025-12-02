@@ -692,7 +692,10 @@ func (s *TerminalRenderer) putRange(newbuf *Buffer, oldLine, newLine Line, y, st
 func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) { //nolint:unparam
 	if s.cur.Y >= 0 {
 		curline := s.curbuf.Line(s.cur.Y)
-		for j := s.cur.X; j < s.curbuf.Width(); j++ {
+		// We use the newbuf width because the current buffer might be smaller
+		// than the new buffer during a resize operation and we want to detect
+		// that.
+		for j := s.cur.X; j < newbuf.Width(); j++ {
 			if j >= 0 {
 				c := curline.At(j)
 				if !cellEqual(c, blank) {
@@ -847,12 +850,14 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 	}
 
 	// Find last non-blank cell in the old line.
-	oLastCell = s.curbuf.Width() - 1
+	// We always use the newbuf width to detect new cell changes.
+	oLastCell = newbuf.Width() - 1
 	for oLastCell > firstCell && cellEqual(oldLine.At(oLastCell), blank) {
 		oLastCell--
 	}
 
 	// Find last non-blank cell in the new line.
+	// We always use the newbuf width to detect new cell changes.
 	nLastCell = newbuf.Width() - 1
 	for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), blank) {
 		nLastCell--
