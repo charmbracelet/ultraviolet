@@ -918,7 +918,12 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 				}
 			}
 
-			s.move(newbuf, n+1, y)
+			if oLastCell >= 0 && nLastCell >= 0 {
+				// Only move the cursor when we actually have changes to make.
+				// This prevents unnecessary cursor movements when we're adding
+				// new columns with blank cells.
+				s.move(newbuf, n+1, y)
+			}
 			ichCost := 3 + nLastCell - oLastCell
 			if s.caps.Contains(capICH) && (nLastCell < nLastNonBlank || ichCost > (m-n)) {
 				s.putRange(newbuf, oldLine, newLine, y, n+1, m)
@@ -1316,8 +1321,8 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 				yseq = cud
 			}
 			shouldScroll := !s.flags.Contains(tFullscreen) && ty > s.scrollHeight
-			if lf := strings.Repeat("\n", n); shouldScroll || len(lf) < len(yseq) {
-				yseq = lf
+			if shouldScroll || n < len(yseq) { // n is the cost of using newline characters
+				yseq = strings.Repeat("\n", n)
 				scrollHeight = ty
 				if s.flags.Contains(tMapNewline) {
 					fx = 0
