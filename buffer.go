@@ -1,6 +1,7 @@
 package uv
 
 import (
+	"bytes"
 	"image"
 	"io"
 	"strings"
@@ -115,7 +116,7 @@ func (l Line) String() string {
 	var buf strings.Builder
 	var pending bytes.Buffer
 	for _, c := range l {
-		if cellEqual(c, nil) {
+		if cellEqual(&c, nil) {
 			pending.WriteByte(' ')
 			continue
 		}
@@ -148,7 +149,7 @@ func renderLine(buf io.StringWriter, l Line) {
 	var pending bytes.Buffer
 
 	for _, c := range l {
-		if cellEqual(c, nil) {
+		if cellEqual(&c, nil) {
 			if !pen.IsZero() {
 				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
