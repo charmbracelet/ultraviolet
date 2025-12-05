@@ -165,7 +165,7 @@ func TestLineString(t *testing.T) {
 			setup: func() Line {
 				return NewLine(5)
 			},
-			expected: "     ",
+			expected: "",
 		},
 		{
 			name: "simple text",
@@ -192,7 +192,7 @@ func TestLineString(t *testing.T) {
 				l[5] = Cell{Content: " ", Width: 1}
 				return l
 			},
-			expected: "你好! ",
+			expected: "你好!",
 		},
 		{
 			name: "trailing spaces trimmed",
