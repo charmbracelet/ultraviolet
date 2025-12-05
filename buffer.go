@@ -111,14 +111,27 @@ func (l Line) At(x int) *Cell {
 
 // String returns the string representation of the line. Any trailing spaces
 // are removed.
-func (l Line) String() (s string) {
+func (l Line) String() string {
+	var buf strings.Builder
+	var pending bytes.Buffer
 	for _, c := range l {
+		if cellEqual(c, nil) {
+			pending.WriteByte(' ')
+			continue
+		}
+
 		if c.IsZero() {
 			continue
 		}
-		s += c.String()
+
+		if pending.Len() > 0 {
+			buf.WriteString(pending.String())
+			pending.Reset()
+		}
+		buf.WriteString(c.String())
 	}
-	return
+
+	return buf.String()
 }
 
 // Render renders the line to a string with all the required attributes and
@@ -132,35 +145,50 @@ func (l Line) Render() string {
 func renderLine(buf io.StringWriter, l Line) {
 	var pen Style
 	var link Link
+	var pending bytes.Buffer
 
-	for _, cell := range l {
-		if cell.Width > 0 {
-			// Convert the cell's style and link to the given color profile.
-			cellStyle := cell.Style
-			cellLink := cell.Link
-			if cellStyle.IsZero() && !pen.IsZero() {
+	for _, c := range l {
+		if cellEqual(c, nil) {
+			if !pen.IsZero() {
 				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
 			}
-			if !cellStyle.Equal(&pen) {
-				seq := cellStyle.Diff(&pen)
-				_, _ = buf.WriteString(seq)
-				pen = cellStyle
-			}
-
-			// Write the URL escape sequence
-			if cellLink != link && link.URL != "" {
+			if !link.IsZero() {
 				_, _ = buf.WriteString(ansi.ResetHyperlink())
 				link = Link{}
 			}
-			if cellLink != link {
-				_, _ = buf.WriteString(ansi.SetHyperlink(cellLink.URL, cellLink.Params))
-				link = cellLink
-			}
-
-			_, _ = buf.WriteString(cell.String())
+			pending.WriteByte(' ')
+			continue
 		}
+
+		if pending.Len() > 0 {
+			_, _ = buf.WriteString(pending.String())
+			pending.Reset()
+		}
+
+		if c.Style.IsZero() && !pen.IsZero() {
+			_, _ = buf.WriteString(ansi.ResetStyle)
+			pen = Style{}
+		}
+		if !c.Style.Equal(&pen) {
+			seq := c.Style.Diff(&pen)
+			_, _ = buf.WriteString(seq)
+			pen = c.Style
+		}
+
+		// Write the URL escape sequence
+		if c.Link != link && link.URL != "" {
+			_, _ = buf.WriteString(ansi.ResetHyperlink())
+			link = Link{}
+		}
+		if c.Link != link {
+			_, _ = buf.WriteString(ansi.SetHyperlink(c.Link.URL, c.Link.Params))
+			link = c.Link
+		}
+
+		_, _ = buf.WriteString(c.String())
 	}
+
 	if link.URL != "" {
 		_, _ = buf.WriteString(ansi.ResetHyperlink())
 	}
