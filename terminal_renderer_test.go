@@ -316,7 +316,7 @@ func TestRendererPrependLines(t *testing.T) {
 	// Create a line to prepend
 	line := make(Line, 5)
 	for i, ch := range "Hello" {
-		line[i] = Cell{Content: string(ch), Width: 1}
+		line[i] = &Cell{Content: string(ch), Width: 1}
 	}
 
 	r.PrependString(cellbuf, line.Render())
@@ -767,12 +767,12 @@ func TestRendererMultiplePrepends(t *testing.T) {
 	line2 := make(Line, 10)
 	for i, ch := range "Third line" {
 		if i < len(line1) {
-			line1[i] = Cell{Content: string(ch), Width: 1}
+			line1[i] = &Cell{Content: string(ch), Width: 1}
 		}
 	}
 	for i, ch := range "Fourth lin" {
 		if i < len(line2) {
-			line2[i] = Cell{Content: string(ch), Width: 1}
+			line2[i] = &Cell{Content: string(ch), Width: 1}
 		}
 	}
 

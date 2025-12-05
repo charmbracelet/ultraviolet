@@ -152,9 +152,9 @@ func TestStyledString(t *testing.T) {
 						newWcCell(",", nil, nil),
 						newWcCell(" ", nil, nil),
 						newWcCell("世", nil, nil),
-						Cell{},
+						&Cell{},
 						newWcCell("界", nil, nil),
-						Cell{},
+						&Cell{},
 						newWcCell("!", nil, nil),
 					},
 				},
@@ -393,7 +393,7 @@ func TestStyledString(t *testing.T) {
 			}
 			for y, line := range buf.Lines {
 				for x, cell := range line {
-					if !cellEqual(tc.expected.CellAt(x, y), &cell) {
+					if !cellEqual(tc.expected.CellAt(x, y), cell) {
 						t.Errorf("case %d expected cell (%d, %d) %#v, got %#v", y+1, x, y, tc.expected.CellAt(x, y), &cell)
 					}
 				}
@@ -424,14 +424,14 @@ func TestStyledStringNilCellEqual(t *testing.T) {
 	}
 	for y, line := range scr.Lines {
 		for x, cell := range line {
-			if !cellEqual(expected.CellAt(x, y), &cell) {
+			if !cellEqual(expected.CellAt(x, y), cell) {
 				t.Errorf("expected cell (%d, %d) %#v, got %#v", x, y, expected.CellAt(x, y), &cell)
 			}
 		}
 	}
 }
 
-func newWcCell(s string, style *Style, link *Link) Cell {
+func newWcCell(s string, style *Style, link *Link) *Cell {
 	c := NewCell(ansi.WcWidth, s)
 	if style != nil {
 		c.Style = *style
@@ -439,5 +439,5 @@ func newWcCell(s string, style *Style, link *Link) Cell {
 	if link != nil {
 		c.Link = *link
 	}
-	return *c
+	return c
 }

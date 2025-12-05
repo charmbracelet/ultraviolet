@@ -26,14 +26,11 @@ func Rect(x, y, w, h int) Rectangle {
 }
 
 // Line represents cells in a line.
-type Line []Cell
+type Line []*Cell
 
 // NewLine creates a new line with the given width, filled with empty cells.
 func NewLine(width int) Line {
 	l := make(Line, width)
-	for i := range l {
-		l[i] = EmptyCell
-	}
 	return l
 }
 
@@ -55,7 +52,12 @@ func (l Line) Set(x int, c *Cell) {
 		if pw := prev.Width; pw > 1 {
 			// Writing to the first wide cell
 			for j := 0; j < pw && x+j < lineWidth; j++ {
-				l[x+j] = *prev
+				l[x+j] = &Cell{
+					Content: prev.Content,
+					Style:   prev.Style,
+					Link:    prev.Link,
+					Width:   prev.Width,
+				}
 				l[x+j].Empty()
 			}
 		} else if pw == 0 {
@@ -64,7 +66,12 @@ func (l Line) Set(x int, c *Cell) {
 				if wide := l.At(x - j); wide != nil {
 					if ww := wide.Width; ww > 1 && j < ww {
 						for k := 0; k < ww; k++ {
-							l[x-j+k] = *wide
+							l[x-j+k] = &Cell{
+								Content: wide.Content,
+								Style:   wide.Style,
+								Link:    wide.Link,
+								Width:   wide.Width,
+							}
 							l[x-j+k].Empty()
 						}
 						break
@@ -74,19 +81,23 @@ func (l Line) Set(x int, c *Cell) {
 		}
 	}
 
-	if c == nil {
+	if c == nil || cellEqual(c, nil) {
 		// Nil cells are treated as blank empty cells.
-		l[x] = EmptyCell
+		l[x] = nil
 		return
 	}
 
-	l[x] = *c
+	l[x] = &Cell{
+		Content: c.Content,
+		Style:   c.Style,
+		Link:    c.Link,
+		Width:   c.Width,
+	}
 	cw := c.Width
 	if x+cw > lineWidth {
 		// If the cell is too wide, we write blanks with the same style.
 		for i := 0; i < cw && x+i < lineWidth; i++ {
-			l[x+i] = *c
-			l[x+i].Empty()
+			l[x+i] = nil
 		}
 		return
 	}
@@ -95,7 +106,7 @@ func (l Line) Set(x int, c *Cell) {
 		// Mark wide cells with an zero cells.
 		// We set the wide cell down below
 		for j := 1; j < cw && x+j < lineWidth; j++ {
-			l[x+j] = Cell{}
+			l[x+j] = &Cell{}
 		}
 	}
 }
@@ -107,7 +118,7 @@ func (l Line) At(x int) *Cell {
 		return nil
 	}
 
-	return &l[x]
+	return l[x]
 }
 
 // String returns the string representation of the line. Any trailing spaces
@@ -116,7 +127,7 @@ func (l Line) String() string {
 	var buf strings.Builder
 	var pending bytes.Buffer
 	for _, c := range l {
-		if cellEqual(&c, nil) {
+		if c == nil || cellEqual(c, nil) {
 			pending.WriteByte(' ')
 			continue
 		}
@@ -149,7 +160,7 @@ func renderLine(buf io.StringWriter, l Line) {
 	var pending bytes.Buffer
 
 	for _, c := range l {
-		if cellEqual(&c, nil) {
+		if c == nil || cellEqual(c, nil) {
 			if !pen.IsZero() {
 				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
@@ -214,9 +225,6 @@ func NewBuffer(width int, height int) *Buffer {
 	b.Lines = make([]Line, height)
 	for i := range b.Lines {
 		b.Lines[i] = make(Line, width)
-		for j := range b.Lines[i] {
-			b.Lines[i][j] = EmptyCell
-		}
 	}
 	b.Touched = make([]*LineData, height)
 	b.Resize(width, height)
@@ -341,9 +349,6 @@ func (b *Buffer) Resize(width int, height int) {
 
 	if width > curWidth {
 		line := make(Line, width-curWidth)
-		for i := range line {
-			line[i] = EmptyCell
-		}
 		for i := range b.Lines {
 			b.Lines[i] = append(b.Lines[i], line...)
 		}
@@ -356,9 +361,6 @@ func (b *Buffer) Resize(width int, height int) {
 	if height > len(b.Lines) {
 		for i := len(b.Lines); i < height; i++ {
 			line := make(Line, width)
-			for j := range line {
-				line[j] = EmptyCell
-			}
 			b.Lines = append(b.Lines, line)
 		}
 	} else if height < len(b.Lines) {

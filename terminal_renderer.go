@@ -593,20 +593,20 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 
 			cell0 := line[0]
 			if n == 1 {
-				s.putCell(newbuf, &cell0)
+				s.putCell(newbuf, cell0)
 				return false
 			}
 
 			count = 2
-			for count < n && cellEqual(line.At(count), &cell0) {
+			for count < n && cellEqual(line.At(count), cell0) {
 				count++
 			}
 
 			ech := ansi.EraseCharacter(count)
 			cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
 			rep := ansi.RepeatPreviousCharacter(count)
-			if hasECH && count > len(ech)+len(cup) && canClearWith(&cell0) {
-				s.updatePen(&cell0)
+			if hasECH && count > len(ech)+len(cup) && canClearWith(cell0) {
+				s.updatePen(cell0)
 				_, _ = s.buf.WriteString(ech)
 
 				// If this is the last cell, we don't need to move the cursor.
@@ -615,8 +615,8 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 				} else {
 					return true // cursor in the middle
 				}
-			} else if hasREP && count > len(rep) &&
-				(len(cell0.Content) == 1 && cell0.Content[0] >= ansi.US && cell0.Content[0] < ansi.DEL) {
+			} else if hasREP && count > len(rep) && (cell0 == nil ||
+				(len(cell0.Content) == 1 && cell0.Content[0] >= ansi.US && cell0.Content[0] < ansi.DEL)) {
 				// We only support ASCII characters. Most terminals will handle
 				// non-ASCII characters correctly, but some might not, ahem xterm.
 				//
@@ -629,14 +629,14 @@ func (s *TerminalRenderer) emitRange(newbuf *Buffer, line Line, n int) (eoi bool
 					repCount--
 				}
 
-				s.updatePen(&cell0)
-				s.putCell(newbuf, &cell0)
+				s.updatePen(cell0)
+				s.putCell(newbuf, cell0)
 				repCount-- // cell0 is a single width cell ASCII character
 
 				_, _ = s.buf.WriteString(ansi.RepeatPreviousCharacter(repCount))
 				s.cur.X += repCount
 				if wrapPossible {
-					s.putCell(newbuf, &cell0)
+					s.putCell(newbuf, cell0)
 				}
 			} else {
 				for i := 0; i < count; i++ {

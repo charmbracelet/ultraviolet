@@ -7,7 +7,13 @@ func hash(h *maphash.Hash, l Line) uint64 {
 	h.Reset()
 	for _, c := range l {
 		// maphash writes can not fail
-		_, _ = h.WriteString(c.Content)
+		if c == nil {
+			_ = h.WriteByte(' ')
+		} else if c.IsZero() {
+			continue
+		} else {
+			_, _ = h.WriteString(c.Content)
+		}
 	}
 
 	return h.Sum64()

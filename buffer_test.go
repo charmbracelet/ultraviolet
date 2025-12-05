@@ -133,10 +133,14 @@ func TestLineSet(t *testing.T) {
 			cell:    &Cell{Content: "你", Width: 2},
 			validate: func(t *testing.T, l Line) {
 				l.Set(9, &Cell{Content: "你", Width: 2})
-				if l[9].Content != " " {
+				content := " "
+				if l[9] != nil {
+					content = l[9].Content
+				}
+				if content != " " {
 					// We replace the wide cell with empty spaces because it
 					// doesn't fit in the line.
-					t.Errorf("expected ' ' at position 9, got %q", l[9].Content)
+					t.Errorf("expected ' ' at position 9, got %q", content)
 				}
 			},
 		},
@@ -171,11 +175,11 @@ func TestLineString(t *testing.T) {
 			name: "simple text",
 			setup: func() Line {
 				l := make(Line, 5)
-				l[0] = Cell{Content: "H", Width: 1}
-				l[1] = Cell{Content: "e", Width: 1}
-				l[2] = Cell{Content: "l", Width: 1}
-				l[3] = Cell{Content: "l", Width: 1}
-				l[4] = Cell{Content: "o", Width: 1}
+				l[0] = &Cell{Content: "H", Width: 1}
+				l[1] = &Cell{Content: "e", Width: 1}
+				l[2] = &Cell{Content: "l", Width: 1}
+				l[3] = &Cell{Content: "l", Width: 1}
+				l[4] = &Cell{Content: "o", Width: 1}
 				return l
 			},
 			expected: "Hello",
@@ -184,12 +188,12 @@ func TestLineString(t *testing.T) {
 			name: "with wide characters",
 			setup: func() Line {
 				l := make(Line, 6)
-				l[0] = Cell{Content: "你", Width: 2}
-				l[1] = Cell{} // continuation
-				l[2] = Cell{Content: "好", Width: 2}
-				l[3] = Cell{} // continuation
-				l[4] = Cell{Content: "!", Width: 1}
-				l[5] = Cell{Content: " ", Width: 1}
+				l[0] = &Cell{Content: "你", Width: 2}
+				l[1] = &Cell{} // continuation
+				l[2] = &Cell{Content: "好", Width: 2}
+				l[3] = &Cell{} // continuation
+				l[4] = &Cell{Content: "!", Width: 1}
+				l[5] = &Cell{Content: " ", Width: 1}
 				return l
 			},
 			expected: "你好!",
@@ -198,8 +202,8 @@ func TestLineString(t *testing.T) {
 			name: "trailing spaces trimmed",
 			setup: func() Line {
 				l := make(Line, 10)
-				l[0] = Cell{Content: "H", Width: 1}
-				l[1] = Cell{Content: "i", Width: 1}
+				l[0] = &Cell{Content: "H", Width: 1}
+				l[1] = &Cell{Content: "i", Width: 1}
 				// Rest are empty
 				return l
 			},
@@ -516,9 +520,9 @@ func TestBufferCellOperations(t *testing.T) {
 	t.Run("InsertCell", func(t *testing.T) {
 		b := NewBuffer(5, 2)
 		l := b.Line(0)
-		l[0] = Cell{Content: "A", Width: 1}
-		l[1] = Cell{Content: "B", Width: 1}
-		l[2] = Cell{Content: "C", Width: 1}
+		l[0] = &Cell{Content: "A", Width: 1}
+		l[1] = &Cell{Content: "B", Width: 1}
+		l[2] = &Cell{Content: "C", Width: 1}
 
 		// Insert cell at position 1
 		b.InsertCell(1, 0, 1, nil)
@@ -532,8 +536,8 @@ func TestBufferCellOperations(t *testing.T) {
 	t.Run("InsertCellArea", func(t *testing.T) {
 		b := NewBuffer(5, 3)
 		l := b.Line(1)
-		l[1] = Cell{Content: "A", Width: 1}
-		l[2] = Cell{Content: "B", Width: 1}
+		l[1] = &Cell{Content: "A", Width: 1}
+		l[2] = &Cell{Content: "B", Width: 1}
 
 		// Insert cell in area
 		b.InsertCellArea(1, 1, 1, nil, Rect(1, 1, 4, 2))
@@ -547,9 +551,9 @@ func TestBufferCellOperations(t *testing.T) {
 	t.Run("DeleteCell", func(t *testing.T) {
 		b := NewBuffer(5, 2)
 		l := b.Line(0)
-		l[0] = Cell{Content: "A", Width: 1}
-		l[1] = Cell{Content: "B", Width: 1}
-		l[2] = Cell{Content: "C", Width: 1}
+		l[0] = &Cell{Content: "A", Width: 1}
+		l[1] = &Cell{Content: "B", Width: 1}
+		l[2] = &Cell{Content: "C", Width: 1}
 
 		// Delete cell at position 1
 		b.DeleteCell(1, 0, 1, nil)
@@ -563,9 +567,9 @@ func TestBufferCellOperations(t *testing.T) {
 	t.Run("DeleteCellArea", func(t *testing.T) {
 		b := NewBuffer(5, 3)
 		l := b.Line(1)
-		l[1] = Cell{Content: "A", Width: 1}
-		l[2] = Cell{Content: "B", Width: 1}
-		l[3] = Cell{Content: "C", Width: 1}
+		l[1] = &Cell{Content: "A", Width: 1}
+		l[2] = &Cell{Content: "B", Width: 1}
+		l[3] = &Cell{Content: "C", Width: 1}
 
 		// Delete cell in area
 		b.DeleteCellArea(2, 1, 1, nil, Rect(1, 1, 4, 2))
@@ -614,8 +618,8 @@ func TestLineRenderLine(t *testing.T) {
 			name: "render with styles",
 			setup: func() Line {
 				l := make(Line, 5)
-				l[0] = Cell{Content: "H", Width: 1, Style: Style{Fg: ansi.Red}}
-				l[1] = Cell{Content: "i", Width: 1}
+				l[0] = &Cell{Content: "H", Width: 1, Style: Style{Fg: ansi.Red}}
+				l[1] = &Cell{Content: "i", Width: 1}
 				return l
 			},
 			validate: func(t *testing.T, output string) {
@@ -629,10 +633,10 @@ func TestLineRenderLine(t *testing.T) {
 			name: "render with hyperlink",
 			setup: func() Line {
 				l := make(Line, 5)
-				l[0] = Cell{Content: "L", Width: 1, Link: Link{URL: "http://example.com"}}
-				l[1] = Cell{Content: "i", Width: 1, Link: Link{URL: "http://example.com"}}
-				l[2] = Cell{Content: "n", Width: 1, Link: Link{URL: "http://example.com"}}
-				l[3] = Cell{Content: "k", Width: 1, Link: Link{URL: "http://example.com"}}
+				l[0] = &Cell{Content: "L", Width: 1, Link: Link{URL: "http://example.com"}}
+				l[1] = &Cell{Content: "i", Width: 1, Link: Link{URL: "http://example.com"}}
+				l[2] = &Cell{Content: "n", Width: 1, Link: Link{URL: "http://example.com"}}
+				l[3] = &Cell{Content: "k", Width: 1, Link: Link{URL: "http://example.com"}}
 				return l
 			},
 			validate: func(t *testing.T, output string) {
