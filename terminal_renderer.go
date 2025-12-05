@@ -67,8 +67,7 @@ func (v capabilities) Contains(c capabilities) bool {
 
 // cursor represents a terminal cursor.
 type cursor struct {
-	Style
-	Link
+	Cell
 	Position
 }
 
@@ -165,7 +164,7 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.buf = new(bytes.Buffer)
 	s.term = Environ(env).Getenv("TERM")
 	s.caps = xtermCaps(s.term)
-	s.cur = cursor{Position: Pos(-1, -1)} // start at -1 to force a move
+	s.cur = cursor{Cell: EmptyCell, Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
 	s.scrollHeight = 0
 	s.oldhash, s.newhash = nil, nil
@@ -487,10 +486,6 @@ func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
 		return
 	}
 
-	if cell == nil {
-		cell = s.clearBlank()
-	}
-
 	// We're at pending wrap state (phantom cell), incoming cell should
 	// wrap.
 	if s.atPhantom {
@@ -499,9 +494,15 @@ func (s *TerminalRenderer) putAttrCell(newbuf *Buffer, cell *Cell) {
 	}
 
 	s.updatePen(cell)
-	_, _ = s.buf.WriteString(cell.Content)
+	cellWidth := 1
+	if cell == nil {
+		_ = s.buf.WriteByte(' ')
+	} else {
+		_, _ = s.buf.WriteString(cell.Content)
+		cellWidth = cell.Width
+	}
 
-	s.cur.X += cell.Width
+	s.cur.X += cellWidth
 	if s.cur.X >= newbuf.Width() {
 		s.atPhantom = true
 	}
@@ -524,7 +525,14 @@ func (s *TerminalRenderer) putCellLR(newbuf *Buffer, cell *Cell) {
 // updatePen updates the cursor pen styles.
 func (s *TerminalRenderer) updatePen(cell *Cell) {
 	if cell == nil {
-		cell = &EmptyCell
+		if !s.cur.Style.IsZero() {
+			_, _ = s.buf.WriteString(ansi.ResetStyle)
+			s.cur.Style = Style{} // Reset style
+		}
+		if !s.cur.Link.IsZero() {
+			_, _ = s.buf.WriteString(ansi.ResetHyperlink())
+		}
+		return
 	}
 
 	// Downsample pen when we don't have a [colorprofile.TrueColor],
@@ -552,6 +560,9 @@ func (s *TerminalRenderer) updatePen(cell *Cell) {
 // like [ansi.EL] to clear the screen. It tests if a cell is empty i.e. space
 // or blank and doesn't include any bad style attributes such as [AttrReverse].
 func canClearWith(c *Cell) bool {
+	if c == nil {
+		return true
+	}
 	if c.Width != 1 || len(c.Content) != 1 || c.Content != " " {
 		return false
 	}
@@ -689,7 +700,7 @@ func (s *TerminalRenderer) putRange(newbuf *Buffer, oldLine, newLine Line, y, st
 
 // clearToEnd clears the screen from the current cursor position to the end of
 // line.
-func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) { //nolint:unparam
+func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) {
 	if s.cur.Y >= 0 {
 		curline := s.curbuf.Line(s.cur.Y)
 		// We use the newbuf width because the current buffer might be smaller
@@ -721,10 +732,7 @@ func (s *TerminalRenderer) clearToEnd(newbuf *Buffer, blank *Cell, force bool) {
 
 // clearBlank returns a blank cell based on the current cursor background color.
 func (s *TerminalRenderer) clearBlank() *Cell {
-	c := EmptyCell
-	c.Style = s.cur.Style
-	c.Link = s.cur.Link
-	return &c
+	return &s.cur.Cell
 }
 
 // insertCells inserts the count cells pointed by the given line at the current
@@ -773,7 +781,7 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 
 	// It might be cheaper to clear leading spaces with [ansi.EL] 1 i.e.
 	// [ansi.EraseLineLeft].
-	if blank == nil || canClearWith(blank) { //nolint:nestif
+	if canClearWith(blank) { //nolint:nestif
 		var oFirstCell, nFirstCell int
 		for oFirstCell = 0; oFirstCell < s.curbuf.Width(); oFirstCell++ {
 			if !cellEqual(oldLine.At(oFirstCell), blank) {
@@ -994,7 +1002,7 @@ func (s *TerminalRenderer) clearBottom(newbuf *Buffer, total int) (top int) {
 	top = total
 	last := min(s.curbuf.Width(), newbuf.Width())
 	blank := s.clearBlank()
-	canClearWithBlank := blank == nil || canClearWith(blank)
+	canClearWithBlank := canClearWith(blank)
 
 	if canClearWithBlank { //nolint:nestif
 		var row int
