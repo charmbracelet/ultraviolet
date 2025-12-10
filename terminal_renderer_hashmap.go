@@ -275,9 +275,9 @@ func (s *TerminalRenderer) costEffective(newbuf *Buffer, from, to int, blank boo
 	return costBeforeMove >= costAfterMove
 }
 
-func (s *TerminalRenderer) updateCost(newbuf *Buffer, from, to Line) (cost int) {
+func (s *TerminalRenderer) updateCost(_ *Buffer, from, to Line) (cost int) {
 	var fidx, tidx int
-	for i := newbuf.Width() - 1; i > 0; i, fidx, tidx = i-1, fidx+1, tidx+1 {
+	for i := s.curbuf.Width(); i > 0; i, fidx, tidx = i-1, fidx+1, tidx+1 {
 		if !cellEqual(from.At(fidx), to.At(tidx)) {
 			cost++
 		}
@@ -285,11 +285,11 @@ func (s *TerminalRenderer) updateCost(newbuf *Buffer, from, to Line) (cost int) 
 	return
 }
 
-func (s *TerminalRenderer) updateCostBlank(newbuf *Buffer, to Line) (cost int) {
+func (s *TerminalRenderer) updateCostBlank(_ *Buffer, to Line) (cost int) {
 	// This assumes bce capability.
 	blank := s.clearBlank()
 	var tidx int
-	for i := newbuf.Width() - 1; i > 0; i, tidx = i-1, tidx+1 {
+	for i := s.curbuf.Width(); i > 0; i, tidx = i-1, tidx+1 {
 		if !cellEqual(blank, to.At(tidx)) {
 			cost++
 		}
