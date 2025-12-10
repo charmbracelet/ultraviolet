@@ -87,6 +87,7 @@ const (
 	tRelativeCursor tFlag = 1 << iota
 	tFullscreen
 	tMapNewline
+	tScrollOptim
 )
 
 // Set sets the given flags.
@@ -181,6 +182,15 @@ func (s *TerminalRenderer) SetLogger(logger Logger) {
 // is used to determine the appropriate color the terminal can display.
 func (s *TerminalRenderer) SetColorProfile(profile colorprofile.Profile) {
 	s.profile = profile
+}
+
+// SetScrollOptim sets whether to use hard scroll optimizations.
+func (s *TerminalRenderer) SetScrollOptim(v bool) {
+	if v {
+		s.flags.Set(tScrollOptim)
+	} else {
+		s.flags.Reset(tScrollOptim)
+	}
 }
 
 // SetMapNewline sets whether the terminal is currently mapping newlines to
@@ -1181,7 +1191,7 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		// misbehaves and moves the cursor outside of the scrolling region. For
 		// now, we disable the optimizations completely on Windows.
 		// See https://github.com/microsoft/terminal/issues/19016
-		if s.flags.Contains(tFullscreen) && !isWindows {
+		if s.flags.Contains(tScrollOptim) && s.flags.Contains(tFullscreen) {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].

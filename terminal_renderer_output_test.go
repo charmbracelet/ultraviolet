@@ -116,6 +116,7 @@ func TestRendererOutput(t *testing.T) {
 				"COLORTERM=truecolor", // Enable true color support
 			})
 
+			s.SetScrollOptim(!isWindows) // Disable scroll optimization on Windows for consistent results
 			s.SetFullscreen(c.altscreen)
 			s.SetRelativeCursor(c.relative)
 			if c.altscreen {
