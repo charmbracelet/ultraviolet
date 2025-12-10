@@ -941,6 +941,10 @@ func (s *TerminalRenderer) transformLine(newbuf *Buffer, y int) {
 				}
 			}
 
+			// TODO: This can sometimes send unnecessary cursor movements with
+			// negative or zero ranges. This could happen on a screen resize
+			// where oLastCell < nLastCell and oLastCell is -1 or less.
+			// Investigate and fix.
 			s.move(newbuf, n+1, y)
 			ichCost := 3 + nLastCell - oLastCell
 			if s.caps.Contains(capICH) && (nLastCell < nLastNonBlank || ichCost > (m-n)) {
@@ -1339,8 +1343,8 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *Buffer, fx, fy, tx, ty int,
 				yseq = cud
 			}
 			shouldScroll := !s.flags.Contains(tFullscreen) && ty > s.scrollHeight
-			if lf := strings.Repeat("\n", n); shouldScroll || len(lf) < len(yseq) {
-				yseq = lf
+			if shouldScroll || n < len(yseq) { // n is the cost of using newline characters
+				yseq = strings.Repeat("\n", n)
 				scrollHeight = ty
 				if s.flags.Contains(tMapNewline) {
 					fx = 0
