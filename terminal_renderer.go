@@ -456,11 +456,14 @@ func cellEqual(a, b *Cell) bool {
 	if a == b {
 		return true
 	}
-	if a == nil {
-		a = &EmptyCell
-	}
-	if b == nil {
-		b = &EmptyCell
+	// TODO: This is needed to handle empty lines correctly when scroll
+	// optimizations are enabled. Instead, a nil check should be equivalent to
+	// checking for an [EmptyCell], should it?
+	// Investigate why when we assign the pointers to &[EmptyCell], this causes
+	// scroll optimization related artifacts where excess lines are left behind
+	// in empty lines after scrolling.
+	if a == nil || b == nil {
+		return false
 	}
 	return a.Equal(b)
 }
