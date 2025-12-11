@@ -402,9 +402,9 @@ func TestStyledString(t *testing.T) {
 	}
 }
 
-func TestStyledStringNilCellEqual(t *testing.T) {
-	// This test ensures that a nil value is equivalent to an empty [Cell] with
-	// a space character and no style or link.
+func TestStyledStringEmptyLines(t *testing.T) {
+	// This test uses an input that results in empty lines when drawn to a smaller
+	// screen buffer.
 	input := "\x1b[31;1;4mHello, \x1b[32;22;4mWorld!\x1b[0m"
 	ss := NewStyledString(input)
 	scr := NewScreenBuffer(5, 3)
@@ -418,8 +418,8 @@ func TestStyledStringNilCellEqual(t *testing.T) {
 				newWcCell("l", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
 				newWcCell("o", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle, Attrs: AttrBold}, nil),
 			},
-			{},
-			{},
+			NewLine(5),
+			NewLine(5),
 		},
 	}
 	for y, line := range scr.Lines {

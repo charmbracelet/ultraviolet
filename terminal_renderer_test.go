@@ -614,7 +614,7 @@ func TestRendererSwitchBuffer(t *testing.T) {
 
 	// Resize to larger buffer
 	largeBuf := NewBuffer(10, 6)
-	largeBuf.SetCell(0, 0, &cell) // Place at visible position
+	largeBuf.SetCell(0, 1, &cell) // Place at visible position
 
 	r.Render(largeBuf)
 	if err := r.Flush(); err != nil {
@@ -622,8 +622,7 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[HX\r\n\n" +
-		"\n\n\n"
+	expected := "\x1b[HX\r\n\n\x1b[J\x1bMX\x1b[K\r\n\n\n\n"
 	if output != expected {
 		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
 	}
