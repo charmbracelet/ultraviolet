@@ -116,15 +116,13 @@ func (l Line) String() string {
 	var buf strings.Builder
 	var pending bytes.Buffer
 	for _, c := range l {
-		if cellEqual(&c, nil) {
-			pending.WriteByte(' ')
-			continue
-		}
-
 		if c.IsZero() {
 			continue
 		}
-
+		if c.Equal(&EmptyCell) {
+			pending.WriteByte(' ')
+			continue
+		}
 		if pending.Len() > 0 {
 			buf.WriteString(pending.String())
 			pending.Reset()
@@ -149,7 +147,10 @@ func renderLine(buf io.StringWriter, l Line) {
 	var pending bytes.Buffer
 
 	for _, c := range l {
-		if cellEqual(&c, nil) {
+		if c.IsZero() {
+			continue
+		}
+		if c.Equal(&EmptyCell) {
 			if !pen.IsZero() {
 				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
