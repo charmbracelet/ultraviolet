@@ -54,7 +54,7 @@ func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
 	// output.
 	str = strings.ReplaceAll(str, "\r\n", "\n")
-	printString(buf, buf.WidthMethod(), area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
+	printString(buf, ansi.GraphemeWidth, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
 }
 
 // Height returns the number of lines in the styled string. This is the number
@@ -101,7 +101,7 @@ var parserPool = &sync.Pool{
 // printString draws a string starting at the given position.
 func printString[T []byte | string](
 	s Screen,
-	m WidthMethod,
+	m ansi.Method,
 	x, y int,
 	bounds Rectangle, str T,
 	truncate bool, tail string,
