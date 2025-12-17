@@ -13,6 +13,14 @@ type Drawable interface {
 	Draw(scr Screen, area Rectangle)
 }
 
+// DrawableFunc is a function that implements the [Drawable] interface.
+type DrawableFunc func(scr Screen, rect Rectangle)
+
+// Draw implements the [Drawable] interface.
+func (f DrawableFunc) Draw(scr Screen, rect Rectangle) {
+	f(scr, rect)
+}
+
 // WidthMethod determines how many columns a grapheme occupies on the screen.
 type WidthMethod interface {
 	StringWidth(s string) int
