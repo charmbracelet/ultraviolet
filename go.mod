@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/termios v0.1.1
 	github.com/charmbracelet/x/windows v0.2.2
+	github.com/clipperhouse/displaywidth v0.6.1
 	github.com/muesli/cancelreader v0.2.2
 	github.com/rivo/uniseg v0.4.7
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
@@ -16,7 +17,6 @@ require (
 )
 
 require (
-	github.com/clipperhouse/displaywidth v0.6.1 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 )
