@@ -120,9 +120,23 @@ func (i *input) Render(scr uv.Screen, area uv.Rectangle) {
 	// Truncate or pad to width
 	textWidth := displaywidth.String(text)
 	if textWidth > width {
-		// Truncate
-		text = text[:width]
-	} else if textWidth < width {
+		// Truncate safely using graphemes
+		gr := displaywidth.StringGraphemes(text)
+		var truncated strings.Builder
+		currentWidth := 0
+		for gr.Next() {
+			w := gr.Width()
+			if currentWidth+w > width {
+				break
+			}
+			truncated.WriteString(string(gr.Value()))
+			currentWidth += w
+		}
+		text = truncated.String()
+		textWidth = currentWidth
+	}
+	
+	if textWidth < width {
 		// Pad with spaces
 		text += strings.Repeat(" ", width-textWidth)
 	}
@@ -260,9 +274,22 @@ func (w *window) Render(scr uv.Screen, area uv.Rectangle) {
 	if w.title != "" && area.Dx() > 4 {
 		titleText := " " + w.title + " "
 		titleWidth := displaywidth.String(titleText)
+		maxWidth := area.Dx() - 2
 
-		if titleWidth > area.Dx()-2 {
-			titleText = titleText[:area.Dx()-2]
+		if titleWidth > maxWidth {
+			// Truncate safely using graphemes
+			gr := displaywidth.StringGraphemes(titleText)
+			var truncated strings.Builder
+			currentWidth := 0
+			for gr.Next() {
+				w := gr.Width()
+				if currentWidth+w > maxWidth {
+					break
+				}
+				truncated.WriteString(string(gr.Value()))
+				currentWidth += w
+			}
+			titleText = truncated.String()
 		}
 
 		x := area.Min.X + 2

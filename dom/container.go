@@ -42,7 +42,8 @@ func (v *vbox) Render(scr uv.Screen, area uv.Rectangle) {
 
 	// Render children
 	y := area.Min.Y
-	for i, child := range v.children {
+	flexibleIndex := 0
+	for _, child := range v.children {
 		if y >= area.Max.Y {
 			break
 		}
@@ -51,8 +52,9 @@ func (v *vbox) Render(scr uv.Screen, area uv.Rectangle) {
 		childHeight := minH
 		if minH == 0 {
 			childHeight = heightPerFlexible
+			flexibleIndex++
 			// Give remaining height to last flexible child
-			if i == len(v.children)-1 && flexibleChildren == 1 {
+			if flexibleIndex == flexibleChildren {
 				childHeight = area.Max.Y - y
 			}
 		}
@@ -115,7 +117,8 @@ func (h *hbox) Render(scr uv.Screen, area uv.Rectangle) {
 
 	// Render children
 	x := area.Min.X
-	for i, child := range h.children {
+	flexibleIndex := 0
+	for _, child := range h.children {
 		if x >= area.Max.X {
 			break
 		}
@@ -124,8 +127,9 @@ func (h *hbox) Render(scr uv.Screen, area uv.Rectangle) {
 		childWidth := minW
 		if minW == 0 {
 			childWidth = widthPerFlexible
+			flexibleIndex++
 			// Give remaining width to last flexible child
-			if i == len(h.children)-1 && flexibleChildren == 1 {
+			if flexibleIndex == flexibleChildren {
 				childWidth = area.Max.X - x
 			}
 		}
