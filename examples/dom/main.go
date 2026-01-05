@@ -22,52 +22,71 @@ func main() {
 	// Use alternate screen
 	t.EnterAltScreen()
 
-	// Create a DOM-based UI
-	ui := dom.Window("DOM Example",
+	// Create selectable and focusable items for the scrollable list
+	items := []dom.Element{
+		dom.MakeSelectableAndFocusable(dom.Text("Item 1 - Press Space to select")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 2 - Use Tab to navigate")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 3 - Selection is character-level")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 4 - Scroll with j/k or arrows")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 5 - Focus shown with reverse video")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 6 - Hard-wrap demo below")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 7 - More items...")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 8 - Keep scrolling!")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 9 - Almost there...")),
+		dom.MakeSelectableAndFocusable(dom.Text("Item 10 - You found it!")),
+	}
+
+	// Create a scrollable container
+	scrollable := dom.ScrollableVBox(items...)
+	scrollable.SetFocus(0) // Focus first item
+
+	// Create a DOM-based UI showcasing new features
+	ui := dom.Window("DOM Example - Scrolling, Focus & Selection",
 		dom.VBox(
 			dom.PaddingAll(
 				dom.VBox(
-					dom.Text("Welcome to Ultraviolet DOM!"),
+					dom.Styled("Welcome to Ultraviolet DOM!", uv.Style{Attrs: uv.AttrBold}),
 					dom.Spacer(0, 1),
-					dom.Paragraph("This is a demonstration of the new DOM package that allows you to build TUIs using a declarative, DOM-inspired approach similar to HTML and FTXUI."),
+					// Hard-wrap demonstration
+					dom.TextHardWrap("This text demonstrates hard-wrapping: when you have a very long line of text that exceeds the available width, it will automatically wrap to the next line at character boundaries instead of being truncated. This is useful for displaying large amounts of text in terminal UIs."),
 					dom.Spacer(0, 1),
 					dom.Separator(),
 					dom.Spacer(0, 1),
-					dom.HBox(
-						dom.VBox(
-							dom.Styled("Left Panel", uv.Style{Attrs: uv.AttrBold}),
-							dom.Spacer(0, 1),
-							dom.Checkbox("Option 1", true),
-							dom.Checkbox("Option 2", false),
-							dom.Checkbox("Option 3", true),
-						),
-						dom.Spacer(2, 0),
-						dom.SeparatorVertical(),
-						dom.Spacer(2, 0),
-						dom.VBox(
-							dom.Styled("Right Panel", uv.Style{Attrs: uv.AttrBold}),
-							dom.Spacer(0, 1),
-							dom.HBox(
-								dom.Button("OK"),
-								dom.Spacer(2, 0),
-								dom.Button("Cancel"),
-							),
-							dom.Spacer(0, 1),
-							dom.Input(20, "Enter text..."),
+					// Scrollable list with focus and selection
+					dom.Border(
+						dom.PaddingAll(
+							scrollable,
+							1,
 						),
 					),
 					dom.Spacer(0, 1),
 					dom.Separator(),
 					dom.Spacer(0, 1),
-					dom.Center(
-						dom.Border(
-							dom.PaddingAll(
-								dom.Styled("Centered and Bordered", uv.Style{
-									Fg: ansi.BrightCyan,
-								}),
-								1,
-							),
+					dom.HBox(
+						dom.VBox(
+							dom.Styled("Controls:", uv.Style{Attrs: uv.AttrBold}),
+							dom.Text("↑/k: Scroll up"),
+							dom.Text("↓/j: Scroll down"),
+							dom.Text("Tab: Next focus"),
+							dom.Text("Space: Select"),
 						),
+						dom.Spacer(2, 0),
+						dom.SeparatorVertical(),
+						dom.Spacer(2, 0),
+						dom.VBox(
+							dom.Styled("Features:", uv.Style{Attrs: uv.AttrBold}),
+							dom.Checkbox("Hard-wrap text", true),
+							dom.Checkbox("Scrollback", true),
+							dom.Checkbox("Focus tracking", true),
+							dom.Checkbox("Character selection", true),
+						),
+					),
+					dom.Spacer(0, 1),
+					dom.Center(
+						dom.Styled("Press 'q' or Ctrl+C to quit", uv.Style{
+							Fg:    ansi.BrightYellow,
+							Attrs: uv.AttrItalic,
+						}),
 					),
 				),
 				1,
@@ -102,9 +121,41 @@ func main() {
 				t.Resize(ev.Width, ev.Height)
 				display()
 			case uv.KeyPressEvent:
-				if ev.MatchString("q", "ctrl+c", "esc") {
+				switch {
+				case ev.MatchString("q", "ctrl+c", "esc"):
 					cancel()
-				} else {
+				case ev.MatchString("up", "k"):
+					scrollable.ScrollUp(1)
+					display()
+				case ev.MatchString("down", "j"):
+					scrollable.ScrollDown(1)
+					display()
+				case ev.MatchString("tab"):
+					scrollable.FocusNext()
+					display()
+				case ev.MatchString("shift+tab"):
+					scrollable.FocusPrevious()
+					display()
+				case ev.MatchString(" "):
+					// Toggle selection on focused element
+					if focused := scrollable.GetFocusedElement(); focused != nil {
+						if selectable, ok := focused.(dom.Selectable); ok {
+							_, hasSelection := selectable.GetSelection()
+							if hasSelection {
+								selectable.ClearSelection()
+							} else {
+								// Select the entire first line
+								selectable.SetSelection(dom.SelectionRange{
+									StartLine: 0,
+									StartCol:  0,
+									EndLine:   0,
+									EndCol:    50, // Select first 50 chars
+								})
+							}
+						}
+					}
+					display()
+				default:
 					display()
 				}
 			default:
