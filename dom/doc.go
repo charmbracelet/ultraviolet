@@ -1,42 +1,56 @@
 // Package dom provides a Document Object Model (DOM) implementation for building
 // terminal user interfaces with Ultraviolet.
 //
-// This package follows the core concepts of the Web DOM (https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model):
-//   - Elements form a tree structure (like DOM nodes)
-//   - Text nodes for inline content (analogous to DOM Text)
-//   - Block-level container elements (analogous to HTMLDivElement)
-//   - Declarative composition (like building HTML)
-//   - CSS box model (content, padding, border)
+// This package follows the Web DOM API specification from MDN:
+//   - https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model
+//   - https://developer.mozilla.org/en-US/docs/Web/API/Node
+//   - https://developer.mozilla.org/en-US/docs/Web/API/Document
+//   - https://developer.mozilla.org/en-US/docs/Web/API/Element
+//   - https://developer.mozilla.org/en-US/docs/Web/API/Attr
 //
-// # Core Element Types
+// # Core Interfaces
 //
-// TextNode - Inline text content (like DOM Text nodes and HTML <span>)
-//   - Flows inline, wraps only on explicit newlines
-//   - Example: Text("Hello, World!")
+// Node - Base interface for all nodes in the DOM tree
+//   - Provides NodeType, NodeName, ParentNode, ChildNodes
+//   - Methods: AppendChild, RemoveChild, ReplaceChild, etc.
 //
-// Box - Block-level container (like DOM HTMLDivElement and HTML <div>)
-//   - Follows CSS box model with padding, borders, scrolling
-//   - Can contain any child elements
-//   - Example: NewBox(content).WithBorder(BorderStyleRounded())
+// Document - Represents the entire document (root of DOM tree)
+//   - Methods: CreateElement, CreateTextNode, GetElementsByTagName
+//   - Properties: DocumentElement (root element)
 //
-// # Layout Containers
+// Element - Represents an element in the document
+//   - Extends Node with element-specific functionality
+//   - Properties: TagName, Attributes, Children
+//   - Methods: GetAttribute, SetAttribute, GetElementsByTagName
 //
-// VBox - Vertical flex container (like CSS flexbox with flex-direction: column)
-// HBox - Horizontal flex container (like CSS flexbox with flex-direction: row)
+// Text - Represents a text node
+//   - Extends Node for text content
+//   - Property: Data (the text content)
+//
+// Attr - Represents an attribute on an element
+//   - Properties: Name, Value
+//
+// # Rendering
+//
+// Unlike Web DOM which is rendered by browsers, this DOM is explicitly rendered
+// to an Ultraviolet screen using the Render method on the Document or any Element.
 //
 // # Example Usage
 //
-//	ui := dom.VBox(
-//	    dom.Text("Header"),
-//	    dom.NewBox(
-//	        dom.HBox(
-//	            dom.Text("Left"),
-//	            dom.Text("Right"),
-//	        ),
-//	    ).WithBorder(dom.BorderStyleRounded()),
-//	)
-//	ui.Render(screen, area)
+//	doc := dom.NewDocument()
+//	
+//	// Create elements
+//	div := doc.CreateElement("div")
+//	div.SetAttribute("border", "rounded")
+//	
+//	text := doc.CreateTextNode("Hello, World!")
+//	div.AppendChild(text)
+//	
+//	doc.AppendChild(div)
+//	
+//	// Render to screen
+//	doc.Render(screen, area)
 //
-// The package emphasizes simplicity and follows web standards where applicable,
-// making it familiar to developers with HTML/CSS/DOM experience.
+// The package emphasizes following Web DOM standards to provide a familiar API
+// for developers with web development experience.
 package dom

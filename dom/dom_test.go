@@ -7,257 +7,290 @@ import (
 	"github.com/clipperhouse/displaywidth"
 )
 
-// widthMethod implements uv.WidthMethod using displaywidth.
+// mockScreen is a simple mock implementation of uv.Screen for testing.
+type mockScreen struct {
+	cells map[string]*uv.Cell
+}
+
+func newMockScreen() *mockScreen {
+	return &mockScreen{
+		cells: make(map[string]*uv.Cell),
+	}
+}
+
+// widthMethod is a simple implementation of WidthMethod using displaywidth
 type widthMethod struct{}
 
 func (w widthMethod) StringWidth(s string) int {
 	return displaywidth.String(s)
 }
 
-// mockScreen is a simple mock implementation of uv.Screen for testing.
-type mockScreen struct {
-	width  int
-	height int
-	cells  map[int]map[int]*uv.Cell
-}
-
-func newMockScreen(width, height int) *mockScreen {
-	return &mockScreen{
-		width:  width,
-		height: height,
-		cells:  make(map[int]map[int]*uv.Cell),
-	}
-}
-
-func (m *mockScreen) Bounds() uv.Rectangle {
-	return uv.Rect(0, 0, m.width, m.height)
-}
-
-func (m *mockScreen) CellAt(x, y int) *uv.Cell {
-	if row, ok := m.cells[y]; ok {
-		return row[x]
-	}
-	return nil
-}
-
-func (m *mockScreen) SetCell(x, y int, c *uv.Cell) {
-	if m.cells[y] == nil {
-		m.cells[y] = make(map[int]*uv.Cell)
-	}
-	m.cells[y][x] = c
-}
-
 func (m *mockScreen) WidthMethod() uv.WidthMethod {
 	return widthMethod{}
 }
 
-func TestTextElement(t *testing.T) {
-	scr := newMockScreen(80, 24)
-	elem := Text("Hello")
+func (m *mockScreen) Bounds() uv.Rectangle {
+	return uv.Rect(0, 0, 80, 24) // Default terminal size
+}
 
-	area := uv.Rect(0, 0, 10, 1)
-	elem.Render(scr, area)
+func (m *mockScreen) SetCell(x, y int, cell *uv.Cell) {
+	key := string(rune(x))+ "," + string(rune(y))
+	m.cells[key] = cell
+}
 
-	// Check that cells were set
-	if scr.CellAt(0, 0) == nil {
-		t.Error("Expected cell at (0, 0)")
+func (m *mockScreen) CellAt(x, y int) *uv.Cell {
+	key := string(rune(x)) + "," + string(rune(y))
+	return m.cells[key]
+}
+
+func TestDocument_CreateElement(t *testing.T) {
+	doc := NewDocument()
+	elem := doc.CreateElement("div")
+	
+	if elem == nil {
+		t.Fatal("CreateElement returned nil")
 	}
-
-	// Check minimum size
-	w, h := elem.MinSize(scr)
-	if w <= 0 || h <= 0 {
-		t.Errorf("Expected positive min size, got (%d, %d)", w, h)
+	
+	if elem.TagName() != "DIV" {
+		t.Errorf("Expected tag name DIV, got %s", elem.TagName())
+	}
+	
+	if elem.NodeType() != ElementNode {
+		t.Errorf("Expected node type ElementNode, got %d", elem.NodeType())
 	}
 }
 
-func TestVBoxLayout(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := VBox(
-		Text("Line 1"),
-		Text("Line 2"),
-		Text("Line 3"),
-	)
-
-	area := uv.Rect(0, 0, 20, 10)
-	elem.Render(scr, area)
-
-	// Verify min size calculation
-	_, h := elem.MinSize(scr)
-	if h != 3 {
-		t.Errorf("Expected height 3 for 3 text elements, got %d", h)
+func TestDocument_CreateTextNode(t *testing.T) {
+	doc := NewDocument()
+	text := doc.CreateTextNode("Hello")
+	
+	if text == nil {
+		t.Fatal("CreateTextNode returned nil")
+	}
+	
+	if text.Data() != "Hello" {
+		t.Errorf("Expected data 'Hello', got '%s'", text.Data())
+	}
+	
+	if text.NodeType() != TextNode {
+		t.Errorf("Expected node type TextNode, got %d", text.NodeType())
 	}
 }
 
-func TestHBoxLayout(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := HBox(
-		Text("A"),
-		Text("B"),
-		Text("C"),
-	)
-
-	area := uv.Rect(0, 0, 20, 5)
-	elem.Render(scr, area)
-
-	// Verify min size calculation
-	w, _ := elem.MinSize(scr)
-	if w <= 0 {
-		t.Errorf("Expected positive width for 3 text elements, got %d", w)
+func TestElement_AppendChild(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	text := doc.CreateTextNode("Hello")
+	
+	div.AppendChild(text)
+	
+	if len(div.ChildNodes()) != 1 {
+		t.Errorf("Expected 1 child, got %d", len(div.ChildNodes()))
+	}
+	
+	if div.FirstChild() != text {
+		t.Error("FirstChild() did not return the appended text node")
+	}
+	
+	if text.ParentNode() != div {
+		t.Error("Text node's ParentNode() does not point to div")
 	}
 }
 
-func TestBorder(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := NewBox(Text("Bordered")).WithBorder(BorderStyleNormal())
-
-	area := uv.Rect(0, 0, 20, 5)
-	elem.Render(scr, area)
-
-	// Check min size includes border
-	w, h := elem.MinSize(scr)
-	if w < 2 || h < 2 {
-		t.Errorf("Expected border to add at least 2 to dimensions, got (%d, %d)", w, h)
+func TestElement_GetAttribute(t *testing.T) {
+	doc := NewDocument()
+	elem := doc.CreateElement("div")
+	
+	elem.SetAttribute("border", "rounded")
+	
+	if !elem.HasAttribute("border") {
+		t.Error("HasAttribute returned false for 'border'")
+	}
+	
+	if elem.GetAttribute("border") != "rounded" {
+		t.Errorf("Expected attribute value 'rounded', got '%s'", elem.GetAttribute("border"))
+	}
+	
+	if elem.GetAttribute("nonexistent") != "" {
+		t.Error("GetAttribute should return empty string for nonexistent attribute")
 	}
 }
 
-func TestPadding(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := PaddingAll(Text("Padded"), 1)
-
-	area := uv.Rect(0, 0, 20, 5)
-	elem.Render(scr, area)
-
-	// Check min size includes padding
-	w, h := elem.MinSize(scr)
-	if w < 2 || h < 2 {
-		t.Errorf("Expected padding to add at least 2 to dimensions, got (%d, %d)", w, h)
+func TestElement_RemoveAttribute(t *testing.T) {
+	doc := NewDocument()
+	elem := doc.CreateElement("div")
+	
+	elem.SetAttribute("border", "rounded")
+	elem.RemoveAttribute("border")
+	
+	if elem.HasAttribute("border") {
+		t.Error("HasAttribute returned true after RemoveAttribute")
+	}
+	
+	if elem.GetAttribute("border") != "" {
+		t.Error("GetAttribute should return empty string after RemoveAttribute")
 	}
 }
 
-func TestSeparator(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	// Test horizontal separator
-	elem := Separator()
-	area := uv.Rect(0, 0, 10, 1)
-	elem.Render(scr, area)
-
-	_, h := elem.MinSize(scr)
-	if h != 1 {
-		t.Errorf("Expected horizontal separator height of 1, got %d", h)
+func TestNode_RemoveChild(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	text1 := doc.CreateTextNode("First")
+	text2 := doc.CreateTextNode("Second")
+	
+	div.AppendChild(text1)
+	div.AppendChild(text2)
+	
+	if len(div.ChildNodes()) != 2 {
+		t.Errorf("Expected 2 children, got %d", len(div.ChildNodes()))
 	}
-
-	// Test vertical separator
-	elem2 := SeparatorVertical()
-	w2, h2 := elem2.MinSize(scr)
-	if w2 != 1 {
-		t.Errorf("Expected vertical separator width of 1, got %d", w2)
+	
+	div.RemoveChild(text1)
+	
+	if len(div.ChildNodes()) != 1 {
+		t.Errorf("Expected 1 child after removal, got %d", len(div.ChildNodes()))
 	}
-	if h2 != 0 {
-		t.Errorf("Expected vertical separator height of 0 (flexible), got %d", h2)
+	
+	if div.FirstChild() != text2 {
+		t.Error("FirstChild() should be text2 after removing text1")
 	}
-}
-
-func TestParagraph(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Paragraph("This is a test paragraph that should wrap.")
-	area := uv.Rect(0, 0, 20, 10)
-	elem.Render(scr, area)
-
-	w, h := elem.MinSize(scr)
-	if w <= 0 || h <= 0 {
-		t.Errorf("Expected positive min size for paragraph, got (%d, %d)", w, h)
+	
+	if text1.ParentNode() != nil {
+		t.Error("Removed node should have nil ParentNode()")
 	}
 }
 
-func TestCenter(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Center(Text("Centered"))
-	area := uv.Rect(0, 0, 40, 10)
-	elem.Render(scr, area)
-
-	// Center should report child's min size
-	w, h := elem.MinSize(scr)
-	if w <= 0 || h <= 0 {
-		t.Errorf("Expected positive min size, got (%d, %d)", w, h)
+func TestElement_TextContent(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	text1 := doc.CreateTextNode("Hello ")
+	text2 := doc.CreateTextNode("World")
+	
+	div.AppendChild(text1)
+	div.AppendChild(text2)
+	
+	if div.TextContent() != "Hello World" {
+		t.Errorf("Expected 'Hello World', got '%s'", div.TextContent())
 	}
 }
 
-func TestFlex(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Flex()
-
-	// Flex should have zero min size (flexible)
-	w, h := elem.MinSize(scr)
-	if w != 0 || h != 0 {
-		t.Errorf("Expected flex to have zero min size, got (%d, %d)", w, h)
+func TestElement_SetTextContent(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	text1 := doc.CreateTextNode("Old")
+	div.AppendChild(text1)
+	
+	div.SetTextContent("New")
+	
+	if len(div.ChildNodes()) != 1 {
+		t.Errorf("Expected 1 child after SetTextContent, got %d", len(div.ChildNodes()))
+	}
+	
+	if div.TextContent() != "New" {
+		t.Errorf("Expected 'New', got '%s'", div.TextContent())
 	}
 }
 
-func TestSpacer(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Spacer(5, 3)
-
-	w, h := elem.MinSize(scr)
-	if w != 5 || h != 3 {
-		t.Errorf("Expected spacer size (5, 3), got (%d, %d)", w, h)
+func TestElement_GetElementsByTagName(t *testing.T) {
+	doc := NewDocument()
+	root := doc.CreateElement("div")
+	child1 := doc.CreateElement("span")
+	child2 := doc.CreateElement("div")
+	grandchild := doc.CreateElement("span")
+	
+	root.AppendChild(child1)
+	root.AppendChild(child2)
+	child2.AppendChild(grandchild)
+	
+	spans := root.GetElementsByTagName("span")
+	
+	if len(spans) != 2 {
+		t.Errorf("Expected 2 span elements, got %d", len(spans))
 	}
 }
 
-func TestEmpty(t *testing.T) {
-	scr := newMockScreen(80, 24)
+func TestElement_CloneNode(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	div.SetAttribute("border", "rounded")
+	text := doc.CreateTextNode("Hello")
+	div.AppendChild(text)
+	
+	// Shallow clone
+	shallowClone := div.CloneNode(false).(*Element)
+	if len(shallowClone.ChildNodes()) != 0 {
+		t.Error("Shallow clone should have no children")
+	}
+	if shallowClone.GetAttribute("border") != "rounded" {
+		t.Error("Shallow clone should preserve attributes")
+	}
+	
+	// Deep clone
+	deepClone := div.CloneNode(true).(*Element)
+	if len(deepClone.ChildNodes()) != 1 {
+		t.Error("Deep clone should have children")
+	}
+	if deepClone.TextContent() != "Hello" {
+		t.Error("Deep clone should preserve text content")
+	}
+}
 
-	elem := Empty()
+func TestDocument_Render(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	text := doc.CreateTextNode("Test")
+	div.AppendChild(text)
+	doc.AppendChild(div)
+	
+	screen := newMockScreen()
 	area := uv.Rect(0, 0, 10, 10)
-
+	
 	// Should not panic
-	elem.Render(scr, area)
+	doc.Render(screen, area)
+}
 
-	w, h := elem.MinSize(scr)
-	if w != 0 || h != 0 {
-		t.Errorf("Expected empty to have zero min size, got (%d, %d)", w, h)
+func TestElement_RenderWithBorder(t *testing.T) {
+	doc := NewDocument()
+	div := doc.CreateElement("div")
+	div.SetAttribute("border", "rounded")
+	text := doc.CreateTextNode("Test")
+	div.AppendChild(text)
+	
+	screen := newMockScreen()
+	area := uv.Rect(0, 0, 10, 10)
+	
+	// Should not panic
+	div.Render(screen, area)
+}
+
+func TestVBox_Layout(t *testing.T) {
+	doc := NewDocument()
+	vbox := doc.CreateElement("vbox")
+	text1 := doc.CreateTextNode("Line 1")
+	text2 := doc.CreateTextNode("Line 2")
+	vbox.AppendChild(text1)
+	vbox.AppendChild(text2)
+	
+	screen := newMockScreen()
+	
+	_, h := vbox.MinSize(screen)
+	if h != 2 {
+		t.Errorf("Expected height 2, got %d", h)
 	}
 }
 
-func TestComplexLayout(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	// Create a complex nested layout
-	elem := VBox(
-		NewBox(Text("Header")).WithBorder(BorderStyleNormal()),
-		HBox(
-			VBox(
-				Text("Left"),
-				Separator(),
-				Text("Content"),
-			),
-			SeparatorVertical(),
-			VBox(
-				Text("Right"),
-				Spacer(0, 1),
-				Text("More content"),
-			),
-		),
-		Separator(),
-		PaddingAll(Text("Footer"), 1),
-	)
-
-	area := uv.Rect(0, 0, 60, 20)
-
-	// Should render without panicking
-	elem.Render(scr, area)
-
-	// Should calculate min size
-	w, h := elem.MinSize(scr)
-	if w <= 0 || h <= 0 {
-		t.Errorf("Expected positive min size for complex layout, got (%d, %d)", w, h)
+func TestHBox_Layout(t *testing.T) {
+	doc := NewDocument()
+	hbox := doc.CreateElement("hbox")
+	text1 := doc.CreateTextNode("A")
+	text2 := doc.CreateTextNode("B")
+	hbox.AppendChild(text1)
+	hbox.AppendChild(text2)
+	
+	screen := newMockScreen()
+	
+	w, _ := hbox.MinSize(screen)
+	if w != 2 {
+		t.Errorf("Expected width 2, got %d", w)
 	}
 }

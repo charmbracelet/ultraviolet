@@ -1,475 +1,244 @@
 # DOM Package
 
-The `dom` package provides a Document Object Model (DOM) implementation for building terminal user interfaces with Ultraviolet. It follows the core concepts of the Web DOM ([MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)), adapted for terminal environments.
+A Document Object Model (DOM) implementation for building terminal user interfaces with Ultraviolet, following Web DOM API standards from MDN.
 
 ## Overview
 
-Like the Web DOM, this package organizes UI as a tree of elements that can be composed declaratively. It follows familiar concepts:
+This package implements the core concepts of the Web DOM API, providing familiar interfaces for developers with web development experience:
 
-- **Element nodes** form a tree structure (like DOM nodes)
-- **Text nodes** for inline content (analogous to DOM Text)
-- **Block-level containers** (analogous to HTMLDivElement)  
-- **CSS box model** with content, padding, and borders
-- **Flexbox-style layout** for containers
+- **Node** - Base interface for all nodes in the DOM tree
+- **Document** - Root of the DOM tree with methods to create elements and text nodes
+- **Element** - Represents elements with attributes, children, and tag-based rendering
+- **Text** - Text nodes containing text content
+- **Attr** - Attributes on elements
 
-This makes the API familiar to developers with HTML/CSS/DOM experience.
+See: https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model
 
-## Core Element Types
+## Core Interfaces
 
-### TextNode (Inline Element)
+### Node
 
-Like DOM Text nodes and HTML `<span>`, TextNode is an inline element that flows with content and only breaks on explicit newlines.
+The primary data type for the entire DOM. All nodes implement this interface:
+
+- `NodeType()` - Returns the type (Element, Text, Document)
+- `NodeName()` - Returns the node name
+- `ParentNode()` / `ChildNodes()` - Tree navigation
+- `AppendChild()` / `RemoveChild()` / `ReplaceChild()` - Tree manipulation
+- `CloneNode()` - Clones the node
+- `TextContent()` / `SetTextContent()` - Text content access
+- `Render()` / `MinSize()` - TUI-specific rendering methods
+
+### Document
+
+Represents the entire document and provides factory methods:
 
 ```go
-text := dom.Text("Hello, World!")
-styled := dom.Text("Bold text").WithStyle(uv.Style{Attrs: uv.AttrBold})
+doc := dom.NewDocument()
+elem := doc.CreateElement("div")
+text := doc.CreateTextNode("Hello, World!")
+doc.AppendChild(elem)
 ```
 
-**Analogous to:**
-- DOM: Text node
-- HTML: `<span>` or text content
-- CSS: `display: inline`
+### Element
 
-### Box (Block-Level Container)
-
-Like DOM's HTMLDivElement and HTML `<div>`, Box is a block-level container that follows the CSS box model.
+Represents elements in the document tree:
 
 ```go
-box := dom.NewBox(content).
-    WithBorder(dom.BorderStyleRounded()).
-    WithPadding(1).
-    WithFocus(true)
-
-// Scroll the content (like CSS overflow)
-box.ScrollDown(5)
-box.ScrollRight(10)
+elem := doc.CreateElement("div")
+elem.SetAttribute("border", "rounded")
+elem.SetAttribute("padding", "1")
+elem.AppendChild(text)
 ```
 
-**Analogous to:**
-- DOM: HTMLDivElement
-- HTML: `<div>`
-- CSS: `display: block` with box model (padding, border)
+**Tag Names:**
+- `div` - Block container with optional border/padding
+- `vbox` - Vertical flexbox layout (stacks children vertically)
+- `hbox` - Horizontal flexbox layout (arranges children horizontally)
 
-**Box Model Support:**
-- **Content**: The child element
-- **Padding**: Inner spacing between content and border
-- **Border**: Optional border with customizable style
-- **Scrolling**: Built-in overflow support (horizontal and vertical)
-- **Focus**: Focus state management
-- **Selection**: Selection state with customizable style
+**Attributes:**
+- `border` - Border style: "normal", "rounded", "double", "thick"
+- `padding` - Adds inner spacing (simple padding for now)
 
-## Layout Containers
+### Text
 
-### VBox (Vertical Flexbox)
-
-Stacks children vertically, similar to CSS flexbox with `flex-direction: column`.
+Represents text nodes:
 
 ```go
-ui := dom.VBox(
-    dom.Text("Header"),
-    dom.Text("Content"),
-    dom.Text("Footer"),
-)
+text := doc.CreateTextNode("Hello, World!")
+text.SetData("Updated text")
 ```
 
-**Analogous to:**
-- CSS: `display: flex; flex-direction: column`
+Text nodes automatically:
+- Handle newlines (renders each line separately)
+- Use Unicode-aware width calculation with displaywidth
+- Preserve grapheme clusters
 
-### HBox (Horizontal Flexbox)
+### Attr
 
-Arranges children horizontally, similar to CSS flexbox with `flex-direction: row`.
-
-```go
-ui := dom.HBox(
-    dom.Text("Left"),
-    dom.Text("Center"),
-    dom.Text("Right"),
-)
-```
-
-**Analogous to:**
-- CSS: `display: flex; flex-direction: row`
-
-**Flex Behavior:**
-- Children with `MinSize` of 0 are flexible (like `flex: 1`)
-- Children with fixed `MinSize` use exactly that much space
-- Remaining space is distributed equally among flexible children
-
-## Border Styles
+Represents attributes on elements. Attributes are managed through Element methods:
 
 ```go
-dom.BorderStyleNormal()   // Standard box-drawing characters
-dom.BorderStyleRounded()  // Rounded corners
-dom.BorderStyleDouble()   // Double-line borders
-dom.BorderStyleThick()    // Thick line borders
-```
-
-## Layout Helpers
-
-```go
-dom.Separator()          // Horizontal line (like HTML <hr>)
-dom.SeparatorVertical()  // Vertical line
-dom.Spacer(width, height) // Fixed-size spacing
-dom.Flex()              // Flexible spacing (flex: 1)
-dom.Center(child)       // Center child element
+elem.SetAttribute("border", "rounded")
+value := elem.GetAttribute("border")  // returns "rounded"
+hasIt := elem.HasAttribute("border")  // returns true
+elem.RemoveAttribute("border")
 ```
 
 ## Example Usage
 
-### Simple Layout
-
 ```go
+package main
+
 import (
-    uv "github.com/charmbracelet/ultraviolet"
+    "github.com/charmbracelet/ultraviolet"
     "github.com/charmbracelet/ultraviolet/dom"
 )
 
-// Create a simple UI tree
-ui := dom.VBox(
-    dom.Text("Hello, World!"),
-    dom.Separator(),
-    dom.HBox(
-        dom.Text("Left"),
-        dom.Flex(),
-        dom.Text("Right"),
-    ),
-)
-
-// Render it
-ui.Render(screen, area)
-```
-
-### Box Model with Scrolling
-
-```go
-// Create scrollable content
-content := dom.VBox(
-    dom.Text("Line 1"),
-    dom.Text("Line 2"),
-    dom.Text("Line 3"),
-    // ... more lines
-)
-
-// Wrap in a box with border and padding
-box := dom.NewBox(content).
-    WithBorder(dom.BorderStyleRounded()).
-    WithPadding(1).
-    WithFocus(true)
-
-// Render the box
-box.Render(screen, area)
-
-// Handle keyboard input for scrolling
-switch key {
-case "up":
-    box.ScrollUp(1)
-case "down":
-    box.ScrollDown(1)
+func main() {
+    // Create document
+    doc := dom.NewDocument()
+    
+    // Create root element with border
+    root := doc.CreateElement("div")
+    root.SetAttribute("border", "rounded")
+    root.SetAttribute("padding", "1")
+    
+    // Add title
+    title := doc.CreateTextNode("🌟 My Application 🌟")
+    root.AppendChild(title)
+    
+    // Create horizontal layout
+    hbox := doc.CreateElement("hbox")
+    
+    // Left panel
+    left := doc.CreateElement("div")
+    left.SetAttribute("border", "normal")
+    left.AppendChild(doc.CreateTextNode("Left Panel"))
+    hbox.AppendChild(left)
+    
+    // Right panel
+    right := doc.CreateElement("div")
+    right.SetAttribute("border", "double")
+    right.AppendChild(doc.CreateTextNode("Right Panel"))
+    hbox.AppendChild(right)
+    
+    root.AppendChild(hbox)
+    doc.AppendChild(root)
+    
+    // Render to screen
+    scr := ultraviolet.NewScreen()
+    scr.Init()
+    defer scr.Fini()
+    
+    width, height := scr.Size()
+    area := ultraviolet.Rect(0, 0, width, height)
+    
+    scr.Clear()
+    doc.Render(scr, area)
+    scr.Show()
 }
 ```
 
-### Complex Nested Layout
+## Layout System
+
+### VBox (Vertical Flexbox)
+
+Stacks children vertically. Children with `MinSize` returning 0 height are flexible and share remaining space.
 
 ```go
-ui := dom.VBox(
-    // Header
-    dom.NewBox(
-        dom.Text("Application Title"),
-    ).WithBorder(dom.BorderStyleNormal()),
-    
-    // Main content area
-    dom.HBox(
-        // Left sidebar
-        dom.VBox(
-            dom.Text("Menu"),
-            dom.Separator(),
-            dom.Text("Item 1"),
-            dom.Text("Item 2"),
-        ),
-        
-        dom.SeparatorVertical(),
-        
-        // Right content
-        dom.NewBox(
-            dom.Paragraph("Your content here..."),
-        ).WithPadding(1),
-    ),
-    
-    dom.Separator(),
-    
-    // Footer
-    dom.Center(dom.Text("Press q to quit")),
-)
+vbox := doc.CreateElement("vbox")
+vbox.AppendChild(doc.CreateTextNode("Line 1"))
+vbox.AppendChild(doc.CreateTextNode("Line 2"))
 ```
 
-## Design Philosophy
+### HBox (Horizontal Flexbox)
 
-This package follows core DOM concepts:
+Arranges children horizontally. Children with `MinSize` returning 0 width are flexible and share remaining space.
 
-1. **Tree Structure**: Elements compose into a tree, just like DOM nodes
-2. **Declarative**: Build UIs by describing what you want, not how to render it
-3. **Web Standards**: Use familiar concepts (box model, flexbox, inline/block)
-4. **Simple**: Two core element types (TextNode and Box) cover most use cases
-5. **Composable**: Everything implements Element and can be nested arbitrarily
+```go
+hbox := doc.CreateElement("hbox")
+hbox.AppendChild(doc.CreateTextNode("Left"))
+hbox.AppendChild(doc.CreateTextNode("Right"))
+```
+
+## Border Styles
+
+Pre-defined border styles available via the `border` attribute:
+
+- `normal` - Standard box-drawing characters (┌─┐│└─┘)
+- `rounded` - Rounded corners (╭─╮│╰─╯)
+- `double` - Double lines (╔═╗║╚═╝)
+- `thick` - Thick lines (┏━┓┃┗━┛)
+
+## DOM Tree Manipulation
+
+The DOM API provides standard methods for tree manipulation:
+
+```go
+// Navigate tree
+parent := node.ParentNode()
+children := parent.ChildNodes()
+first := parent.FirstChild()
+next := node.NextSibling()
+
+// Modify tree
+parent.AppendChild(child)
+parent.InsertBefore(newChild, referenceChild)
+parent.RemoveChild(child)
+parent.ReplaceChild(newChild, oldChild)
+
+// Clone nodes
+clone := elem.CloneNode(false)  // shallow
+deepClone := elem.CloneNode(true)  // deep
+
+// Query tree
+elements := elem.GetElementsByTagName("div")
+text := elem.TextContent()
+elem.SetTextContent("New text")
+```
 
 ## Differences from Web DOM
 
-While inspired by the Web DOM, this is a terminal UI library with some differences:
+While this package follows Web DOM concepts, there are some differences:
 
-- **No CSS files**: Styling is done through Go code
-- **Explicit rendering**: Call `Render()` rather than automatic updates
-- **Limited text styling**: Terminal capabilities (foreground/background colors, attributes)
-- **No DOM events**: Use terminal events directly
-- **Manual focus**: Focus management is explicit
+1. **Rendering is explicit** - Call `Render(screen, area)` to draw the DOM
+2. **MinSize method** - Elements report minimum required dimensions
+3. **Limited tag names** - Only div, vbox, hbox are supported
+4. **Simple attributes** - Attributes are string key-value pairs
+5. **No CSS** - Styling is done through attributes directly
 
-## Text Width Calculation
+## Testing
 
-The package uses [displaywidth](https://github.com/clipperhouse/displaywidth) for accurate text width calculation, ensuring proper rendering of:
-- Unicode characters and grapheme clusters
-- Emoji and other wide characters
-- Combining characters
-- Zero-width characters
-    box.ScrollDown(1)
-}
+The package includes comprehensive tests covering:
+
+- Document and element creation
+- Tree manipulation (append, remove, replace)
+- Attribute management
+- Text content access
+- Node cloning
+- Rendering with borders and layouts
+
+Run tests with:
+```bash
+go test github.com/charmbracelet/ultraviolet/dom
 ```
 
-## Elements
+## Future Enhancements
 
-### Box
+Following the requirements, future versions will support:
 
-Unified container with borders, padding, scrolling, and state management:
+- **Dynamic border/padding/margin sizes** - Not always 2, depends on content
+- **Per-side styling** - Set border/padding/margin for individual sides (top, right, bottom, left)
+- **Custom border styles** - Define custom border characters beyond pre-defined ones
+- **Scrolling** - Overflow handling for content larger than viewport
+- **Highlighting** - Selection and focus states for interactive elements
+- **Text wrapping** - Word wrap and hard wrap modes for text content
+- **More attributes** - Additional styling and behavioral options
 
-```go
-// Basic box
-box := dom.NewBox(dom.Text("Content"))
+## References
 
-// With border
-box.WithBorder(dom.BorderStyleNormal())
-
-// With padding
-box.WithPadding(1) // All sides
-// Or individual sides
-box.PaddingTop = 2
-box.PaddingLeft = 4
-
-// With focus
-box.WithFocus(true)
-
-// With selection
-box.WithSelection(true)
-
-// Scrolling
-box.ScrollDown(10)
-box.ScrollUp(5)
-box.ScrollLeft(3)
-box.ScrollRight(7)
-```
-
-**Border Styles:**
-- `BorderStyleNormal()` - Standard box-drawing characters
-- `BorderStyleRounded()` - Rounded corners
-- `BorderStyleDouble()` - Double-line borders
-- `BorderStyleThick()` - Thick line borders
-
-### Text Elements
-
-#### Text
-Renders single or multi-line text:
-```go
-dom.Text("Hello, World!")
-dom.Styled("Styled text", uv.Style{Fg: ansi.Red})
-```
-
-#### Paragraph
-Wraps text to fit available width:
-```go
-dom.Paragraph("This is a long paragraph that will wrap...")
-dom.ParagraphStyled("Styled paragraph", style)
-```
-
-### Containers
-
-#### VBox
-Stacks elements vertically:
-```go
-dom.VBox(
-    dom.Text("First"),
-    dom.Text("Second"),
-    dom.Text("Third"),
-)
-```
-
-#### HBox
-Arranges elements horizontally:
-```go
-dom.HBox(
-    dom.Text("Left"),
-    dom.Separator(),
-    dom.Text("Right"),
-)
-```
-
-### Decorators
-
-#### Border
-Adds a border around an element:
-```go
-dom.Border(dom.Text("Bordered text"))
-dom.BorderStyled(child, uv.RoundedBorder(), style)
-```
-
-#### Padding
-Adds padding around an element:
-```go
-dom.Padding(child, top, right, bottom, left)
-dom.PaddingAll(child, 1) // uniform padding
-```
-
-#### Center
-Centers an element within its area:
-```go
-dom.Center(dom.Text("Centered"))
-```
-
-### Layout Helpers
-
-#### Separator
-Creates horizontal or vertical separator lines:
-```go
-dom.Separator()                              // horizontal
-dom.SeparatorVertical()                      // vertical
-dom.SeparatorStyled("─", style)              // custom
-```
-
-#### Spacer
-Creates fixed-size empty space:
-```go
-dom.Spacer(width, height)
-```
-
-#### Flex
-Creates flexible space that expands to fill available space:
-```go
-dom.HBox(
-    dom.Text("Left"),
-    dom.Flex(),
-    dom.Text("Right"),
-)
-```
-
-### Interactive Elements
-
-#### Button
-Creates a clickable button:
-```go
-dom.Button("Click Me")
-dom.ButtonStyled("Custom", style)
-```
-
-#### Input
-Creates a text input field:
-```go
-dom.Input(20, "Placeholder...")
-dom.InputStyled(20, "Placeholder...", style)
-```
-
-#### Checkbox
-Creates a checkbox:
-```go
-dom.Checkbox("Option 1", true)  // checked
-dom.Checkbox("Option 2", false) // unchecked
-```
-
-#### Window
-Creates a titled window/panel:
-```go
-dom.Window("Title", content)
-dom.WindowStyled("Title", content, style)
-```
-
-## Complex Example
-
-```go
-ui := dom.Window("Application",
-    dom.VBox(
-        dom.PaddingAll(
-            dom.VBox(
-                dom.Styled("Welcome!", uv.Style{Attrs: uv.AttrBold}),
-                dom.Spacer(0, 1),
-                dom.Paragraph("This is a demonstration of the DOM package."),
-                dom.Spacer(0, 1),
-                dom.Separator(),
-                dom.Spacer(0, 1),
-                dom.HBox(
-                    dom.VBox(
-                        dom.Text("Options:"),
-                        dom.Checkbox("Option 1", true),
-                        dom.Checkbox("Option 2", false),
-                    ),
-                    dom.Spacer(2, 0),
-                    dom.SeparatorVertical(),
-                    dom.Spacer(2, 0),
-                    dom.VBox(
-                        dom.Text("Actions:"),
-                        dom.HBox(
-                            dom.Button("Submit"),
-                            dom.Spacer(1, 0),
-                            dom.Button("Cancel"),
-                        ),
-                    ),
-                ),
-                dom.Spacer(0, 1),
-                dom.Separator(),
-                dom.Spacer(0, 1),
-                dom.Center(
-                    dom.Border(
-                        dom.PaddingAll(dom.Text("Centered Box"), 1),
-                    ),
-                ),
-            ),
-            1,
-        ),
-    ),
-)
-```
-
-## Layout Algorithm
-
-### VBox and HBox
-
-Containers distribute space among their children:
-
-1. Calculate minimum size requirements for each child
-2. Children with fixed sizes (MinSize > 0) get their required space
-3. Remaining space is distributed equally among flexible children (MinSize = 0)
-4. Each child is rendered in its allocated area
-
-### Flex and Spacer
-
-- **Flex**: Has MinSize = 0, expands to fill available space
-- **Spacer**: Has fixed MinSize, takes up exactly that much space
-
-## Design Philosophy
-
-The DOM package is designed with these principles:
-
-- **Declarative**: Describe what you want, not how to build it
-- **Composable**: Elements can be nested arbitrarily
-- **Flexible**: Mix fixed and flexible sizing
-- **Intuitive**: API similar to HTML and CSS concepts
-- **Type-safe**: Strong typing with Go interfaces
-
-## Performance
-
-The package is optimized for terminal rendering:
-
-- Efficient layout calculations
-- Minimal screen updates
-- Proper Unicode handling with displaywidth
-- No unnecessary allocations in hot paths
-
-## See Also
-
-- [Ultraviolet](https://github.com/charmbracelet/ultraviolet) - The underlying TUI library
-- [FTXUI](https://github.com/ArthurSonzogni/FTXUI) - API inspiration
-- [displaywidth](https://github.com/clipperhouse/displaywidth) - Text width calculation
+- [MDN: Document Object Model](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)
+- [MDN: Node](https://developer.mozilla.org/en-US/docs/Web/API/Node)
+- [MDN: Document](https://developer.mozilla.org/en-US/docs/Web/API/Document)
+- [MDN: Element](https://developer.mozilla.org/en-US/docs/Web/API/Element)
+- [MDN: Attr](https://developer.mozilla.org/en-US/docs/Web/API/Attr)
