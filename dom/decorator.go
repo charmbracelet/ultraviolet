@@ -89,24 +89,25 @@ func (s *separator) MinSize(scr uv.Screen) (width, height int) {
 	return 0, 1
 }
 
-// border represents a border decorator around an element.
-type border struct {
+// Deprecated: Use BlockBox(child).WithBorder(NormalBorder()) instead.
+// This old decorator will be removed in a future version.
+type deprecatedBorder struct {
 	child  Element
 	style  uv.Style
 	border uv.Border
 }
 
-// Border creates a border around the given element using the normal border style.
-func Border(child Element) Element {
-	return &border{
+// Deprecated: Use BlockBox(child).WithBorder(NormalBorder()) instead.
+func BorderDeprecated(child Element) Element {
+	return &deprecatedBorder{
 		child:  child,
 		border: uv.NormalBorder(),
 	}
 }
 
-// BorderStyled creates a border with a custom border and style.
-func BorderStyled(child Element, borderStyle uv.Border, style uv.Style) Element {
-	return &border{
+// Deprecated: Use BlockBox with WithBorder() instead.
+func BorderStyledDeprecated(child Element, borderStyle uv.Border, style uv.Style) Element {
+	return &deprecatedBorder{
 		child:  child,
 		border: borderStyle,
 		style:  style,
@@ -114,7 +115,7 @@ func BorderStyled(child Element, borderStyle uv.Border, style uv.Style) Element 
 }
 
 // Render implements the Element interface.
-func (b *border) Render(scr uv.Screen, area uv.Rectangle) {
+func (b *deprecatedBorder) Render(scr uv.Screen, area uv.Rectangle) {
 	if area.Dx() < 2 || area.Dy() < 2 {
 		// Not enough space for border
 		return
@@ -138,7 +139,7 @@ func (b *border) Render(scr uv.Screen, area uv.Rectangle) {
 }
 
 // MinSize implements the Element interface.
-func (b *border) MinSize(scr uv.Screen) (width, height int) {
+func (b *deprecatedBorder) MinSize(scr uv.Screen) (width, height int) {
 	if b.child != nil {
 		width, height = b.child.MinSize(scr)
 	}
