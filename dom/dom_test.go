@@ -162,60 +162,6 @@ func TestSeparator(t *testing.T) {
 	}
 }
 
-func TestButton(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Button("Click Me")
-	area := uv.Rect(0, 0, 20, 1)
-	elem.Render(scr, area)
-
-	// Check that button has minimum size
-	w, h := elem.MinSize(scr)
-	if w <= 0 || h != 1 {
-		t.Errorf("Expected button with positive width and height 1, got (%d, %d)", w, h)
-	}
-}
-
-func TestCheckbox(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Checkbox("Option", true)
-	area := uv.Rect(0, 0, 20, 1)
-	elem.Render(scr, area)
-
-	w, h := elem.MinSize(scr)
-	if w <= 0 || h != 1 {
-		t.Errorf("Expected checkbox with positive width and height 1, got (%d, %d)", w, h)
-	}
-}
-
-func TestInput(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Input(15, "Type here...")
-	area := uv.Rect(0, 0, 20, 1)
-	elem.Render(scr, area)
-
-	w, h := elem.MinSize(scr)
-	if w != 15 || h != 1 {
-		t.Errorf("Expected input with width 15 and height 1, got (%d, %d)", w, h)
-	}
-}
-
-func TestWindow(t *testing.T) {
-	scr := newMockScreen(80, 24)
-
-	elem := Window("Test Window", Text("Content"))
-	area := uv.Rect(0, 0, 40, 10)
-	elem.Render(scr, area)
-
-	// Window should have minimum size accounting for border
-	w, h := elem.MinSize(scr)
-	if w < 2 || h < 2 {
-		t.Errorf("Expected window with border size, got (%d, %d)", w, h)
-	}
-}
-
 func TestParagraph(t *testing.T) {
 	scr := newMockScreen(80, 24)
 
@@ -297,7 +243,7 @@ func TestComplexLayout(t *testing.T) {
 			VBox(
 				Text("Right"),
 				Spacer(0, 1),
-				Button("Action"),
+				Text("More content"),
 			),
 		),
 		Separator(),

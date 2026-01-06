@@ -6,8 +6,15 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
-// Box is a base container that all elements can use or embed.
-// It provides common functionality like borders, padding, scrolling, focus, and selection.
+// Box is a block-level container element that provides common functionality.
+// Like DOM's HTMLDivElement and HTML's <div>, it's a block-level element that can contain other elements.
+// Box follows the CSS box model with content, padding, border, and margin areas.
+// It provides borders, padding, scrolling (overflow), focus, and selection capabilities.
+//
+// This is analogous to:
+//   - DOM: HTMLDivElement
+//   - HTML: <div>
+//   - CSS: display: block
 type Box struct {
 	// Content is the child element to render inside the box
 	Content Element

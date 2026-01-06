@@ -1,40 +1,38 @@
 # DOM Package
 
-The `dom` package provides DOM-inspired primitives for building terminal user interfaces using Ultraviolet. It follows a declarative approach similar to HTML/CSS and [FTXUI](https://github.com/ArthurSonzogni/FTXUI), where UI components are composed as a tree of elements.
+The `dom` package provides a Document Object Model (DOM) implementation for building terminal user interfaces with Ultraviolet. It follows the core concepts of the Web DOM ([MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)), adapted for terminal environments.
 
 ## Overview
 
-Elements are the building blocks of a DOM-based TUI. They implement the `Element` interface and can be composed together to create complex layouts. The package provides:
+Like the Web DOM, this package organizes UI as a tree of elements that can be composed declaratively. It follows familiar concepts:
 
-- **Text Elements**: Text, Paragraph
-- **Containers**: VBox (vertical), HBox (horizontal)
-- **Box Model**: Unified container with borders, padding, scrolling, focus, and selection
-- **Layout Helpers**: Separator, Spacer, Flex
-- **Interactive Elements**: Button, Input, Checkbox, Window
+- **Element nodes** form a tree structure (like DOM nodes)
+- **Text nodes** for inline content (analogous to DOM Text)
+- **Block-level containers** (analogous to HTMLDivElement)  
+- **CSS box model** with content, padding, and borders
+- **Flexbox-style layout** for containers
 
-## Core Concepts
+This makes the API familiar to developers with HTML/CSS/DOM experience.
 
-### Element Interface
+## Core Element Types
 
-All DOM elements implement the `Element` interface:
+### TextNode (Inline Element)
+
+Like DOM Text nodes and HTML `<span>`, TextNode is an inline element that flows with content and only breaks on explicit newlines.
 
 ```go
-type Element interface {
-    Render(scr uv.Screen, area uv.Rectangle)
-    MinSize(scr uv.Screen) (width, height int)
-}
+text := dom.Text("Hello, World!")
+styled := dom.Text("Bold text").WithStyle(uv.Style{Attrs: uv.AttrBold})
 ```
 
-### Box Model
+**Analogous to:**
+- DOM: Text node
+- HTML: `<span>` or text content
+- CSS: `display: inline`
 
-The `Box` type is a unified container that provides common functionality for all elements. It follows a CSS-like box model with:
+### Box (Block-Level Container)
 
-- **Content**: The child element
-- **Padding**: Inner spacing between content and border
-- **Border**: Optional border with customizable style
-- **Scrolling**: Built-in scroll support (horizontal and vertical)
-- **Focus**: Focus state management
-- **Selection**: Selection state with customizable style
+Like DOM's HTMLDivElement and HTML `<div>`, Box is a block-level container that follows the CSS box model.
 
 ```go
 box := dom.NewBox(content).
@@ -42,16 +40,83 @@ box := dom.NewBox(content).
     WithPadding(1).
     WithFocus(true)
 
-// Scroll the content
+// Scroll the content (like CSS overflow)
 box.ScrollDown(5)
 box.ScrollRight(10)
 ```
 
-### Text Width Calculation
+**Analogous to:**
+- DOM: HTMLDivElement
+- HTML: `<div>`
+- CSS: `display: block` with box model (padding, border)
 
-The package uses [displaywidth](https://github.com/clipperhouse/displaywidth) for accurate text width calculation, ensuring proper rendering of Unicode characters, emojis, and wide characters.
+**Box Model Support:**
+- **Content**: The child element
+- **Padding**: Inner spacing between content and border
+- **Border**: Optional border with customizable style
+- **Scrolling**: Built-in overflow support (horizontal and vertical)
+- **Focus**: Focus state management
+- **Selection**: Selection state with customizable style
 
-## Basic Usage
+## Layout Containers
+
+### VBox (Vertical Flexbox)
+
+Stacks children vertically, similar to CSS flexbox with `flex-direction: column`.
+
+```go
+ui := dom.VBox(
+    dom.Text("Header"),
+    dom.Text("Content"),
+    dom.Text("Footer"),
+)
+```
+
+**Analogous to:**
+- CSS: `display: flex; flex-direction: column`
+
+### HBox (Horizontal Flexbox)
+
+Arranges children horizontally, similar to CSS flexbox with `flex-direction: row`.
+
+```go
+ui := dom.HBox(
+    dom.Text("Left"),
+    dom.Text("Center"),
+    dom.Text("Right"),
+)
+```
+
+**Analogous to:**
+- CSS: `display: flex; flex-direction: row`
+
+**Flex Behavior:**
+- Children with `MinSize` of 0 are flexible (like `flex: 1`)
+- Children with fixed `MinSize` use exactly that much space
+- Remaining space is distributed equally among flexible children
+
+## Border Styles
+
+```go
+dom.BorderStyleNormal()   // Standard box-drawing characters
+dom.BorderStyleRounded()  // Rounded corners
+dom.BorderStyleDouble()   // Double-line borders
+dom.BorderStyleThick()    // Thick line borders
+```
+
+## Layout Helpers
+
+```go
+dom.Separator()          // Horizontal line (like HTML <hr>)
+dom.SeparatorVertical()  // Vertical line
+dom.Spacer(width, height) // Fixed-size spacing
+dom.Flex()              // Flexible spacing (flex: 1)
+dom.Center(child)       // Center child element
+```
+
+## Example Usage
+
+### Simple Layout
 
 ```go
 import (
@@ -59,14 +124,14 @@ import (
     "github.com/charmbracelet/ultraviolet/dom"
 )
 
-// Create a simple UI
+// Create a simple UI tree
 ui := dom.VBox(
     dom.Text("Hello, World!"),
     dom.Separator(),
     dom.HBox(
-        dom.Button("OK"),
-        dom.Spacer(2, 0),
-        dom.Button("Cancel"),
+        dom.Text("Left"),
+        dom.Flex(),
+        dom.Text("Right"),
     ),
 )
 
@@ -74,10 +139,10 @@ ui := dom.VBox(
 ui.Render(screen, area)
 ```
 
-## Box Model Example
+### Box Model with Scrolling
 
 ```go
-// Create a scrollable box with border and padding
+// Create scrollable content
 content := dom.VBox(
     dom.Text("Line 1"),
     dom.Text("Line 2"),
@@ -85,6 +150,7 @@ content := dom.VBox(
     // ... more lines
 )
 
+// Wrap in a box with border and padding
 box := dom.NewBox(content).
     WithBorder(dom.BorderStyleRounded()).
     WithPadding(1).
@@ -98,6 +164,71 @@ switch key {
 case "up":
     box.ScrollUp(1)
 case "down":
+    box.ScrollDown(1)
+}
+```
+
+### Complex Nested Layout
+
+```go
+ui := dom.VBox(
+    // Header
+    dom.NewBox(
+        dom.Text("Application Title"),
+    ).WithBorder(dom.BorderStyleNormal()),
+    
+    // Main content area
+    dom.HBox(
+        // Left sidebar
+        dom.VBox(
+            dom.Text("Menu"),
+            dom.Separator(),
+            dom.Text("Item 1"),
+            dom.Text("Item 2"),
+        ),
+        
+        dom.SeparatorVertical(),
+        
+        // Right content
+        dom.NewBox(
+            dom.Paragraph("Your content here..."),
+        ).WithPadding(1),
+    ),
+    
+    dom.Separator(),
+    
+    // Footer
+    dom.Center(dom.Text("Press q to quit")),
+)
+```
+
+## Design Philosophy
+
+This package follows core DOM concepts:
+
+1. **Tree Structure**: Elements compose into a tree, just like DOM nodes
+2. **Declarative**: Build UIs by describing what you want, not how to render it
+3. **Web Standards**: Use familiar concepts (box model, flexbox, inline/block)
+4. **Simple**: Two core element types (TextNode and Box) cover most use cases
+5. **Composable**: Everything implements Element and can be nested arbitrarily
+
+## Differences from Web DOM
+
+While inspired by the Web DOM, this is a terminal UI library with some differences:
+
+- **No CSS files**: Styling is done through Go code
+- **Explicit rendering**: Call `Render()` rather than automatic updates
+- **Limited text styling**: Terminal capabilities (foreground/background colors, attributes)
+- **No DOM events**: Use terminal events directly
+- **Manual focus**: Focus management is explicit
+
+## Text Width Calculation
+
+The package uses [displaywidth](https://github.com/clipperhouse/displaywidth) for accurate text width calculation, ensuring proper rendering of:
+- Unicode characters and grapheme clusters
+- Emoji and other wide characters
+- Combining characters
+- Zero-width characters
     box.ScrollDown(1)
 }
 ```

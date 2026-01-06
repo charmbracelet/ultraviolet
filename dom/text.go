@@ -8,29 +8,39 @@ import (
 	"github.com/clipperhouse/displaywidth"
 )
 
-// text represents a text element that renders a string.
-type text struct {
-	content string
-	style   uv.Style
+// TextNode is an inline display element that renders text content.
+// Like DOM Text nodes and HTML's <span>, it flows inline and only breaks on explicit newlines.
+// For block-level text containers, use Box with TextNode as content.
+type TextNode struct {
+	Content string
+	Style   uv.Style
 }
 
-// Text creates a new text element with the given content.
-func Text(content string) Element {
-	return &text{content: content}
+// Text creates a new inline text element with the given content.
+// This follows DOM's document.createTextNode() pattern.
+func Text(content string) *TextNode {
+	return &TextNode{Content: content}
+}
+
+// WithStyle sets the style for the text element.
+func (t *TextNode) WithStyle(style uv.Style) *TextNode {
+	t.Style = style
+	return t
 }
 
 // Styled creates a new text element with the given content and style.
+// Deprecated: Use Text(content).WithStyle(style) instead.
 func Styled(content string, style uv.Style) Element {
-	return &text{content: content, style: style}
+	return &TextNode{Content: content, Style: style}
 }
 
 // Render implements the Element interface.
-func (t *text) Render(scr uv.Screen, area uv.Rectangle) {
+func (t *TextNode) Render(scr uv.Screen, area uv.Rectangle) {
 	if area.Dx() <= 0 || area.Dy() <= 0 {
 		return
 	}
 
-	lines := strings.Split(t.content, "\n")
+	lines := strings.Split(t.Content, "\n")
 	y := area.Min.Y
 
 	for _, line := range lines {
@@ -56,7 +66,7 @@ func (t *text) Render(scr uv.Screen, area uv.Rectangle) {
 			cell := &uv.Cell{
 				Content: grapheme,
 				Width:   width,
-				Style:   t.style,
+				Style:   t.Style,
 			}
 			scr.SetCell(x, y, cell)
 			x += width
@@ -67,8 +77,8 @@ func (t *text) Render(scr uv.Screen, area uv.Rectangle) {
 }
 
 // MinSize implements the Element interface.
-func (t *text) MinSize(scr uv.Screen) (width, height int) {
-	lines := strings.Split(t.content, "\n")
+func (t *TextNode) MinSize(scr uv.Screen) (width, height int) {
+	lines := strings.Split(t.Content, "\n")
 	height = len(lines)
 
 	for _, line := range lines {

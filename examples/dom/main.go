@@ -25,8 +25,8 @@ func main() {
 	// Create a scrollable box with multiple items
 	items := dom.VBox(
 		dom.Text("Item 1 - Scroll with j/k or arrows"),
-		dom.Text("Item 2 - Box model provides scrolling"),
-		dom.Text("Item 3 - Focus and selection built-in"),
+		dom.Text("Item 2 - Box is a block-level element"),
+		dom.Text("Item 3 - Text is an inline element"),
 		dom.Text("Item 4 - Simple and composable"),
 		dom.Text("Item 5 - No wrappers needed"),
 		dom.Text("Item 6 - Clean architecture"),
@@ -43,14 +43,14 @@ func main() {
 		WithFocus(true)
 
 	// Create a DOM-based UI showcasing box model
-	ui := dom.Window("DOM Example - Box Model with Scrolling",
+	ui := dom.NewBox(
 		dom.VBox(
 			dom.Padding(
 				dom.VBox(
-					dom.Styled("Welcome to Ultraviolet DOM!", uv.Style{Attrs: uv.AttrBold}),
+					dom.Styled("Ultraviolet DOM - Block & Inline Elements", uv.Style{Attrs: uv.AttrBold}),
 					dom.Spacer(0, 1),
-					dom.Text("The Box model provides a unified container for all elements."),
-					dom.Text("It includes borders, padding, scrolling, focus, and selection."),
+					dom.Text("Box is a block-level element (like HTML <div>)."),
+					dom.Text("Text is an inline element (like HTML <span>)."),
 					dom.Spacer(0, 1),
 					dom.Separator(),
 					dom.Spacer(0, 1),
@@ -71,10 +71,10 @@ func main() {
 						dom.Spacer(2, 0),
 						dom.VBox(
 							dom.Styled("Features:", uv.Style{Attrs: uv.AttrBold}),
-							dom.Checkbox("Box model", true),
-							dom.Checkbox("Scrolling", true),
-							dom.Checkbox("Focus", true),
-							dom.Checkbox("Borders", true),
+							dom.Text("✓ Box model"),
+							dom.Text("✓ Scrolling"),
+							dom.Text("✓ Focus"),
+							dom.Text("✓ Borders"),
 						),
 					),
 					dom.Spacer(0, 1),
@@ -88,7 +88,7 @@ func main() {
 				1, 1, 1, 1,
 			),
 		),
-	)
+	).WithBorder(dom.BorderStyleRounded())
 
 	// Display function
 	display := func() {

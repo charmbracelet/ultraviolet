@@ -4,12 +4,18 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
-// vbox represents a vertical box container that stacks elements vertically.
+// vbox represents a vertical flex container that stacks elements vertically.
+// Analogous to a CSS flexbox with flex-direction: column.
 type vbox struct {
 	children []Element
 }
 
-// VBox creates a vertical box container that stacks elements from top to bottom.
+// VBox creates a vertical flex container that stacks child elements from top to bottom.
+// This is similar to CSS flexbox with flex-direction: column, distributing space
+// among children based on their minimum size requirements.
+//
+// Children with MinSize height of 0 are flexible and will share remaining space equally.
+// Children with fixed MinSize height will use exactly that much space.
 func VBox(children ...Element) Element {
 	return &vbox{children: children}
 }
@@ -79,12 +85,18 @@ func (v *vbox) MinSize(scr uv.Screen) (width, height int) {
 	return width, height
 }
 
-// hbox represents a horizontal box container that arranges elements horizontally.
+// hbox represents a horizontal flex container that arranges elements horizontally.
+// Analogous to a CSS flexbox with flex-direction: row.
 type hbox struct {
 	children []Element
 }
 
-// HBox creates a horizontal box container that arranges elements from left to right.
+// HBox creates a horizontal flex container that arranges child elements from left to right.
+// This is similar to CSS flexbox with flex-direction: row, distributing space
+// among children based on their minimum size requirements.
+//
+// Children with MinSize width of 0 are flexible and will share remaining space equally.
+// Children with fixed MinSize width will use exactly that much space.
 func HBox(children ...Element) Element {
 	return &hbox{children: children}
 }

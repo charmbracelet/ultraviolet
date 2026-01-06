@@ -1,22 +1,42 @@
-// Package dom provides DOM-inspired primitives for building terminal user
-// interfaces using Ultraviolet. The package follows a declarative approach
-// similar to HTML and FTXUI, where UI components are composed as a tree of
-// elements.
+// Package dom provides a Document Object Model (DOM) implementation for building
+// terminal user interfaces with Ultraviolet.
 //
-// Elements are the building blocks of a DOM-based TUI. They implement the
-// Element interface and can be composed together to create complex layouts.
-// The package provides containers (VBox, HBox), text elements (Text), and
-// decorators (Border, Padding) among others.
+// This package follows the core concepts of the Web DOM (https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model):
+//   - Elements form a tree structure (like DOM nodes)
+//   - Text nodes for inline content (analogous to DOM Text)
+//   - Block-level container elements (analogous to HTMLDivElement)
+//   - Declarative composition (like building HTML)
+//   - CSS box model (content, padding, border)
 //
-// Example usage:
+// # Core Element Types
 //
-//	elem := dom.VBox(
-//	    dom.Text("Hello, World!"),
-//	    dom.HBox(
-//	        dom.Text("Left"),
-//	        dom.Separator(),
-//	        dom.Text("Right"),
-//	    ),
+// TextNode - Inline text content (like DOM Text nodes and HTML <span>)
+//   - Flows inline, wraps only on explicit newlines
+//   - Example: Text("Hello, World!")
+//
+// Box - Block-level container (like DOM HTMLDivElement and HTML <div>)
+//   - Follows CSS box model with padding, borders, scrolling
+//   - Can contain any child elements
+//   - Example: NewBox(content).WithBorder(BorderStyleRounded())
+//
+// # Layout Containers
+//
+// VBox - Vertical flex container (like CSS flexbox with flex-direction: column)
+// HBox - Horizontal flex container (like CSS flexbox with flex-direction: row)
+//
+// # Example Usage
+//
+//	ui := dom.VBox(
+//	    dom.Text("Header"),
+//	    dom.NewBox(
+//	        dom.HBox(
+//	            dom.Text("Left"),
+//	            dom.Text("Right"),
+//	        ),
+//	    ).WithBorder(dom.BorderStyleRounded()),
 //	)
-//	elem.Render(screen, area)
+//	ui.Render(screen, area)
+//
+// The package emphasizes simplicity and follows web standards where applicable,
+// making it familiar to developers with HTML/CSS/DOM experience.
 package dom
