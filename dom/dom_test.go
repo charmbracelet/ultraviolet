@@ -1,6 +1,7 @@
 package dom
 
 import (
+	"fmt"
 	"testing"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -34,12 +35,12 @@ func (m *mockScreen) Bounds() uv.Rectangle {
 }
 
 func (m *mockScreen) SetCell(x, y int, cell *uv.Cell) {
-	key := string(rune(x))+ "," + string(rune(y))
+	key := fmt.Sprintf("%d,%d", x, y)
 	m.cells[key] = cell
 }
 
 func (m *mockScreen) CellAt(x, y int) *uv.Cell {
-	key := string(rune(x)) + "," + string(rune(y))
+	key := fmt.Sprintf("%d,%d", x, y)
 	return m.cells[key]
 }
 
