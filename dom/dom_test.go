@@ -111,7 +111,7 @@ func TestHBoxLayout(t *testing.T) {
 func TestBorder(t *testing.T) {
 	scr := newMockScreen(80, 24)
 
-	elem := BlockBox(Text("Bordered")).WithBorder(NormalBorder())
+	elem := NewBox(Text("Bordered")).WithBorder(BorderStyleNormal())
 
 	area := uv.Rect(0, 0, 20, 5)
 	elem.Render(scr, area)
@@ -286,7 +286,7 @@ func TestComplexLayout(t *testing.T) {
 
 	// Create a complex nested layout
 	elem := VBox(
-		BlockBox(Text("Header")).WithBorder(NormalBorder()),
+		NewBox(Text("Header")).WithBorder(BorderStyleNormal()),
 		HBox(
 			VBox(
 				Text("Left"),

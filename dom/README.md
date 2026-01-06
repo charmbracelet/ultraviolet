@@ -1,6 +1,6 @@
 # DOM Package
 
-The `dom` package provides DOM-inspired primitives for building terminal user interfaces using Ultraviolet. It follows a declarative approach similar to HTML and [FTXUI](https://github.com/ArthurSonzogni/FTXUI), where UI components are composed as a tree of elements.
+The `dom` package provides DOM-inspired primitives for building terminal user interfaces using Ultraviolet. It follows a declarative approach similar to HTML/CSS and [FTXUI](https://github.com/ArthurSonzogni/FTXUI), where UI components are composed as a tree of elements.
 
 ## Overview
 
@@ -8,7 +8,7 @@ Elements are the building blocks of a DOM-based TUI. They implement the `Element
 
 - **Text Elements**: Text, Paragraph
 - **Containers**: VBox (vertical), HBox (horizontal)
-- **Decorators**: Border, Padding, Center
+- **Box Model**: Unified container with borders, padding, scrolling, focus, and selection
 - **Layout Helpers**: Separator, Spacer, Flex
 - **Interactive Elements**: Button, Input, Checkbox, Window
 
@@ -23,6 +23,28 @@ type Element interface {
     Render(scr uv.Screen, area uv.Rectangle)
     MinSize(scr uv.Screen) (width, height int)
 }
+```
+
+### Box Model
+
+The `Box` type is a unified container that provides common functionality for all elements. It follows a CSS-like box model with:
+
+- **Content**: The child element
+- **Padding**: Inner spacing between content and border
+- **Border**: Optional border with customizable style
+- **Scrolling**: Built-in scroll support (horizontal and vertical)
+- **Focus**: Focus state management
+- **Selection**: Selection state with customizable style
+
+```go
+box := dom.NewBox(content).
+    WithBorder(dom.BorderStyleRounded()).
+    WithPadding(1).
+    WithFocus(true)
+
+// Scroll the content
+box.ScrollDown(5)
+box.ScrollRight(10)
 ```
 
 ### Text Width Calculation
@@ -52,7 +74,71 @@ ui := dom.VBox(
 ui.Render(screen, area)
 ```
 
+## Box Model Example
+
+```go
+// Create a scrollable box with border and padding
+content := dom.VBox(
+    dom.Text("Line 1"),
+    dom.Text("Line 2"),
+    dom.Text("Line 3"),
+    // ... more lines
+)
+
+box := dom.NewBox(content).
+    WithBorder(dom.BorderStyleRounded()).
+    WithPadding(1).
+    WithFocus(true)
+
+// Render the box
+box.Render(screen, area)
+
+// Handle keyboard input for scrolling
+switch key {
+case "up":
+    box.ScrollUp(1)
+case "down":
+    box.ScrollDown(1)
+}
+```
+
 ## Elements
+
+### Box
+
+Unified container with borders, padding, scrolling, and state management:
+
+```go
+// Basic box
+box := dom.NewBox(dom.Text("Content"))
+
+// With border
+box.WithBorder(dom.BorderStyleNormal())
+
+// With padding
+box.WithPadding(1) // All sides
+// Or individual sides
+box.PaddingTop = 2
+box.PaddingLeft = 4
+
+// With focus
+box.WithFocus(true)
+
+// With selection
+box.WithSelection(true)
+
+// Scrolling
+box.ScrollDown(10)
+box.ScrollUp(5)
+box.ScrollLeft(3)
+box.ScrollRight(7)
+```
+
+**Border Styles:**
+- `BorderStyleNormal()` - Standard box-drawing characters
+- `BorderStyleRounded()` - Rounded corners
+- `BorderStyleDouble()` - Double-line borders
+- `BorderStyleThick()` - Thick line borders
 
 ### Text Elements
 

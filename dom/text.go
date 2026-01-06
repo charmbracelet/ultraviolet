@@ -10,29 +10,18 @@ import (
 
 // text represents a text element that renders a string.
 type text struct {
-	content  string
-	style    uv.Style
-	hardWrap bool
+	content string
+	style   uv.Style
 }
 
 // Text creates a new text element with the given content.
 func Text(content string) Element {
-	return &text{content: content, hardWrap: false}
-}
-
-// TextHardWrap creates a new text element that hard-wraps at the boundary.
-func TextHardWrap(content string) Element {
-	return &text{content: content, hardWrap: true}
+	return &text{content: content}
 }
 
 // Styled creates a new text element with the given content and style.
 func Styled(content string, style uv.Style) Element {
-	return &text{content: content, style: style, hardWrap: false}
-}
-
-// StyledHardWrap creates a new text element with style that hard-wraps.
-func StyledHardWrap(content string, style uv.Style) Element {
-	return &text{content: content, style: style, hardWrap: true}
+	return &text{content: content, style: style}
 }
 
 // Render implements the Element interface.
@@ -41,15 +30,6 @@ func (t *text) Render(scr uv.Screen, area uv.Rectangle) {
 		return
 	}
 
-	if t.hardWrap {
-		t.renderHardWrap(scr, area)
-	} else {
-		t.renderNoWrap(scr, area)
-	}
-}
-
-// renderNoWrap renders text without hard-wrapping (original behavior).
-func (t *text) renderNoWrap(scr uv.Screen, area uv.Rectangle) {
 	lines := strings.Split(t.content, "\n")
 	y := area.Min.Y
 
@@ -86,72 +66,15 @@ func (t *text) renderNoWrap(scr uv.Screen, area uv.Rectangle) {
 	}
 }
 
-// renderHardWrap renders text with hard-wrapping at the boundary.
-func (t *text) renderHardWrap(scr uv.Screen, area uv.Rectangle) {
-	lines := strings.Split(t.content, "\n")
-	y := area.Min.Y
-
-	for _, line := range lines {
-		if y >= area.Max.Y {
-			break
-		}
-
-		x := area.Min.X
-		gr := displaywidth.StringGraphemes(line)
-
-		for gr.Next() {
-			if y >= area.Max.Y {
-				return
-			}
-
-			grapheme := string(gr.Value())
-			width := gr.Width()
-
-			// Hard-wrap to next line if grapheme doesn't fit
-			if x+width > area.Max.X {
-				y++
-				x = area.Min.X
-				if y >= area.Max.Y {
-					return
-				}
-			}
-
-			cell := &uv.Cell{
-				Content: grapheme,
-				Width:   width,
-				Style:   t.style,
-			}
-			scr.SetCell(x, y, cell)
-			x += width
-		}
-
-		// Move to next line after each input line
-		y++
-	}
-}
-
 // MinSize implements the Element interface.
 func (t *text) MinSize(scr uv.Screen) (width, height int) {
-	if t.hardWrap {
-		// For hard-wrap, we need more calculation, but minimum is 1 char wide
-		lines := strings.Split(t.content, "\n")
-		height = len(lines) // At least one line per newline
-		width = 1            // Minimum width
-		for _, line := range lines {
-			w := displaywidth.String(line)
-			if w > width {
-				width = w
-			}
-		}
-	} else {
-		lines := strings.Split(t.content, "\n")
-		height = len(lines)
+	lines := strings.Split(t.content, "\n")
+	height = len(lines)
 
-		for _, line := range lines {
-			w := displaywidth.String(line)
-			if w > width {
-				width = w
-			}
+	for _, line := range lines {
+		w := displaywidth.String(line)
+		if w > width {
+			width = w
 		}
 	}
 
