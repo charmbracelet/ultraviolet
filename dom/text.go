@@ -29,7 +29,7 @@ func (t *TextNode) WithStyle(style uv.Style) *TextNode {
 }
 
 // Styled creates a new text element with the given content and style.
-// Deprecated: Use Text(content).WithStyle(style) instead.
+// For backward compatibility. Prefer Text(content).WithStyle(style) for new code.
 func Styled(content string, style uv.Style) Element {
 	return &TextNode{Content: content, Style: style}
 }
