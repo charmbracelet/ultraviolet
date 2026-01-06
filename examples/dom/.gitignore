@@ -1,0 +1,6 @@
+# Ignore compiled binaries
+dom
+dom-example
+*.exe
+*.out
+*.log
