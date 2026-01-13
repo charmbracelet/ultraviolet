@@ -667,6 +667,20 @@ func BenchmarkBufferSetCell(b *testing.B) {
 	}
 }
 
+func BenchmarkBufferResize(b *testing.B) {
+	buf := NewBuffer(80, 24)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		width := 80 + (i % 20)
+		height := 24 + (i % 10)
+		buf.Resize(width, height)
+		bufWidth, bufHeight := buf.Width(), buf.Height()
+		if bufWidth != width || bufHeight != height {
+			b.Errorf("Resize failed: got %dx%d, want %dx%d", bufWidth, bufHeight, width, height)
+		}
+	}
+}
+
 func width(s string) int {
 	width := 0
 	for _, line := range strings.Split(s, "\n") {

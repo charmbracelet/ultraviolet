@@ -318,16 +318,12 @@ func (b *Buffer) Width() int {
 	if len(b.Lines) == 0 {
 		return 0
 	}
-	w := len(b.Lines[0])
-	for _, l := range b.Lines {
-		if len(l) > w {
-			w = len(l)
-		}
-	}
-	return w
+	return len(b.Lines[0])
 }
 
 // Bounds returns the bounds of the buffer.
+// The origin is always at (0, 0) and the maximum coordinates are determined by
+// the width and height of the buffer.
 func (b *Buffer) Bounds() Rectangle {
 	return Rect(0, 0, b.Width(), b.Height())
 }
