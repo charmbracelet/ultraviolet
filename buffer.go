@@ -426,7 +426,7 @@ func (b *Buffer) Draw(scr Screen, area Rectangle) {
 
 	// Ensure the area is within the bounds of the screen.
 	bounds := scr.Bounds()
-	if !area.In(bounds) {
+	if !area.Overlaps(bounds) {
 		return
 	}
 
