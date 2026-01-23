@@ -567,11 +567,11 @@ func TestParseSequence(t *testing.T) {
 				"\x1b[999;1t" + // invalid
 				""),
 			[]Event{
-				WindowPixelSizeEvent{Width: 80, Height: 24},
+				PixelSizeEvent{Width: 80, Height: 24},
 				CellSizeEvent{Width: 7, Height: 13},
 				WindowSizeEvent{Width: 80, Height: 24},
 				WindowSizeEvent{Width: 80, Height: 24},
-				WindowPixelSizeEvent{Width: 560, Height: 312},
+				PixelSizeEvent{Width: 560, Height: 312},
 				UnknownCsiEvent("\x1b[t"),
 				WindowOpEvent{Op: 999},
 				WindowOpEvent{Op: 999, Args: []int{1}},
