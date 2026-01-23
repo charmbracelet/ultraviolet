@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -149,27 +148,27 @@ func (r *epollReader) Cancel() bool {
 
 // Close closes the reader and releases any resources.
 func (r *epollReader) Close() error {
-	var errMsgs []string
+	var errMsgs []error
 
 	// close epoll
 	err := unix.Close(r.epoll)
 	if err != nil {
-		errMsgs = append(errMsgs, fmt.Sprintf("closing epoll: %v", err))
+		errMsgs = append(errMsgs, fmt.Errorf("closing epoll: %w", err))
 	}
 
 	// close pipe
 	err = r.cancelSignalWriter.Close()
 	if err != nil {
-		errMsgs = append(errMsgs, fmt.Sprintf("closing cancel signal writer: %v", err))
+		errMsgs = append(errMsgs, fmt.Errorf("closing cancel signal writer: %w", err))
 	}
 
 	err = r.cancelSignalReader.Close()
 	if err != nil {
-		errMsgs = append(errMsgs, fmt.Sprintf("closing cancel signal reader: %v", err))
+		errMsgs = append(errMsgs, fmt.Errorf("closing cancel signal reader: %w", err))
 	}
 
 	if len(errMsgs) > 0 {
-		return fmt.Errorf(strings.Join(errMsgs, ", "))
+		return errors.Join(errMsgs...)
 	}
 
 	return nil
