@@ -329,7 +329,7 @@ func TestBufferMethods(t *testing.T) {
 	})
 
 	t.Run("TouchLine", func(t *testing.T) {
-		b := NewBuffer(10, 5)
+		b := NewRenderBuffer(10, 5)
 
 		// Touch valid line
 		b.TouchLine(2, 1, 3)
@@ -342,7 +342,7 @@ func TestBufferMethods(t *testing.T) {
 	})
 
 	t.Run("Touch", func(t *testing.T) {
-		b := NewBuffer(10, 5)
+		b := NewRenderBuffer(10, 5)
 		b.Touch(2, 1)
 		// Should mark cell as dirty
 	})

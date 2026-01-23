@@ -199,14 +199,55 @@ func renderLine(buf io.StringWriter, l Line) {
 	}
 }
 
+// Lines represents a slice of lines.
+type Lines []Line
+
+// Height returns the height of the lines.
+func (ls Lines) Height() int {
+	return len(ls)
+}
+
+// Width returns the width of the widest line.
+func (ls Lines) Width() int {
+	maxWidth := 0
+	for _, l := range ls {
+		maxWidth = max(maxWidth, len(l))
+	}
+	return maxWidth
+}
+
+// String returns the string representation of the lines.
+func (ls Lines) String() string {
+	var buf strings.Builder
+	for i, l := range ls {
+		buf.WriteString(l.String())
+		if i < len(ls)-1 {
+			_ = buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
+}
+
+// Render renders the lines to a styled string with all the required attributes
+// and styles.
+func (ls Lines) Render() string {
+	var buf strings.Builder
+	for i, l := range ls {
+		renderLine(&buf, l)
+		if i < len(ls)-1 {
+			_ = buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
+}
+
 // Buffer represents a cell buffer that contains the contents of a screen.
 type Buffer struct {
 	// Lines is a slice of lines that make up the cells of the buffer.
 	Lines []Line
-	// Touched represents the lines that have been modified or touched. It is
-	// used to track which lines need to be redrawn.
-	Touched []*LineData
 }
+
+var _ Drawable = (*Buffer)(nil)
 
 // NewBuffer creates a new buffer with the given width and height.
 // This is a convenience function that initializes a new buffer and resizes it.
@@ -219,34 +260,19 @@ func NewBuffer(width int, height int) *Buffer {
 			b.Lines[i][j] = EmptyCell
 		}
 	}
-	b.Touched = make([]*LineData, height)
 	b.Resize(width, height)
 	return b
 }
 
 // String returns the string representation of the buffer.
 func (b *Buffer) String() string {
-	var buf strings.Builder
-	for i, l := range b.Lines {
-		buf.WriteString(l.String())
-		if i < len(b.Lines)-1 {
-			_ = buf.WriteByte('\n')
-		}
-	}
-	return buf.String()
+	return Lines(b.Lines).String()
 }
 
 // Render renders the buffer to a styled string with all the required
 // attributes and styles.
 func (b *Buffer) Render() string {
-	var buf strings.Builder
-	for i, l := range b.Lines {
-		renderLine(&buf, l)
-		if i < len(b.Lines)-1 {
-			_ = buf.WriteByte('\n')
-		}
-	}
-	return buf.String()
+	return Lines(b.Lines).Render()
 }
 
 // Line returns a pointer to the line at the given y position.
@@ -273,39 +299,7 @@ func (b *Buffer) SetCell(x, y int, c *Cell) {
 		return
 	}
 
-	if !cellEqual(b.CellAt(x, y), c) {
-		width := 1
-		if c != nil && c.Width > 0 {
-			width = c.Width
-		}
-		b.TouchLine(x, y, width)
-	}
 	b.Lines[y].Set(x, c)
-}
-
-// Touch marks the cell at the given x, y position as touched.
-func (b *Buffer) Touch(x, y int) {
-	b.TouchLine(x, y, 0)
-}
-
-// TouchLine marks a line n times starting at the given x position as touched.
-func (b *Buffer) TouchLine(x, y, n int) {
-	if y < 0 || y >= len(b.Lines) {
-		return
-	}
-
-	if y >= len(b.Touched) {
-		b.Touched = append(b.Touched, make([]*LineData, y-len(b.Touched)+1)...)
-	}
-
-	ch := b.Touched[y]
-	if ch == nil {
-		ch = &LineData{FirstCell: x, LastCell: x + n}
-	} else {
-		ch.FirstCell = min(ch.FirstCell, x)
-		ch.LastCell = max(ch.LastCell, x+n)
-	}
-	b.Touched[y] = ch
 }
 
 // Height implements Screen.
@@ -438,7 +432,11 @@ func (b *Buffer) Draw(scr Screen, area Rectangle) {
 				continue
 			}
 			scr.SetCell(x, y, c)
-			x += c.Width
+			width := c.Width
+			if width <= 0 {
+				width = 1
+			}
+			x += width
 		}
 	}
 }
@@ -473,8 +471,6 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 			// We don't need to clone c here because we're just moving lines down.
 			b.Lines[i][x] = b.Lines[i-n][x]
 		}
-		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
-		b.TouchLine(area.Min.X, i-n, area.Max.X-area.Min.X)
 	}
 
 	// Clear the newly inserted lines within bounds
@@ -507,8 +503,6 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 			// We don't need to clone c here because we're just moving cells up.
 			b.Lines[dst][x] = b.Lines[src][x]
 		}
-		b.TouchLine(area.Min.X, dst, area.Max.X-area.Min.X)
-		b.TouchLine(area.Min.X, src, area.Max.X-area.Min.X)
 	}
 
 	// Fill the bottom n lines with blank cells
@@ -554,8 +548,6 @@ func (b *Buffer) InsertCellArea(x, y, n int, c *Cell, area Rectangle) {
 		// right.
 		b.Lines[y][i] = b.Lines[y][i-n]
 	}
-	// Touch the lines that were moved
-	b.TouchLine(x, y, n)
 
 	// Clear the newly inserted cells within rectangle bounds
 	for i := x; i < x+n && i < area.Max.X; i++ {
@@ -594,8 +586,6 @@ func (b *Buffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
 			b.SetCell(i, y, b.CellAt(i+n, y))
 		}
 	}
-	// Touch the line that was modified
-	b.TouchLine(x, y, n)
 
 	// Fill the vacated positions with the given cell
 	for i := area.Max.X - n; i < area.Max.X; i++ {
@@ -605,17 +595,20 @@ func (b *Buffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
 
 // ScreenBuffer is a buffer that can be used as a [Screen].
 type ScreenBuffer struct {
-	*Buffer
+	*RenderBuffer
 	Method ansi.Method
 }
 
-var _ Screen = ScreenBuffer{}
+var (
+	_ Screen   = ScreenBuffer{}
+	_ Drawable = ScreenBuffer{}
+)
 
 // NewScreenBuffer creates a new ScreenBuffer with the given width and height.
 func NewScreenBuffer(width, height int) ScreenBuffer {
 	return ScreenBuffer{
-		Buffer: NewBuffer(width, height),
-		Method: ansi.WcWidth,
+		RenderBuffer: NewRenderBuffer(width, height),
+		Method:       ansi.WcWidth,
 	}
 }
 
@@ -642,4 +635,152 @@ func TrimSpace(s string) string {
 		lines[i] = line
 	}
 	return strings.Join(lines, "\n")
+}
+
+// RenderBuffer represents a buffer that keeps track of the current and new
+// state of the screen, allowing for efficient rendering by only updating the
+// parts of the screen that have changed.
+type RenderBuffer struct {
+	*Buffer
+	Touched []*LineData
+}
+
+// NewRenderBuffer creates a new [RenderBuffer] with the given width and height.
+func NewRenderBuffer(width, height int) *RenderBuffer {
+	return &RenderBuffer{
+		Buffer:  NewBuffer(width, height),
+		Touched: make([]*LineData, height),
+	}
+}
+
+// TouchLine marks a line n times starting at the given x position as touched.
+func (b *RenderBuffer) TouchLine(x, y, n int) {
+	if y < 0 || y >= len(b.Lines) {
+		return
+	}
+
+	if y >= len(b.Touched) {
+		b.Touched = append(b.Touched, make([]*LineData, y-len(b.Touched)+1)...)
+	}
+
+	ch := b.Touched[y]
+	if ch == nil {
+		ch = &LineData{FirstCell: x, LastCell: x + n}
+	} else {
+		ch.FirstCell = min(ch.FirstCell, x)
+		ch.LastCell = max(ch.LastCell, x+n)
+	}
+	b.Touched[y] = ch
+}
+
+// Touch marks the cell at the given x, y position as touched.
+func (b *RenderBuffer) Touch(x, y int) {
+	b.TouchLine(x, y, 0)
+}
+
+// TouchedLines returns the number of touched lines in the buffer.
+func (b *RenderBuffer) TouchedLines() int {
+	if b.Touched == nil {
+		return 0
+	}
+	count := 0
+	for _, t := range b.Touched {
+		if t != nil {
+			count++
+		}
+	}
+	return count
+}
+
+// SetCell sets the cell at the given x, y position and marks the line as
+// touched.
+func (b *RenderBuffer) SetCell(x, y int, c *Cell) {
+	if !cellEqual(b.CellAt(x, y), c) {
+		width := 1
+		if c != nil && c.Width > 0 {
+			width = c.Width
+		}
+		b.TouchLine(x, y, width)
+	}
+	b.Buffer.SetCell(x, y, c)
+}
+
+// InsertLine inserts n lines at the given line position, with the given
+// optional cell, within the specified rectangles. If no rectangles are
+// specified, it inserts lines in the entire buffer. Only cells within the
+// rectangle's horizontal bounds are affected. Lines are pushed out of the
+// rectangle bounds and lost. This follows terminal [ansi.IL] behavior.
+func (b *RenderBuffer) InsertLine(y, n int, c *Cell) {
+	b.InsertLineArea(y, n, c, b.Bounds())
+}
+
+// InsertLineArea inserts new lines at the given line position, with the given
+// optional cell, within the rectangle bounds. Only cells within the
+// rectangle's horizontal bounds are affected. Lines are pushed out of the
+// rectangle bounds and lost. This follows terminal [ansi.IL] behavior.
+func (b *RenderBuffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
+	b.Buffer.InsertLineArea(y, n, c, area)
+	for i := area.Min.Y; i < area.Max.Y; i++ {
+		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
+		b.TouchLine(area.Min.X, i-n, area.Max.X-area.Min.X)
+	}
+}
+
+// DeleteLine deletes n lines at the given line position, with the given
+// optional cell, within the specified rectangles. If no rectangles are
+// specified, it deletes lines in the entire buffer.
+func (b *RenderBuffer) DeleteLine(y, n int, c *Cell) {
+	b.DeleteLineArea(y, n, c, b.Bounds())
+}
+
+// DeleteLineArea deletes lines at the given line position, with the given
+// optional cell, within the rectangle bounds. Only cells within the
+// rectangle's bounds are affected. Lines are shifted up within the bounds and
+// new blank lines are created at the bottom. This follows terminal [ansi.DL]
+// behavior.
+func (b *RenderBuffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
+	b.Buffer.DeleteLineArea(y, n, c, area)
+	for i := area.Min.Y; i < area.Max.Y; i++ {
+		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
+		b.TouchLine(area.Min.X, i+n, area.Max.X-area.Min.X)
+	}
+}
+
+// InsertCell inserts new cells at the given position, with the given optional
+// cell, within the specified rectangles. If no rectangles are specified, it
+// inserts cells in the entire buffer. This follows terminal [ansi.ICH]
+// behavior.
+func (b *RenderBuffer) InsertCell(x, y, n int, c *Cell) {
+	b.InsertCellArea(x, y, n, c, b.Bounds())
+}
+
+// InsertCellArea inserts new cells at the given position, with the given
+// optional cell, within the rectangle bounds. Only cells within the
+// rectangle's bounds are affected, following terminal [ansi.ICH] behavior.
+func (b *RenderBuffer) InsertCellArea(x, y, n int, c *Cell, area Rectangle) {
+	b.Buffer.InsertCellArea(x, y, n, c, area)
+	if x+n > area.Max.X {
+		n = area.Max.X - x
+	}
+	b.TouchLine(x, y, n)
+}
+
+// DeleteCell deletes cells at the given position, with the given optional
+// cell, within the specified rectangles. If no rectangles are specified, it
+// deletes cells in the entire buffer. This follows terminal [ansi.DCH]
+// behavior.
+func (b *RenderBuffer) DeleteCell(x, y, n int, c *Cell) {
+	b.DeleteCellArea(x, y, n, c, b.Bounds())
+}
+
+// DeleteCellArea deletes cells at the given position, with the given
+// optional cell, within the rectangle bounds. Only cells within the
+// rectangle's bounds are affected, following terminal [ansi.DCH] behavior.
+func (b *RenderBuffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
+	b.Buffer.DeleteCellArea(x, y, n, c, area)
+	remainingCells := area.Max.X - x
+	if n > remainingCells {
+		n = remainingCells
+	}
+	b.TouchLine(x, y, n)
 }
