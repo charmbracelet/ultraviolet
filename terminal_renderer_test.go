@@ -27,7 +27,7 @@ func TestSimpleRendererOutput(t *testing.T) {
 	// r.SetMapNewline(true) // Map newline characters to \r\n for proper line endings.
 	r.Resize(w, h)
 
-	cellbuf := NewBuffer(5, 3)
+	cellbuf := NewRenderBuffer(5, 3)
 	// 'X', ' ', ' ', ' ', ' '
 	// ' ', 'X', ' ', ' ', ' '
 	// ' ', ' ', 'X', ' ', ' '
@@ -60,7 +60,7 @@ func TestInlineRendererOutput(t *testing.T) {
 	const physicalWidth, physicalHeight = 80, 24 // Terminal width
 	const width, height = 80, 3                  // Application width
 	r.Resize(physicalWidth, physicalHeight)
-	cellbuf := NewBuffer(physicalWidth, height)
+	cellbuf := NewRenderBuffer(physicalWidth, height)
 
 	for i, r := range "Hello, World!" {
 		cell := Cell{Content: string(r), Width: 1}
@@ -112,7 +112,7 @@ func TestRendererColorProfile(t *testing.T) {
 			r.SetColorProfile(tt.profile)
 
 			// Test that the profile was set correctly by rendering a colored cell
-			cellbuf := NewBuffer(1, 1)
+			cellbuf := NewRenderBuffer(1, 1)
 			cell := Cell{
 				Content: "X",
 				Width:   1,
@@ -219,7 +219,7 @@ func TestRendererRedraw(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(3, 1)
+	cellbuf := NewRenderBuffer(3, 1)
 	cell := Cell{Content: "X", Width: 1}
 	cellbuf.SetCell(0, 0, &cell)
 
@@ -253,7 +253,7 @@ func TestRendererErase(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(3, 1)
+	cellbuf := NewRenderBuffer(3, 1)
 	cell := Cell{Content: "X", Width: 1}
 	cellbuf.SetCell(0, 0, &cell)
 
@@ -280,7 +280,7 @@ func TestRendererResize(t *testing.T) {
 	r.Resize(80, 24)
 
 	// Should not crash and should handle the resize
-	cellbuf := NewBuffer(80, 24)
+	cellbuf := NewRenderBuffer(80, 24)
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
@@ -292,7 +292,7 @@ func TestRendererPrependString(t *testing.T) {
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
 	r.Resize(10, 5)
-	cellbuf := NewBuffer(10, 5)
+	cellbuf := NewRenderBuffer(10, 5)
 
 	r.PrependString(cellbuf, "Prepended line")
 	r.Render(cellbuf)
@@ -311,7 +311,7 @@ func TestRendererPrependLines(t *testing.T) {
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
 	r.Resize(10, 5)
-	cellbuf := NewBuffer(10, 5)
+	cellbuf := NewRenderBuffer(10, 5)
 
 	// Create a line to prepend
 	line := make(Line, 5)
@@ -387,7 +387,7 @@ func TestRendererTabStops(t *testing.T) {
 	r.SetTabStops(8)
 
 	// Test that tab stops are set
-	cellbuf := NewBuffer(20, 1)
+	cellbuf := NewRenderBuffer(20, 1)
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
@@ -409,7 +409,7 @@ func TestRendererBackspace(t *testing.T) {
 	// Enable backspace optimization
 	r.SetBackspace(true)
 
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
@@ -431,7 +431,7 @@ func TestRendererMapNewline(t *testing.T) {
 	// Enable newline mapping
 	r.SetMapNewline(true)
 
-	cellbuf := NewBuffer(10, 2)
+	cellbuf := NewRenderBuffer(10, 2)
 	r.Render(cellbuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
@@ -450,7 +450,7 @@ func TestRendererTouched(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(5, 3)
+	cellbuf := NewRenderBuffer(5, 3)
 
 	// Initially, no lines should be touched (empty buffer)
 	touched := r.Touched(cellbuf)
@@ -495,7 +495,7 @@ func TestRendererWideCharacters(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 
 	// Test wide characters (emoji, CJK characters)
 	wideChars := []string{"🌟", "中", "文", "字"}
@@ -522,7 +522,7 @@ func TestRendererZeroWidthCharacters(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(5, 1)
+	cellbuf := NewRenderBuffer(5, 1)
 
 	// Test zero-width characters (combining marks, etc.)
 	cell := Cell{Content: "a\u0301", Width: 1} // 'a' with combining acute accent
@@ -548,7 +548,7 @@ func TestRendererStyledText(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 
 	// Test various styles
 	styles := []Style{
@@ -580,7 +580,7 @@ func TestRendererHyperlinks(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 
 	// Test hyperlink
 	link := NewLink("https://example.com")
@@ -603,7 +603,7 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
 	// Start with small buffer
-	cellbuf := NewBuffer(5, 3)
+	cellbuf := NewRenderBuffer(5, 3)
 	cell := Cell{Content: "X", Width: 1}
 	cellbuf.SetCell(0, 0, &cell)
 
@@ -613,7 +613,7 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	// Resize to larger buffer
-	largeBuf := NewBuffer(10, 6)
+	largeBuf := NewRenderBuffer(10, 6)
 	largeBuf.SetCell(0, 1, &cell) // Place at visible position
 
 	r.Render(largeBuf)
@@ -635,7 +635,7 @@ func TestRendererRelativeCursor(t *testing.T) {
 
 	r.SetRelativeCursor(true)
 
-	cellbuf := NewBuffer(10, 3)
+	cellbuf := NewRenderBuffer(10, 3)
 	cell := Cell{Content: "X", Width: 1}
 	cellbuf.SetCell(5, 1, &cell)
 
@@ -670,7 +670,7 @@ func TestRendererLogger(t *testing.T) {
 	logger := &testLogger{buf: &logBuf}
 	r.SetLogger(logger)
 
-	cellbuf := NewBuffer(3, 1)
+	cellbuf := NewRenderBuffer(3, 1)
 	cell := Cell{Content: "X", Width: 1}
 	cellbuf.SetCell(0, 0, &cell)
 
@@ -706,7 +706,7 @@ func TestRendererScrollOptimization(t *testing.T) {
 
 	r.SetFullscreen(true) // Scroll optimization is enabled in alt screen mode
 
-	cellbuf := NewBuffer(10, 5)
+	cellbuf := NewRenderBuffer(10, 5)
 
 	// Fill buffer with content
 	for y := 0; y < 5; y++ {
@@ -725,7 +725,7 @@ func TestRendererScrollOptimization(t *testing.T) {
 	buf.Reset()
 
 	// Simulate scrolling by shifting content up
-	newBuf := NewBuffer(10, 5)
+	newBuf := NewRenderBuffer(10, 5)
 	for y := 0; y < 4; y++ {
 		for x := 0; x < 10; x++ {
 			cell := Cell{Content: string(rune('A' + y + 1)), Width: 1}
@@ -755,7 +755,7 @@ func TestRendererMultiplePrepends(t *testing.T) {
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
 	r.Resize(20, 10)
-	cellbuf := NewBuffer(20, 10)
+	cellbuf := NewRenderBuffer(20, 10)
 
 	// Prepend multiple strings
 	r.PrependString(cellbuf, "First line")
@@ -797,14 +797,14 @@ func TestRendererEdgeCases(t *testing.T) {
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
 	// Test with empty buffer
-	emptyBuf := NewBuffer(0, 0)
+	emptyBuf := NewRenderBuffer(0, 0)
 	r.Render(emptyBuf)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer with empty buffer: %v", err)
 	}
 
 	// Test with nil cells
-	cellbuf := NewBuffer(3, 3)
+	cellbuf := NewRenderBuffer(3, 3)
 	cellbuf.SetCell(1, 1, nil) // Set nil cell
 
 	r.Render(cellbuf)
@@ -813,7 +813,7 @@ func TestRendererEdgeCases(t *testing.T) {
 	}
 
 	// Test with very large buffer
-	largeBuf := NewBuffer(1000, 1000)
+	largeBuf := NewRenderBuffer(1000, 1000)
 	cell := Cell{Content: "X", Width: 1}
 	largeBuf.SetCell(999, 999, &cell)
 
@@ -878,7 +878,7 @@ func TestRendererCursorMovementOptimizations(t *testing.T) {
 
 	// Test tab optimization
 	r.SetTabStops(8)
-	cellbuf := NewBuffer(20, 1)
+	cellbuf := NewRenderBuffer(20, 1)
 
 	// Place content at tab stops
 	cell := Cell{Content: "X", Width: 1}
@@ -902,7 +902,7 @@ func TestRendererBackspaceOptimization(t *testing.T) {
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
 	r.SetBackspace(true)
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 
 	// Place content that would benefit from backspace optimization
 	cell := Cell{Content: "X", Width: 1}
@@ -931,7 +931,7 @@ func TestRendererNewlineMapping(t *testing.T) {
 	r.SetMapNewline(true)
 	r.SetRelativeCursor(true)
 
-	cellbuf := NewBuffer(10, 3)
+	cellbuf := NewRenderBuffer(10, 3)
 	cell := Cell{Content: "X", Width: 1}
 	cellbuf.SetCell(0, 0, &cell)
 	cellbuf.SetCell(0, 1, &cell)
@@ -954,7 +954,7 @@ func TestRendererUnderlineStyles(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 
 	// Test different underline styles
 	styles := []Style{
@@ -988,7 +988,7 @@ func TestRendererTextAttributes(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(10, 1)
+	cellbuf := NewRenderBuffer(10, 1)
 
 	// Test various text attributes
 	styles := []Style{
@@ -1035,7 +1035,7 @@ func TestRendererColorDownsampling(t *testing.T) {
 			r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 			r.SetColorProfile(tt.profile)
 
-			cellbuf := NewBuffer(3, 1)
+			cellbuf := NewRenderBuffer(3, 1)
 
 			// Test with high-precision color that needs downsampling
 			cell := Cell{
@@ -1066,7 +1066,7 @@ func TestRendererPhantomCursor(t *testing.T) {
 
 	r.SetFullscreen(true) // Use fullscreen rendering optimizations
 	r.SetRelativeCursor(false)
-	cellbuf := NewBuffer(5, 3)
+	cellbuf := NewRenderBuffer(5, 3)
 
 	// Fill the last column to trigger phantom cursor behavior
 	cell := Cell{Content: "X", Width: 1}
@@ -1091,7 +1091,7 @@ func TestRendererLineClearingOptimizations(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(10, 3)
+	cellbuf := NewRenderBuffer(10, 3)
 
 	// Fill first line completely
 	cell := Cell{Content: "X", Width: 1}
@@ -1108,7 +1108,7 @@ func TestRendererLineClearingOptimizations(t *testing.T) {
 	buf.Reset()
 
 	// Clear the line by creating new buffer with empty line
-	newBuf := NewBuffer(10, 3)
+	newBuf := NewRenderBuffer(10, 3)
 	// Only set one cell, leaving the rest empty
 	newBuf.SetCell(0, 0, &cell)
 
@@ -1128,7 +1128,7 @@ func TestRendererRepeatCharacterOptimization(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(20, 1)
+	cellbuf := NewRenderBuffer(20, 1)
 
 	// Fill with repeated characters that should trigger REP optimization
 	cell := Cell{Content: "A", Width: 1}
@@ -1152,7 +1152,7 @@ func TestRendererEraseCharacterOptimization(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 
-	cellbuf := NewBuffer(20, 1)
+	cellbuf := NewRenderBuffer(20, 1)
 
 	// Add some non-space content first
 	cell := Cell{Content: "A", Width: 1}
@@ -1229,7 +1229,7 @@ func TestRendererUpdates(t *testing.T) {
 			scr := NewScreenBuffer(5, 3)
 			for i, frameStr := range tc.frames {
 				NewStyledString(frameStr).Draw(scr, scr.Bounds())
-				r.Render(scr.Buffer)
+				r.Render(scr.RenderBuffer)
 				if err := r.Flush(); err != nil {
 					t.Fatalf("failed to flush renderer: %v", err)
 				}
@@ -1253,14 +1253,14 @@ func TestRendererPrependOneLine(t *testing.T) {
 	r.Resize(10, 5)
 	cellbuf := NewScreenBuffer(10, 5)
 	NewStyledString("This-is-a .").Draw(cellbuf, cellbuf.Bounds())
-	r.Render(cellbuf.Buffer)
+	r.Render(cellbuf.RenderBuffer)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
 	NewStyledString("This-is-a .").Draw(cellbuf, cellbuf.Bounds())
-	r.PrependString(cellbuf.Buffer, "Prepended-a-new-line")
-	r.Render(cellbuf.Buffer)
+	r.PrependString(cellbuf.RenderBuffer, "Prepended-a-new-line")
+	r.Render(cellbuf.RenderBuffer)
 	if err := r.Flush(); err != nil {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
@@ -1275,7 +1275,7 @@ func TestRendererPrependOneLine(t *testing.T) {
 func TestRendererEnterExitAltScreen(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
-	cellbuf := NewBuffer(3, 3)
+	cellbuf := NewRenderBuffer(3, 3)
 
 	// Simulate cursor change
 	r.MoveTo(1, 1)

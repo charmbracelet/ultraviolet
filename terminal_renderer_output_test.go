@@ -133,7 +133,7 @@ func TestRendererOutput(t *testing.T) {
 					comp.Wrap = c.wrap[i]
 				}
 				comp.Draw(scr, scr.Bounds())
-				s.Render(scr.Buffer)
+				s.Render(scr.RenderBuffer)
 				if err := s.Flush(); err != nil {
 					t.Fatalf("Flush failed: %v", err)
 				}

@@ -33,6 +33,17 @@ var (
 	ErrNotRunning = fmt.Errorf("terminal not running")
 )
 
+// File is an interface that represents a file with a file descriptor.
+//
+// This is typically an [os.File] like [os.Stdin] and [os.Stdout].
+type File interface {
+	io.ReadWriteCloser
+	term.File
+
+	// Name returns the name of the file.
+	Name() string
+}
+
 // Terminal represents a terminal screen that can be manipulated and drawn to.
 // It handles reading events from the terminal using [TerminalReader].
 type Terminal struct {
@@ -48,7 +59,7 @@ type Terminal struct {
 	// Terminal type, screen and buffer.
 	termtype  string            // The $TERM type.
 	environ   Environ           // The environment variables.
-	buf       *Buffer           // Reference to the last buffer used.
+	buf       *RenderBuffer     // Reference to the last buffer used.
 	scr       *TerminalRenderer // The actual screen to be drawn to.
 	size      Size              // The last known full size of the terminal.
 	pixSize   Size              // The last known pixel size of the terminal.
@@ -105,7 +116,7 @@ func NewTerminal(in io.Reader, out io.Writer, env []string) *Terminal {
 	t.environ = env
 	t.termtype = t.environ.Getenv("TERM")
 	t.scr = NewTerminalRenderer(t.out, t.environ)
-	t.buf = NewBuffer(0, 0)
+	t.buf = NewRenderBuffer(0, 0)
 	t.method = ansi.WcWidth // Default width method.
 	t.SetColorProfile(colorprofile.Detect(out, env))
 	t.evs = make(chan Event)
@@ -805,7 +816,7 @@ func (t *Terminal) initialResizeEvent() error {
 		WindowSizeEvent(cells),
 	}
 	if pixels.Width > 0 && pixels.Height > 0 {
-		events = append(events, WindowPixelSizeEvent(pixels))
+		events = append(events, PixelSizeEvent(pixels))
 	}
 	for _, e := range events {
 		select {
@@ -846,7 +857,7 @@ func (t *Terminal) resizeLoop() error {
 				select {
 				case <-t.evctx.Done():
 					return nil
-				case t.evch <- WindowPixelSizeEvent(pixels):
+				case t.evch <- PixelSizeEvent(pixels):
 				}
 			}
 
@@ -883,7 +894,7 @@ func (t *Terminal) eventLoop() error {
 				t.m.Lock()
 				t.size = Size(ev)
 				t.m.Unlock()
-			case WindowPixelSizeEvent:
+			case PixelSizeEvent:
 				t.m.Lock()
 				t.pixSize = Size(ev)
 				t.m.Unlock()
