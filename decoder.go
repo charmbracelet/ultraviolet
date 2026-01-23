@@ -642,7 +642,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 				if !hOk || !wOk {
 					break
 				}
-				return i, WindowPixelSizeEvent{Width: width, Height: height}
+				return i, PixelSizeEvent{Width: width, Height: height}
 			}
 		case 6: // Report Terminal character cell size.
 			if paramsLen == 3 {
@@ -673,7 +673,7 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 				}
 				return i, MultiEvent{
 					WindowSizeEvent{Width: cellWidth, Height: cellHeight},
-					WindowPixelSizeEvent{Width: pixelWidth, Height: pixelHeight},
+					PixelSizeEvent{Width: pixelWidth, Height: pixelHeight},
 				}
 			}
 		}
