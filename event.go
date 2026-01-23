@@ -121,11 +121,11 @@ func (s WindowSizeEvent) Bounds() Rectangle {
 	return Size(s).Bounds()
 }
 
-// WindowPixelSizeEvent represents the window size in pixels.
-type WindowPixelSizeEvent Size
+// PixelSizeEvent represents the window size in pixels.
+type PixelSizeEvent Size
 
 // Bounds returns the bounds corresponding to the size.
-func (s WindowPixelSizeEvent) Bounds() Rectangle {
+func (s PixelSizeEvent) Bounds() Rectangle {
 	return Size(s).Bounds()
 }
 

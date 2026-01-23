@@ -108,7 +108,7 @@ func TestSizeBounds(t *testing.T) {
 		},
 		{
 			name: "WindowPixelSizeEvent",
-			size: WindowPixelSizeEvent{Width: 1920, Height: 1080},
+			size: PixelSizeEvent{Width: 1920, Height: 1080},
 			want: Rectangle{
 				Min: image.Point{X: 0, Y: 0},
 				Max: image.Point{X: 1920, Y: 1080},
