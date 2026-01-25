@@ -21,6 +21,8 @@ type Document struct {
 	*node
 	opts          Options
 	activeElement Node
+	renderer      *Renderer
+	dirty         bool
 }
 
 var _ Node = (*Document)(nil)
@@ -46,7 +48,9 @@ func NewDocument(htmlRoot *html.Node, opts *Options) *Document {
 	}
 
 	doc := &Document{
-		node: root,
+		node:     root,
+		renderer: NewRenderer(root),
+		dirty:    true, // Initial render needed
 	}
 
 	// Set the document backlink in the root node
@@ -60,6 +64,14 @@ func NewDocument(htmlRoot *html.Node, opts *Options) *Document {
 	doc.activeElement = root
 
 	return doc
+}
+
+// Invalidate marks the document as needing re-render.
+func (d *Document) Invalidate() {
+	d.dirty = true
+	if d.node != nil && d.node.layout != nil {
+		d.node.layout.Invalidate()
+	}
 }
 
 // ActiveElement returns the currently active/focused node.
@@ -333,6 +345,8 @@ func (d *Document) Serve() error {
 			}
 			// Resize the screen
 			scr.Resize(w, h)
+			// Mark document as dirty for re-layout
+			d.Invalidate()
 		default:
 			// No resize event
 		}
@@ -362,8 +376,13 @@ func (d *Document) Serve() error {
 			}
 		}
 
-		// Render the screen
-		// TODO: Render the document content
+		// Render the screen if dirty
+		if d.dirty {
+			viewport := scr.Bounds()
+			d.renderer.Render(scr, viewport)
+			d.dirty = false
+		}
+		
 		scr.Render()
 		scr.Flush()
 	}

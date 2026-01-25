@@ -1,6 +1,7 @@
 package doc
 
 import (
+	uv "github.com/charmbracelet/ultraviolet"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -65,6 +66,12 @@ type node struct {
 	listeners map[string][]EventListener
 	nodeCache map[*html.Node]*node
 	document  *Document // Backlink to containing document
+
+	// Rendering state
+	computedStyle *ComputedStyle
+	layout        *LayoutBox
+	lines         []uv.Line // Original text lines (for text nodes)
+	wrappedLines  []uv.Line // Wrapped text lines (cached)
 }
 
 var _ Node = (*node)(nil)
