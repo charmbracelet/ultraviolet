@@ -727,6 +727,65 @@ func (r *Renderer) wrapLines(lines []uv.Line, maxWidth int) []uv.Line {
 
 // layoutBox performs layout for a box and its children using the CSS box model.
 // Returns the final rectangle occupied by the box.
+// calculateContentWidth calculates the content width from available width minus spacing.
+func calculateContentWidth(availableWidth int, style *ComputedStyle) int {
+	// Content width = available width - margin - border - padding
+	horizontalSpacing := style.MarginLeft + style.BorderLeft + style.PaddingLeft +
+		style.PaddingRight + style.BorderRight + style.MarginRight
+	
+	contentWidth := availableWidth - horizontalSpacing
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+	
+	return contentWidth
+}
+
+// calculateTotalWidth calculates the total width including all spacing.
+func calculateTotalWidth(contentWidth int, style *ComputedStyle) int {
+	// Total width = margin + border + padding + content + padding + border + margin
+	return style.MarginLeft + style.BorderLeft + style.PaddingLeft +
+		contentWidth +
+		style.PaddingRight + style.BorderRight + style.MarginRight
+}
+
+// calculateTotalHeight calculates the total height including all spacing.
+func calculateTotalHeight(contentHeight int, style *ComputedStyle) int {
+	// Total height = margin + border + padding + content + padding + border + margin
+	return style.MarginTop + style.BorderTop + style.PaddingTop +
+		contentHeight +
+		style.PaddingBottom + style.BorderBottom + style.MarginBottom
+}
+
+// applyBoxModelSpacing calculates the various rectangles for a box given its position and content size.
+func applyBoxModelSpacing(x, y, contentWidth, contentHeight int, style *ComputedStyle) (contentRect, paddingRect, borderRect, marginRect uv.Rectangle) {
+	// Start from content area
+	contentX := x + style.MarginLeft + style.BorderLeft + style.PaddingLeft
+	contentY := y + style.MarginTop + style.BorderTop + style.PaddingTop
+	contentRect = uv.Rect(contentX, contentY, contentWidth, contentHeight)
+	
+	// Padding area (includes content + padding)
+	paddingX := x + style.MarginLeft + style.BorderLeft
+	paddingY := y + style.MarginTop + style.BorderTop
+	paddingWidth := style.PaddingLeft + contentWidth + style.PaddingRight
+	paddingHeight := style.PaddingTop + contentHeight + style.PaddingBottom
+	paddingRect = uv.Rect(paddingX, paddingY, paddingWidth, paddingHeight)
+	
+	// Border area (includes padding + border)
+	borderX := x + style.MarginLeft
+	borderY := y + style.MarginTop
+	borderWidth := style.BorderLeft + paddingWidth + style.BorderRight
+	borderHeight := style.BorderTop + paddingHeight + style.BorderBottom
+	borderRect = uv.Rect(borderX, borderY, borderWidth, borderHeight)
+	
+	// Margin area (total box including margin)
+	marginWidth := style.MarginLeft + borderWidth + style.MarginRight
+	marginHeight := style.MarginTop + borderHeight + style.MarginBottom
+	marginRect = uv.Rect(x, y, marginWidth, marginHeight)
+	
+	return
+}
+
 func (r *Renderer) layoutBox(box *Box, availableRect uv.Rectangle) uv.Rectangle {
 	if box == nil {
 		return uv.Rectangle{}
@@ -745,34 +804,47 @@ func (r *Renderer) layoutBox(box *Box, availableRect uv.Rectangle) uv.Rectangle 
 func (r *Renderer) layoutBlockBox(box *Box, availableRect uv.Rectangle) uv.Rectangle {
 	x := availableRect.Min.X
 	y := availableRect.Min.Y
-	width := availableRect.Dx()
+	availableWidth := availableRect.Dx()
 	maxHeight := availableRect.Dy()
 
-	// Apply width from style if set
+	// Calculate content width accounting for spacing
+	contentWidth := calculateContentWidth(availableWidth, box.Style)
+	
+	// Apply explicit width from style if set (this is the content width)
 	if box.Style.Width > 0 {
-		width = box.Style.Width
+		contentWidth = box.Style.Width
 	}
 
-	currentY := y
+	// Calculate the content area position (after margin, border, padding)
+	contentX := x + box.Style.MarginLeft + box.Style.BorderLeft + box.Style.PaddingLeft
+	contentY := y + box.Style.MarginTop + box.Style.BorderTop + box.Style.PaddingTop
+	
+	currentY := contentY
 	i := 0
 
-	// Layout children
+	// Layout children within the content area
 	for i < len(box.Children) {
 		child := box.Children[i]
 		
-		if currentY-y >= maxHeight && maxHeight > 0 {
+		if currentY-contentY >= maxHeight && maxHeight > 0 {
 			break // Exceeded viewport
 		}
 
 		if child.IsBlock() {
 			// Block child: layout and stack vertically
-			childRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+			// Account for child's top margin
+			currentY += child.Style.MarginTop
+			
+			childRect := uv.Rect(contentX, currentY, contentWidth, maxHeight-(currentY-contentY))
 			layoutRect := r.layoutBox(child, childRect)
 			child.Rect = layoutRect
 			
 			if layoutRect.Dy() > 0 {
 				currentY += layoutRect.Dy()
 			}
+			
+			// Account for child's bottom margin
+			currentY += child.Style.MarginBottom
 			i++
 		} else {
 			// Inline children: collect consecutive inline boxes and establish IFC
@@ -783,20 +855,23 @@ func (r *Renderer) layoutBlockBox(box *Box, availableRect uv.Rectangle) uv.Recta
 			}
 			
 			if len(inlineBoxes) > 0 {
-				inlineRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+				inlineRect := uv.Rect(contentX, currentY, contentWidth, maxHeight-(currentY-contentY))
 				height := r.layoutInlineFormattingContext(inlineBoxes, inlineRect)
 				currentY += height
 			}
 		}
 	}
 
-	// Calculate total height
-	totalHeight := currentY - y
+	// Calculate content height
+	contentHeight := currentY - contentY
 	if box.Style.Height > 0 {
-		totalHeight = box.Style.Height
+		contentHeight = box.Style.Height
 	}
 
-	box.Rect = uv.Rect(x, y, width, totalHeight)
+	// Calculate all box model rectangles
+	_, _, _, totalRect := applyBoxModelSpacing(x, y, contentWidth, contentHeight, box.Style)
+	
+	box.Rect = totalRect
 	return box.Rect
 }
 

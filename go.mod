@@ -19,6 +19,8 @@ require (
 	github.com/clipperhouse/displaywidth v0.7.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
+	github.com/tdewolff/parse/v2 v2.8.5 // indirect
+	golang.org/x/net v0.49.0 // indirect
 )
 
 require (

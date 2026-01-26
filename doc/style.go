@@ -16,10 +16,11 @@ import (
 type DisplayType string
 
 const (
-	DisplayBlock  DisplayType = "block"
-	DisplayInline DisplayType = "inline"
-	DisplayNone   DisplayType = "none"
-	DisplayFlex   DisplayType = "flex"
+	DisplayBlock       DisplayType = "block"
+	DisplayInline      DisplayType = "inline"
+	DisplayInlineBlock DisplayType = "inline-block"
+	DisplayNone        DisplayType = "none"
+	DisplayFlex        DisplayType = "flex"
 )
 
 // TextAlign represents the CSS text-align property.
@@ -108,6 +109,22 @@ type ComputedStyle struct {
 	Width  int // 0 = auto
 	Height int // 0 = auto
 
+	// Box model spacing (in cells)
+	MarginTop    int
+	MarginRight  int
+	MarginBottom int
+	MarginLeft   int
+	
+	PaddingTop    int
+	PaddingRight  int
+	PaddingBottom int
+	PaddingLeft   int
+	
+	BorderTop    int
+	BorderRight  int
+	BorderBottom int
+	BorderLeft   int
+
 	// Text properties
 	Color               color.Color
 	BackgroundColor     color.Color
@@ -130,6 +147,23 @@ func NewComputedStyle() *ComputedStyle {
 		Display:             DisplayBlock,
 		Width:               0,   // auto
 		Height:              0,   // auto
+		
+		// Box model defaults (all 0)
+		MarginTop:    0,
+		MarginRight:  0,
+		MarginBottom: 0,
+		MarginLeft:   0,
+		
+		PaddingTop:    0,
+		PaddingRight:  0,
+		PaddingBottom: 0,
+		PaddingLeft:   0,
+		
+		BorderTop:    0,
+		BorderRight:  0,
+		BorderBottom: 0,
+		BorderLeft:   0,
+		
 		Color:               nil, // inherit from parent
 		BackgroundColor:     nil, // inherit from parent (terminal-specific; web CSS default is transparent)
 		FontWeight:          FontWeightNormal,
@@ -406,6 +440,8 @@ func applyStyleProperty(property, value string, style *ComputedStyle) {
 			style.Display = DisplayBlock
 		case "inline":
 			style.Display = DisplayInline
+		case "inline-block":
+			style.Display = DisplayInlineBlock
 		case "none":
 			style.Display = DisplayNone
 		case "flex":
@@ -432,6 +468,107 @@ func applyStyleProperty(property, value string, style *ComputedStyle) {
 		case "break-spaces":
 			style.WhiteSpace = WhiteSpaceBreakSpaces
 		}
+	
+	// Margin properties
+	case "margin":
+		parseSpacingShorthand(value, &style.MarginTop, &style.MarginRight, &style.MarginBottom, &style.MarginLeft)
+	case "margin-top":
+		style.MarginTop = parseSpacingValue(value)
+	case "margin-right":
+		style.MarginRight = parseSpacingValue(value)
+	case "margin-bottom":
+		style.MarginBottom = parseSpacingValue(value)
+	case "margin-left":
+		style.MarginLeft = parseSpacingValue(value)
+	
+	// Padding properties
+	case "padding":
+		parseSpacingShorthand(value, &style.PaddingTop, &style.PaddingRight, &style.PaddingBottom, &style.PaddingLeft)
+	case "padding-top":
+		style.PaddingTop = parseSpacingValue(value)
+	case "padding-right":
+		style.PaddingRight = parseSpacingValue(value)
+	case "padding-bottom":
+		style.PaddingBottom = parseSpacingValue(value)
+	case "padding-left":
+		style.PaddingLeft = parseSpacingValue(value)
+	
+	// Border width properties (simplified - just width for now)
+	case "border":
+		// Parse border shorthand: "1px solid red"
+		parts := strings.Fields(value)
+		if len(parts) > 0 {
+			width := parseSpacingValue(parts[0])
+			style.BorderTop = width
+			style.BorderRight = width
+			style.BorderBottom = width
+			style.BorderLeft = width
+		}
+	case "border-width":
+		parseSpacingShorthand(value, &style.BorderTop, &style.BorderRight, &style.BorderBottom, &style.BorderLeft)
+	case "border-top", "border-top-width":
+		style.BorderTop = parseSpacingValue(value)
+	case "border-right", "border-right-width":
+		style.BorderRight = parseSpacingValue(value)
+	case "border-bottom", "border-bottom-width":
+		style.BorderBottom = parseSpacingValue(value)
+	case "border-left", "border-left-width":
+		style.BorderLeft = parseSpacingValue(value)
+	}
+}
+
+// parseSpacingValue parses a CSS spacing value (margin, padding, border width) into cells.
+// Supports: integers (interpreted as cells), "0", and ignores px/em/% for now.
+// Examples: "1", "2px", "0" -> 1, 2, 0 cells respectively
+func parseSpacingValue(value string) int {
+	value = strings.TrimSpace(value)
+	
+	// Remove common CSS units for simplicity (we work in terminal cells)
+	value = strings.TrimSuffix(value, "px")
+	value = strings.TrimSuffix(value, "em")
+	value = strings.TrimSuffix(value, "rem")
+	value = strings.TrimSuffix(value, "%")
+	value = strings.TrimSpace(value)
+	
+	// Parse as integer
+	if val, err := strconv.Atoi(value); err == nil {
+		if val < 0 {
+			return 0 // Negative spacing is invalid, treat as 0
+		}
+		return val
+	}
+	
+	return 0 // Default to 0 if parsing fails
+}
+
+// parseSpacingShorthand parses CSS spacing shorthand syntax and assigns values to top, right, bottom, left.
+// CSS shorthand: "1" -> all sides, "1 2" -> top/bottom left/right, "1 2 3" -> top left/right bottom, "1 2 3 4" -> top right bottom left
+func parseSpacingShorthand(value string, top, right, bottom, left *int) {
+	parts := strings.Fields(value)
+	
+	switch len(parts) {
+	case 1:
+		// margin: 1 -> all sides
+		val := parseSpacingValue(parts[0])
+		*top, *right, *bottom, *left = val, val, val, val
+	case 2:
+		// margin: 1 2 -> top/bottom=1, left/right=2
+		vertical := parseSpacingValue(parts[0])
+		horizontal := parseSpacingValue(parts[1])
+		*top, *bottom = vertical, vertical
+		*right, *left = horizontal, horizontal
+	case 3:
+		// margin: 1 2 3 -> top=1, left/right=2, bottom=3
+		*top = parseSpacingValue(parts[0])
+		horizontal := parseSpacingValue(parts[1])
+		*right, *left = horizontal, horizontal
+		*bottom = parseSpacingValue(parts[2])
+	case 4:
+		// margin: 1 2 3 4 -> top=1, right=2, bottom=3, left=4
+		*top = parseSpacingValue(parts[0])
+		*right = parseSpacingValue(parts[1])
+		*bottom = parseSpacingValue(parts[2])
+		*left = parseSpacingValue(parts[3])
 	}
 }
 
