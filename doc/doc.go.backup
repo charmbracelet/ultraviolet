@@ -1,0 +1,593 @@
+// Package doc provides HTML document parsing and DOM representation for TUI applications.
+//
+// The document package parses HTML using Go's standard library and creates a DOM structure
+// that can be used with Ultraviolet to build terminal user interfaces.
+package doc
+
+import (
+	"io"
+	"os"
+	"os/signal"
+	"slices"
+	"strings"
+	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
+)
+
+// Node is a read-only interface to an HTML node in the document tree.
+type Node interface {
+	// Type returns the type of the node (element, text, document, etc.)
+	Type() html.NodeType
+
+	// Data returns the node's data.
+	// For element nodes, this is the tag name.
+	// For text nodes, this is the text content.
+	Data() string
+
+	// DataAtom returns the atom for the node's data, or zero if not a known tag.
+	DataAtom() atom.Atom
+
+	// Namespace returns the namespace of the node.
+	Namespace() string
+
+	// Attr returns the attributes of the node (for element nodes).
+	Attr() []html.Attribute
+
+	// Parent returns the parent node, or nil if this is the root.
+	Parent() Node
+
+	// FirstChild returns the first child node, or nil if there are no children.
+	FirstChild() Node
+
+	// LastChild returns the last child node, or nil if there are no children.
+	LastChild() Node
+
+	// PrevSibling returns the previous sibling node, or nil if this is the first child.
+	PrevSibling() Node
+
+	// NextSibling returns the next sibling node, or nil if this is the last child.
+	NextSibling() Node
+
+	// Children returns all child nodes.
+	Children() []Node
+
+	// AddEventListener adds an event listener to this node for the specified event type.
+	AddEventListener(eventType EventType, listener NodeEventListener)
+
+	// RemoveEventListener removes all event listeners for the specified event type from this node.
+	RemoveEventListener(eventType EventType)
+}
+
+// NodeEventListener is a function that handles events on a specific node.
+// It receives the target node, the document, and the event.
+// Returns true if the event was handled (preventing it from bubbling up), or false to allow bubbling.
+type NodeEventListener func(target Node, d *Document, ev uv.Event) bool
+
+// node wraps an html.Node to provide a read-only interface.
+type node struct {
+	n         *html.Node
+	listeners map[string][]NodeEventListener
+	doc       *Document
+}
+
+// Type returns the type of the node.
+func (n *node) Type() html.NodeType {
+	return n.n.Type
+}
+
+// Data returns the node's data.
+func (n *node) Data() string {
+	return n.n.Data
+}
+
+// DataAtom returns the atom for the node's data.
+func (n *node) DataAtom() atom.Atom {
+	return n.n.DataAtom
+}
+
+// Namespace returns the namespace of the node.
+func (n *node) Namespace() string {
+	return n.n.Namespace
+}
+
+// Attr returns the attributes of the node.
+func (n *node) Attr() []html.Attribute {
+	return n.n.Attr
+}
+
+// Parent returns the parent node.
+func (n *node) Parent() Node {
+	if n.n.Parent == nil {
+		return nil
+	}
+	return n.wrapNode(n.n.Parent)
+}
+
+// FirstChild returns the first child node.
+func (n *node) FirstChild() Node {
+	if n.n.FirstChild == nil {
+		return nil
+	}
+	return n.wrapNode(n.n.FirstChild)
+}
+
+// LastChild returns the last child node.
+func (n *node) LastChild() Node {
+	if n.n.LastChild == nil {
+		return nil
+	}
+	return n.wrapNode(n.n.LastChild)
+}
+
+// PrevSibling returns the previous sibling node.
+func (n *node) PrevSibling() Node {
+	if n.n.PrevSibling == nil {
+		return nil
+	}
+	return n.wrapNode(n.n.PrevSibling)
+}
+
+// NextSibling returns the next sibling node.
+func (n *node) NextSibling() Node {
+	if n.n.NextSibling == nil {
+		return nil
+	}
+	return n.wrapNode(n.n.NextSibling)
+}
+
+// Children returns all child nodes.
+func (n *node) Children() []Node {
+	var children []Node
+	for c := n.n.FirstChild; c != nil; c = c.NextSibling {
+		children = append(children, n.wrapNode(c))
+	}
+	return children
+}
+
+// AddEventListener adds an event listener to this node.
+func (n *node) AddEventListener(eventType EventType, listener NodeEventListener) {
+	if n.listeners == nil {
+		n.listeners = make(map[string][]NodeEventListener)
+	}
+	n.listeners[string(eventType)] = append(n.listeners[string(eventType)], listener)
+}
+
+// RemoveEventListener removes all event listeners for the specified event type.
+func (n *node) RemoveEventListener(eventType EventType) {
+	delete(n.listeners, string(eventType))
+}
+
+// wrapNode wraps an html.Node, preserving the document and listener state.
+func (n *node) wrapNode(htmlNode *html.Node) Node {
+	return &node{n: htmlNode, doc: n.doc}
+}
+
+// Document represents a DOM structure for TUI applications.
+// It contains the root HTML node and configuration options.
+type Document struct {
+	root      *html.Node
+	opts      Options
+	listeners map[string][]EventListener
+}
+
+// EventType represents the type of event that can be listened to.
+type EventType string
+
+const (
+	// EventAll matches all events
+	EventAll EventType = "*"
+	// EventKeyPress matches key press events
+	EventKeyPress EventType = "keypress"
+	// EventKeyRelease matches key release events
+	EventKeyRelease EventType = "keyrelease"
+	// EventMouseClick matches mouse click events
+	EventMouseClick EventType = "mouseclick"
+	// EventMouseRelease matches mouse release events
+	EventMouseRelease EventType = "mouserelease"
+	// EventMouseWheel matches mouse wheel events
+	EventMouseWheel EventType = "mousewheel"
+	// EventMouseMotion matches mouse motion events
+	EventMouseMotion EventType = "mousemotion"
+	// EventResize matches window resize events
+	EventResize EventType = "resize"
+	// EventFocus matches focus events
+	EventFocus EventType = "focus"
+	// EventBlur matches blur events
+	EventBlur EventType = "blur"
+	// EventPaste matches paste events
+	EventPaste EventType = "paste"
+)
+
+// EventListener is a function that handles events.
+// It receives the document and the event, and returns true if the event was handled
+// (preventing it from bubbling up), or false to allow bubbling.
+type EventListener func(d *Document, ev uv.Event) bool
+
+// Options configures document behavior.
+type Options struct {
+	// BaseURL is the base URL for resolving relative URLs in the document
+	BaseURL string
+	// Stylesheets contains CSS stylesheets to apply to the document
+	Stylesheets []string
+	// Terminal is the terminal to use for rendering. If nil, DefaultTerminal is used.
+	Terminal *uv.Terminal
+}
+
+// NewDocument creates a new Document from an HTML node and optional configuration.
+// If opts is nil, default options are used.
+func NewDocument(root *html.Node, opts *Options) *Document {
+	doc := &Document{
+		root:      root,
+		listeners: make(map[string][]EventListener),
+	}
+
+	if opts != nil {
+		doc.opts = *opts
+	}
+
+	return doc
+}
+
+// Root returns the root node of the document.
+func (d *Document) Root() Node {
+	if d.root == nil {
+		return nil
+	}
+	return &node{n: d.root, doc: d}
+}
+
+// Parse parses HTML from a reader and creates a new Document.
+// It returns an error if the HTML cannot be parsed.
+func Parse(r io.Reader, opts *Options) (*Document, error) {
+	node, err := html.Parse(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewDocument(node, opts), nil
+}
+
+// ParseFragment parses an HTML fragment and creates a new Document.
+// It returns an error if the HTML cannot be parsed.
+func ParseFragment(r io.Reader, context *html.Node, opts *Options) (*Document, error) {
+	nodes, err := html.ParseFragment(r, context)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a container node for the fragments
+	container := &html.Node{
+		Type: html.ElementNode,
+		Data: "div",
+	}
+
+	for _, n := range nodes {
+		container.AppendChild(n)
+	}
+
+	return NewDocument(container, opts), nil
+}
+
+// GetElementByID returns the first element with the specified id attribute.
+// Returns nil if no element is found.
+func (d *Document) GetElementByID(id string) Node {
+	return d.getElementByID(d.root, id)
+}
+
+// GetElementsByTagName returns all elements with the specified tag name.
+func (d *Document) GetElementsByTagName(tagName string) []Node {
+	var result []Node
+	d.getElementsByTagName(d.root, tagName, &result)
+	return result
+}
+
+// GetElementsByClassName returns all elements with the specified class name.
+func (d *Document) GetElementsByClassName(className string) []Node {
+	var result []Node
+	d.getElementsByClassName(d.root, className, &result)
+	return result
+}
+
+// QuerySelector returns the first element that matches the specified selector.
+// Currently supports: tag names, #id, .class
+// Returns nil if no element is found.
+func (d *Document) QuerySelector(selector string) Node {
+	return querySelector(d.root, selector)
+}
+
+// QuerySelectorAll returns all elements that match the specified selector.
+// Currently supports: tag names, #id, .class
+func (d *Document) QuerySelectorAll(selector string) []Node {
+	var result []Node
+	querySelectorAll(d.root, selector, &result)
+	return result
+}
+
+// AddEventListener adds an event listener for the specified event type.
+// The listener will be called when the event occurs.
+// Use EventAll ("*") to listen to all events.
+func (d *Document) AddEventListener(eventType EventType, listener EventListener) {
+	d.listeners[string(eventType)] = append(d.listeners[string(eventType)], listener)
+}
+
+// RemoveEventListener removes all event listeners for the specified event type.
+func (d *Document) RemoveEventListener(eventType EventType) {
+	delete(d.listeners, string(eventType))
+}
+
+// dispatchEvent dispatches an event to all registered listeners.
+// Returns true if the event was handled (stopped from bubbling).
+func (d *Document) dispatchEvent(ev uv.Event) bool {
+	eventType := getEventType(ev)
+	
+	// Call listeners for the specific event type
+	if listeners, ok := d.listeners[string(eventType)]; ok {
+		for _, listener := range listeners {
+			if listener(d, ev) {
+				return true // Event was handled, stop propagation
+			}
+		}
+	}
+	
+	// Call listeners for all events
+	if listeners, ok := d.listeners[string(EventAll)]; ok {
+		for _, listener := range listeners {
+			if listener(d, ev) {
+				return true // Event was handled, stop propagation
+			}
+		}
+	}
+	
+	return false // Event was not handled
+}
+
+// getEventType returns the EventType for a uv.Event.
+func getEventType(ev uv.Event) EventType {
+	switch ev.(type) {
+	case uv.KeyPressEvent:
+		return EventKeyPress
+	case uv.KeyReleaseEvent:
+		return EventKeyRelease
+	case uv.MouseClickEvent:
+		return EventMouseClick
+	case uv.MouseReleaseEvent:
+		return EventMouseRelease
+	case uv.MouseWheelEvent:
+		return EventMouseWheel
+	case uv.MouseMotionEvent:
+		return EventMouseMotion
+	case uv.WindowSizeEvent:
+		return EventResize
+	case uv.FocusEvent:
+		return EventFocus
+	case uv.BlurEvent:
+		return EventBlur
+	case uv.PasteEvent:
+		return EventPaste
+	default:
+		return EventAll
+	}
+}
+
+// Helper functions
+
+func (d *Document) getElementByID(n *html.Node, id string) Node {
+	if n == nil {
+		return nil
+	}
+
+	if n.Type == html.ElementNode {
+		for _, attr := range n.Attr {
+			if attr.Key == "id" && attr.Val == id {
+				return &node{n: n, doc: d}
+			}
+		}
+	}
+
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if found := d.d.getElementByID(c, id); found != nil {
+			return found
+		}
+	}
+
+	return nil
+}
+
+func getElementsByTagName(n *html.Node, tagName string, result *[]Node) {
+	if n == nil {
+		return
+	}
+
+	if n.Type == html.ElementNode && n.Data == tagName {
+		*result = append(*result, &node{n: n})
+	}
+
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		getElementsByTagName(c, tagName, result)
+	}
+}
+
+func getElementsByClassName(n *html.Node, className string, result *[]Node) {
+	if n == nil {
+		return
+	}
+
+	if n.Type == html.ElementNode {
+		for _, attr := range n.Attr {
+			if attr.Key == "class" {
+				// Check if className is in the class list
+				classes := strings.Fields(attr.Val)
+				if slices.Contains(classes, className) {
+					*result = append(*result, &node{n: n})
+				}
+			}
+		}
+	}
+
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		getElementsByClassName(c, className, result)
+	}
+}
+
+func querySelector(n *html.Node, selector string) Node {
+	if n == nil {
+		return nil
+	}
+
+	// Parse selector
+	if after, ok := strings.CutPrefix(selector, "#"); ok {
+		// ID selector
+		id := after
+		return d.getElementByID(n, id)
+	} else if after0, ok0 := strings.CutPrefix(selector, "."); ok0 {
+		// Class selector
+		className := after0
+		var result []Node
+		getElementsByClassName(n, className, &result)
+		if len(result) > 0 {
+			return result[0]
+		}
+		return nil
+	}
+
+	// Tag name selector
+	var result []Node
+	getElementsByTagName(n, selector, &result)
+	if len(result) > 0 {
+		return result[0]
+	}
+	return nil
+}
+
+func querySelectorAll(n *html.Node, selector string, result *[]Node) {
+	if n == nil {
+		return
+	}
+
+	// Parse selector
+	if after, ok := strings.CutPrefix(selector, "#"); ok {
+		// ID selector
+		id := after
+		if found := d.getElementByID(n, id); found != nil {
+			*result = append(*result, found)
+		}
+	} else if after0, ok0 := strings.CutPrefix(selector, "."); ok0 {
+		// Class selector
+		className := after0
+		getElementsByClassName(n, className, result)
+	} else {
+		// Tag name selector
+		getElementsByTagName(n, selector, result)
+	}
+}
+
+// Serve starts the event loop and renders the document.
+// It puts the terminal in raw mode, enters altscreen, and listens to events.
+// The function blocks until an error occurs or the document is closed.
+func (d *Document) Serve() error {
+	// Get the terminal instance
+	t := d.opts.Terminal
+	if t == nil {
+		t = uv.DefaultTerminal()
+	}
+
+	// Create window size notifier using signal-based approach
+	winch := make(chan os.Signal, 16)
+	uv.NotifyWinch(winch)
+	defer signal.Stop(winch)
+
+	// Create terminal screen
+	scr := uv.NewTerminalScreen(t.Writer(), t.Environ())
+
+	// Create terminal events reader
+	evs := uv.NewTerminalEvents(t.Reader())
+	defer evs.Close()
+
+	// Cleanup on exit
+	defer t.Close()
+	defer t.Restore()
+	defer scr.Render()
+	defer scr.Reset()
+	defer scr.Flush()
+
+	// Put terminal in raw mode
+	if _, err := t.MakeRaw(); err != nil {
+		return err
+	}
+
+	// Get initial terminal size
+	w, h, err := t.GetSize()
+	if err != nil {
+		return err
+	}
+
+	// Resize the screen to match terminal size
+	scr.Resize(w, h)
+
+	// Enter alternate screen mode
+	scr.EnterAltScreen()
+	scr.HideCursor()
+
+	// Event loop
+	const pollDuration = 10 * time.Millisecond
+
+	for {
+		// Poll for terminal events
+		ready, err := evs.PollEvents(pollDuration)
+		if err != nil {
+			return err
+		}
+
+		// Check for window resize
+		select {
+		case <-winch:
+			// Drain the channel
+			for len(winch) > 0 {
+				<-winch
+			}
+			// Get new terminal size
+			w, h, err := t.GetSize()
+			if err != nil {
+				return err
+			}
+			// Resize the screen
+			scr.Resize(w, h)
+		default:
+			// No resize event
+		}
+
+		// Process terminal events if ready
+		if ready {
+			events, err := evs.ReadEvents(false)
+			if err != nil {
+				return err
+			}
+
+			// Dispatch events to listeners
+			for _, ev := range events {
+				// Let listeners handle the event
+				handled := d.dispatchEvent(ev)
+				
+				// If no listener handled it, perform default action
+				if !handled {
+					switch ev.(type) {
+					case uv.KeyPressEvent:
+						// Default: exit on any key press
+						scr.Render()
+						scr.Reset()
+						scr.Flush()
+						return nil
+					}
+				}
+			}
+		}
+
+		// Render the screen
+		// TODO: Render the document content
+		scr.Render()
+		scr.Flush()
+	}
+}
