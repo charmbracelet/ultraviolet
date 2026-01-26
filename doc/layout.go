@@ -7,11 +7,17 @@ import (
 // LayoutBox represents the calculated layout for a node.
 type LayoutBox struct {
 	// Rect is the absolute position and size on screen (in cells)
+	// This includes the entire box: margin + border + padding + content
 	Rect uv.Rectangle
 
-	// ContentRect is the area available for content (after padding/border)
-	// For now, same as Rect since we don't have padding/border yet
+	// ContentRect is the area available for content (after margin, border, padding)
 	ContentRect uv.Rectangle
+	
+	// PaddingRect is the area including padding (after margin, border)
+	PaddingRect uv.Rectangle
+	
+	// BorderRect is the area including border (after margin)
+	BorderRect uv.Rectangle
 
 	// ScrollOffset is the scroll position for this container
 	ScrollOffset uv.Position
@@ -25,6 +31,8 @@ func NewLayoutBox(rect uv.Rectangle) *LayoutBox {
 	return &LayoutBox{
 		Rect:         rect,
 		ContentRect:  rect,
+		PaddingRect:  rect,
+		BorderRect:   rect,
 		ScrollOffset: uv.Pos(0, 0),
 		Dirty:        true,
 	}

@@ -13,6 +13,8 @@ const (
 	BlockBox BoxType = iota
 	// InlineBox generates an inline-level box
 	InlineBox
+	// InlineBlockBox generates an inline-block box (inline flow but block formatting context)
+	InlineBlockBox
 	// AnonymousBlockBox is an anonymous block box (generated for block children of inline elements)
 	AnonymousBlockBox
 	// AnonymousInlineBox is an anonymous inline box (generated for text in block containers)
@@ -60,7 +62,7 @@ func (b *Box) IsBlock() bool {
 
 // IsInline returns true if this is an inline-level box.
 func (b *Box) IsInline() bool {
-	return b.Type == InlineBox || b.Type == AnonymousInlineBox
+	return b.Type == InlineBox || b.Type == AnonymousInlineBox || b.Type == InlineBlockBox
 }
 
 // IsAnonymous returns true if this is an anonymous box.
@@ -93,9 +95,12 @@ func buildBoxTree(n *node) *Box {
 
 	// Determine box type from display property
 	var boxType BoxType
-	if n.computedStyle.Display == DisplayBlock {
+	switch n.computedStyle.Display {
+	case DisplayBlock:
 		boxType = BlockBox
-	} else {
+	case DisplayInlineBlock:
+		boxType = InlineBlockBox
+	default:
 		boxType = InlineBox
 	}
 
