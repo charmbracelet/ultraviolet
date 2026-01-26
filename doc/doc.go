@@ -5,13 +5,16 @@
 package doc
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"os/signal"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"golang.org/x/net/html"
 )
 
@@ -35,6 +38,8 @@ type Options struct {
 	Stylesheets []string
 	// Terminal is the terminal to use for rendering. If nil, DefaultTerminal is used.
 	Terminal *uv.Terminal
+	// Profile is the color profile to use for rendering. If nil, it will be auto-detected.
+	Profile colorprofile.Profile
 }
 
 // NewDocument creates a new Document from an HTML node and optional configuration.
@@ -107,11 +112,53 @@ func ParseFragment(r io.Reader, context *html.Node, opts *Options) (*Document, e
 		Data: "div",
 	}
 
+	// html.ParseFragment returns html>body>content structure
+	// We need to extract the actual content from body
 	for _, n := range nodes {
-		container.AppendChild(n)
+		if n.Type == html.ElementNode && n.Data == "html" {
+			// Find the body element
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == html.ElementNode && c.Data == "body" {
+					// Extract all children from body
+					for child := c.FirstChild; child != nil; child = child.NextSibling {
+						// Clone to avoid modifying the original tree
+						cloned := cloneNode(child)
+						container.AppendChild(cloned)
+					}
+					break
+				}
+			}
+		} else {
+			// Direct content (shouldn't happen with ParseFragment, but handle it)
+			container.AppendChild(n)
+		}
 	}
 
 	return NewDocument(container, opts), nil
+}
+
+// cloneNode creates a deep copy of a node and its subtree
+func cloneNode(n *html.Node) *html.Node {
+	if n == nil {
+		return nil
+	}
+
+	clone := &html.Node{
+		Type:      n.Type,
+		DataAtom:  n.DataAtom,
+		Data:      n.Data,
+		Namespace: n.Namespace,
+		Attr:      make([]html.Attribute, len(n.Attr)),
+	}
+	copy(clone.Attr, n.Attr)
+
+	// Clone children recursively
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		childClone := cloneNode(c)
+		clone.AppendChild(childClone)
+	}
+
+	return clone
 }
 
 // GetElementByID returns the first element with the specified id attribute.
@@ -295,6 +342,11 @@ func (d *Document) Serve() error {
 	// Create terminal screen
 	scr := uv.NewTerminalScreen(t.Writer(), t.Environ())
 
+	// Set color profile if provided
+	if d.opts.Profile != 0 {
+		scr.SetColorProfile(d.opts.Profile)
+	}
+
 	// Create terminal events reader
 	evs := uv.NewTerminalEvents(t.Reader())
 	defer evs.Close()
@@ -379,11 +431,43 @@ func (d *Document) Serve() error {
 		// Render the screen if dirty
 		if d.dirty {
 			viewport := scr.Bounds()
+			screen.Clear(scr)
 			d.renderer.Render(scr, viewport)
 			d.dirty = false
 		}
-		
+
 		scr.Render()
 		scr.Flush()
 	}
+}
+
+// RenderToString renders the document to a string with ANSI escape codes.
+// This is useful for testing or capturing output without an interactive terminal.
+// If profile is 0, TrueColor is used by default.
+func (d *Document) RenderToString(width, height int, profile colorprofile.Profile) (string, error) {
+	if profile == 0 {
+		profile = colorprofile.TrueColor
+	}
+
+	// Create a buffer to capture output
+	var buf bytes.Buffer
+
+	// Create a terminal screen with the specified profile
+	scr := uv.NewTerminalScreen(&buf, uv.Environ(nil))
+	scr.SetColorProfile(profile)
+
+	// Resize to specified dimensions
+	if err := scr.Resize(width, height); err != nil {
+		return "", err
+	}
+
+	// Render the document
+	viewport := scr.Bounds()
+	d.renderer.Render(scr, viewport)
+
+	// Generate the ANSI output
+	scr.Render()
+	scr.Flush()
+
+	return buf.String(), nil
 }

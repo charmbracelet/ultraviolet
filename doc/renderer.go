@@ -13,6 +13,7 @@ import (
 // Renderer handles rendering the DOM tree to a screen.
 type Renderer struct {
 	root     *node
+	boxTree  *Box // The box tree for layout
 	viewport uv.Rectangle
 }
 
@@ -30,11 +31,16 @@ func (r *Renderer) Render(scr uv.Screen, viewport uv.Rectangle) {
 	// Compute styles if needed
 	r.computeStyles(r.root)
 
-	// Layout the document
-	r.layout(r.root, viewport)
+	// Build box tree from DOM tree
+	r.boxTree = buildBoxTree(r.root)
 
-	// Paint the document
-	r.paint(scr, r.root, uv.Pos(0, 0))
+	// Layout the box tree
+	if r.boxTree != nil {
+		r.layoutBox(r.boxTree, viewport)
+	}
+
+	// Paint the box tree
+	r.paintBox(scr, r.boxTree, uv.Pos(0, 0))
 }
 
 // computeStyles recursively computes styles for all nodes.
@@ -98,8 +104,11 @@ func (r *Renderer) layoutText(n *node, availableRect uv.Rectangle) uv.Rectangle 
 	}
 
 	text := n.Data()
-	text = strings.TrimSpace(text)
-
+	
+	// Process whitespace according to CSS white-space property
+	// Block-level text: trim leading/trailing whitespace
+	text = processWhitespace(text, n.computedStyle.WhiteSpace, false)
+	
 	if text == "" {
 		n.layout = NewLayoutBox(uv.Rect(availableRect.Min.X, availableRect.Min.Y, 0, 0))
 		n.layout.Dirty = false
@@ -133,6 +142,7 @@ func (r *Renderer) layoutText(n *node, availableRect uv.Rectangle) uv.Rectangle 
 }
 
 // layoutBlock handles block-level layout (vertical stacking).
+// For inline children, it flows them horizontally with wrapping.
 func (r *Renderer) layoutBlock(n *node, availableRect uv.Rectangle) uv.Rectangle {
 	x := availableRect.Min.X
 	y := availableRect.Min.Y
@@ -146,8 +156,9 @@ func (r *Renderer) layoutBlock(n *node, availableRect uv.Rectangle) uv.Rectangle
 	}
 
 	// Layout children
-	for _, child := range n.Children() {
-		childNode, ok := child.(*node)
+	children := n.Children()
+	for i := 0; i < len(children); i++ {
+		childNode, ok := children[i].(*node)
 		if !ok {
 			continue
 		}
@@ -157,15 +168,40 @@ func (r *Renderer) layoutBlock(n *node, availableRect uv.Rectangle) uv.Rectangle
 			break
 		}
 
-		// Available space for this child
-		childRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+		// Check if this child is inline
+		isInline := childNode.computedStyle.Display == DisplayInline || childNode.Type() == html.TextNode
 
-		// Layout the child
-		layoutRect := r.layout(childNode, childRect)
+		if isInline {
+			// Collect consecutive inline children (including whitespace-only text nodes)
+			inlineChildren := []*node{childNode}
+			j := i + 1
+			for j < len(children) {
+				nextChild, ok := children[j].(*node)
+				if !ok {
+					break
+				}
+				nextIsInline := nextChild.computedStyle.Display == DisplayInline || nextChild.Type() == html.TextNode
+				if !nextIsInline {
+					break
+				}
+				inlineChildren = append(inlineChildren, nextChild)
+				j++
+			}
+			i = j - 1 // Skip the children we collected
 
-		// Move down for next child
-		if layoutRect.Dy() > 0 {
-			currentY += layoutRect.Dy()
+			// Layout inline children horizontally (layoutInline will skip whitespace-only nodes)
+			childRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+			inlineHeight := r.layoutInline(inlineChildren, childRect)
+			currentY += inlineHeight
+		} else {
+			// Layout block child normally
+			childRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+			layoutRect := r.layout(childNode, childRect)
+
+			// Move down for next child
+			if layoutRect.Dy() > 0 {
+				currentY += layoutRect.Dy()
+			}
 		}
 	}
 
@@ -179,6 +215,140 @@ func (r *Renderer) layoutBlock(n *node, availableRect uv.Rectangle) uv.Rectangle
 	n.layout.Dirty = false
 
 	return n.layout.Rect
+}
+
+// layoutInline handles inline layout (horizontal flow with wrapping).
+// It collects text from all inline children and wraps them as a single flow.
+func (r *Renderer) layoutInline(children []*node, availableRect uv.Rectangle) int {
+	x := availableRect.Min.X
+	y := availableRect.Min.Y
+	width := availableRect.Dx()
+
+	// Collect all text cells from inline children (recursively)
+	var allCells uv.Line
+	var allTextNodes []*node
+
+	// Helper function to recursively collect text from inline elements
+	var collectInlineText func(*node)
+	collectInlineText = func(n *node) {
+		if n.Type() == html.TextNode {
+			// Get text content and process whitespace
+			// For whitespace-only text nodes between elements, use block context (trim them)
+			// For text nodes with actual content, use inline context (preserve spaces)
+			rawText := n.Data()
+			isWhitespaceOnly := strings.TrimSpace(rawText) == ""
+			
+			// Check if computedStyle is set
+			if n.computedStyle == nil {
+				return // Skip if no style computed
+			}
+			
+			text := processWhitespace(rawText, n.computedStyle.WhiteSpace, !isWhitespaceOnly)
+			if text == "" {
+				return
+			}
+
+			// Render text to cells with styling
+			lines := r.renderTextToLines(text, n)
+			for _, line := range lines {
+				allCells = append(allCells, line...)
+			}
+			allTextNodes = append(allTextNodes, n)
+		} else if n.computedStyle != nil && n.computedStyle.Display == DisplayInline {
+			// Recursively process children of inline elements
+			for _, child := range n.Children() {
+				if childNode, ok := child.(*node); ok {
+					collectInlineText(childNode)
+				}
+			}
+		}
+	}
+
+	// Process all children
+	for _, child := range children {
+		collectInlineText(child)
+	}
+
+	// Wrap the combined line
+	wrappedLines := r.wrapLines([]uv.Line{allCells}, width)
+
+	// Store wrapped lines in the first text node for painting
+	// (only one node needs to paint the combined line)
+	if len(allTextNodes) > 0 {
+		allTextNodes[0].wrappedLines = wrappedLines
+		allTextNodes[0].layout = NewLayoutBox(uv.Rect(x, y, width, len(wrappedLines)))
+		allTextNodes[0].layout.Dirty = false
+
+		// Set empty layout for other text nodes so they don't paint
+		for i := 1; i < len(allTextNodes); i++ {
+			allTextNodes[i].wrappedLines = nil
+			allTextNodes[i].layout = NewLayoutBox(uv.Rect(x, y, 0, 0))
+			allTextNodes[i].layout.Dirty = false
+		}
+	}
+
+	// Set layout for inline element containers (they don't paint themselves)
+	for _, child := range children {
+		if child.Type() != html.TextNode {
+			child.layout = NewLayoutBox(uv.Rect(x, y, width, len(wrappedLines)))
+			child.layout.Dirty = false
+		}
+	}
+
+	return len(wrappedLines)
+}
+
+// processWhitespace processes text according to CSS white-space property.
+// See: https://developer.mozilla.org/en-US/docs/Web/CSS/white-space
+// isInlineContext: if true, preserve leading/trailing spaces (inline elements).
+// If false, trim leading/trailing whitespace (block-level text).
+func processWhitespace(text string, whiteSpace WhiteSpace, isInlineContext bool) string {
+	switch whiteSpace {
+	case WhiteSpacePre, WhiteSpacePreWrap, WhiteSpaceBreakSpaces:
+		// Preserve all whitespace including newlines and spaces
+		return text
+		
+	case WhiteSpacePreLine:
+		// Collapse whitespace but preserve newlines
+		// Replace sequences of spaces/tabs with single space
+		// But keep newlines
+		lines := strings.Split(text, "\n")
+		for i, line := range lines {
+			// Collapse whitespace in each line
+			lines[i] = collapseWhitespace(line)
+		}
+		return strings.Join(lines, "\n")
+		
+	case WhiteSpaceNormal, WhiteSpaceNowrap:
+		fallthrough
+	default:
+		// Collapse all whitespace (including newlines) into single spaces
+		collapsed := collapseWhitespace(text)
+		// Only trim leading/trailing whitespace for block-level text
+		// In inline context, preserve leading/trailing spaces (they're significant)
+		if !isInlineContext {
+			collapsed = strings.TrimSpace(collapsed)
+		}
+		return collapsed
+	}
+}
+
+// collapseWhitespace replaces sequences of whitespace with a single space.
+func collapseWhitespace(text string) string {
+	// Replace all whitespace (spaces, tabs, newlines) with spaces
+	text = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, text)
+	
+	// Collapse multiple spaces into one
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	
+	return text
 }
 
 // paint renders the node and its children to the screen.
@@ -297,7 +467,6 @@ func (r *Renderer) renderTextToLines(text string, n *node) []uv.Line {
 
 	// Build link based on element ID or parent anchor
 	var cellLink uv.Link
-	var hasLink bool
 
 	// Check if this node or any parent is an anchor or has an ID
 	currentNode := n
@@ -316,7 +485,6 @@ func (r *Renderer) renderTextToLines(text string, n *node) []uv.Line {
 			if id != "" {
 				cellLink.Params = "id=" + id
 			}
-			hasLink = true
 			break
 		}
 
@@ -326,7 +494,6 @@ func (r *Renderer) renderTextToLines(text string, n *node) []uv.Line {
 				URL:    "",
 				Params: "id=" + id,
 			}
-			hasLink = true
 			break
 		}
 
@@ -341,9 +508,6 @@ func (r *Renderer) renderTextToLines(text string, n *node) []uv.Line {
 			break
 		}
 	}
-
-	// Only set link on cells if we found one
-	_ = hasLink
 
 	// Apply text attributes
 	if style.FontWeight == FontWeightBold {
@@ -560,3 +724,180 @@ func (r *Renderer) wrapLines(lines []uv.Line, maxWidth int) []uv.Line {
 
 	return wrapped
 }
+
+// layoutBox performs layout for a box and its children using the CSS box model.
+// Returns the final rectangle occupied by the box.
+func (r *Renderer) layoutBox(box *Box, availableRect uv.Rectangle) uv.Rectangle {
+	if box == nil {
+		return uv.Rectangle{}
+	}
+
+	if box.IsBlock() {
+		return r.layoutBlockBox(box, availableRect)
+	}
+	
+	// Inline boxes are laid out within their parent's inline formatting context
+	return uv.Rectangle{}
+}
+
+// layoutBlockBox lays out a block-level box.
+// This establishes a block formatting context (BFC).
+func (r *Renderer) layoutBlockBox(box *Box, availableRect uv.Rectangle) uv.Rectangle {
+	x := availableRect.Min.X
+	y := availableRect.Min.Y
+	width := availableRect.Dx()
+	maxHeight := availableRect.Dy()
+
+	// Apply width from style if set
+	if box.Style.Width > 0 {
+		width = box.Style.Width
+	}
+
+	currentY := y
+	i := 0
+
+	// Layout children
+	for i < len(box.Children) {
+		child := box.Children[i]
+		
+		if currentY-y >= maxHeight && maxHeight > 0 {
+			break // Exceeded viewport
+		}
+
+		if child.IsBlock() {
+			// Block child: layout and stack vertically
+			childRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+			layoutRect := r.layoutBox(child, childRect)
+			child.Rect = layoutRect
+			
+			if layoutRect.Dy() > 0 {
+				currentY += layoutRect.Dy()
+			}
+			i++
+		} else {
+			// Inline children: collect consecutive inline boxes and establish IFC
+			var inlineBoxes []*Box
+			for i < len(box.Children) && box.Children[i].IsInline() {
+				inlineBoxes = append(inlineBoxes, box.Children[i])
+				i++
+			}
+			
+			if len(inlineBoxes) > 0 {
+				inlineRect := uv.Rect(x, currentY, width, maxHeight-(currentY-y))
+				height := r.layoutInlineFormattingContext(inlineBoxes, inlineRect)
+				currentY += height
+			}
+		}
+	}
+
+	// Calculate total height
+	totalHeight := currentY - y
+	if box.Style.Height > 0 {
+		totalHeight = box.Style.Height
+	}
+
+	box.Rect = uv.Rect(x, y, width, totalHeight)
+	return box.Rect
+}
+
+// layoutInlineFormattingContext lays out a sequence of inline boxes.
+// This establishes an inline formatting context (IFC).
+// Returns the height consumed by the inline content.
+func (r *Renderer) layoutInlineFormattingContext(boxes []*Box, availableRect uv.Rectangle) int {
+	x := availableRect.Min.X
+	y := availableRect.Min.Y
+	width := availableRect.Dx()
+
+	// Collect all text content from inline boxes (recursively)
+	var allCells uv.Line
+	var boxesWithText []*Box // Track which boxes contributed text
+
+	var collectText func(*Box)
+	collectText = func(box *Box) {
+		if box.Text != "" {
+			// Process whitespace
+			rawText := box.Text
+			isWhitespaceOnly := strings.TrimSpace(rawText) == ""
+			
+			text := processWhitespace(rawText, box.Style.WhiteSpace, !isWhitespaceOnly)
+			if text == "" {
+				return // Skip empty text
+			}
+
+			// Render text to cells with styling
+			lines := r.renderTextToLines(text, box.Node)
+			for _, line := range lines {
+				allCells = append(allCells, line...)
+			}
+			boxesWithText = append(boxesWithText, box)
+		}
+
+		// Recursively process inline children
+		for _, child := range box.Children {
+			if child.IsInline() {
+				collectText(child)
+			}
+		}
+	}
+
+	// Collect text from all inline boxes
+	for _, box := range boxes {
+		collectText(box)
+	}
+
+	// Wrap the combined text
+	wrappedLines := r.wrapLines([]uv.Line{allCells}, width)
+
+	// Store wrapped lines in the first box that contributed text
+	if len(boxesWithText) > 0 {
+		boxesWithText[0].WrappedLines = wrappedLines
+		boxesWithText[0].Rect = uv.Rect(x, y, width, len(wrappedLines))
+
+		// Clear wrapped lines for other boxes (only first one paints)
+		for i := 1; i < len(boxesWithText); i++ {
+			boxesWithText[i].WrappedLines = nil
+			boxesWithText[i].Rect = uv.Rect(x, y, 0, 0)
+		}
+	}
+
+	// Set rectangles for all inline boxes
+	for _, box := range boxes {
+		if box.Rect.Dx() == 0 && box.Rect.Dy() == 0 {
+			// Box wasn't set yet (no text content)
+			box.Rect = uv.Rect(x, y, width, len(wrappedLines))
+		}
+	}
+
+	return len(wrappedLines)
+}
+
+// paintBox renders a box and its children to the screen.
+func (r *Renderer) paintBox(scr uv.Screen, box *Box, offset uv.Position) {
+	if box == nil {
+		return
+	}
+
+	// Calculate absolute position
+	absRect := box.Rect.Add(offset)
+
+	// Skip if not visible in viewport
+	if !absRect.Overlaps(r.viewport) {
+		return
+	}
+
+	// Paint background if set
+	if box.Style != nil && box.Style.BackgroundColor != nil {
+		r.paintBackground(scr, absRect, box.Style.BackgroundColor)
+	}
+
+	// Paint text content
+	if len(box.WrappedLines) > 0 {
+		r.paintText(scr, absRect, box.WrappedLines)
+	}
+
+	// Paint children
+	for _, child := range box.Children {
+		r.paintBox(scr, child, offset)
+	}
+}
+
