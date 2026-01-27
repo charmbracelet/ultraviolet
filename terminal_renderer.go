@@ -19,6 +19,9 @@ var ErrInvalidDimensions = errors.New("invalid dimensions")
 type capabilities uint
 
 const (
+	// oscSeqPrefix is the prefix introducing an OSC sequence.
+	oscSeqPrefix = "\x1b]"
+
 	// Vertical Position Absolute [ansi.VPA].
 	capVPA capabilities = 1 << iota
 	// Horizontal Position Absolute [ansi.HPA].
@@ -88,6 +91,11 @@ const (
 	tFullscreen
 	tMapNewline
 	tScrollOptim
+	// tOSCWritten is set when an OSC sequence has been written since the last cursor move.
+	//
+	// It triggers use of absolute cursor positioning to maintain consistency when [tRelativeCursor]
+	// is unset (in alternate screen buffer mode).
+	tOSCWritten
 )
 
 // Set sets the given flags.
@@ -142,6 +150,12 @@ type TerminalRenderer struct {
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
 	logger           Logger       // The logger used for debugging.
+
+	// oscSeqQueuedRecently tracks whether an OSC sequence was written in a previous rendering
+	// procedure.
+	//
+	// This is used for cursor positioning only when [tRelativeCursor] is unset.
+	oscSeqQueuedRecently bool
 
 	// profile is the color profile to use when downsampling colors. This is
 	// used to determine the appropriate color the terminal can display.
@@ -1147,6 +1161,18 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 		return
 	}
 
+	// Track whether we're carrying an OSC sequence from a prior rendering procedure.
+	//
+	// If we are carrying one forward and don't encounter a new OSC sequence during this render,
+	// we'll clear the [tOSCWritten] flag at the end. The flag forces use of absolute cursor
+	// positioning after OSC sequences to maintain consistency in our tracking of the cursor's
+	// expected position.
+	//
+	// Note: This affects cursor positioning only when [tRelativeCursor] is unset (typically in
+	// alternate screen buffer mode).
+	carryingPriorOSCSeq := s.oscSeqQueuedRecently
+	s.oscSeqQueuedRecently = false
+
 	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
 		// Initialize the current buffer
 		s.curbuf = NewBuffer(newbuf.Width(), newbuf.Height())
@@ -1258,6 +1284,12 @@ func (s *TerminalRenderer) Render(newbuf *Buffer) {
 	}
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles
+
+	// Clear the [tOSCWritten] flag if we handled a previous OSC sequence and we found no new OSC
+	// sequences written into this call's buffer.
+	if carryingPriorOSCSeq && !s.oscSeqQueuedRecently {
+		s.flags.Reset(tOSCWritten)
+	}
 }
 
 // Erase marks the screen to be fully erased on the next render.
@@ -1291,11 +1323,19 @@ func (s *TerminalRenderer) SetPosition(x, y int) {
 
 // WriteString writes the given string to the underlying buffer.
 func (s *TerminalRenderer) WriteString(str string) (int, error) {
+	if !s.oscSeqQueuedRecently && strings.Contains(str, oscSeqPrefix) {
+		s.flags.Set(tOSCWritten)
+		s.oscSeqQueuedRecently = true
+	}
 	return s.buf.WriteString(str) //nolint:wrapcheck
 }
 
 // Write writes the given bytes to the underlying buffer.
 func (s *TerminalRenderer) Write(b []byte) (int, error) {
+	if !s.oscSeqQueuedRecently && bytes.Contains(b, []byte(oscSeqPrefix)) {
+		s.flags.Set(tOSCWritten)
+		s.oscSeqQueuedRecently = true
+	}
 	return s.buf.Write(b) //nolint:wrapcheck
 }
 
@@ -1502,7 +1542,12 @@ func moveCursor(s *TerminalRenderer, newbuf *Buffer, x, y int, overwrite bool) (
 		}
 		// Method #0: Use [ansi.CUP] if the distance is long.
 		seq = ansi.CursorPosition(x+1, y+1)
-		if fx == -1 || fy == -1 || width == -1 || notLocal(width, fx, fy, x, y) {
+		// Use absolute positioning if the cursor position is unknown, the screen width is unknown,
+		// the move distance is long, or an OSC sequence may have induced inconsistency in the
+		// expected cursor position.
+		//
+		// Note: This block only executes when [tRelativeCursor] is unset.
+		if fx == -1 || fy == -1 || width == -1 || notLocal(width, fx, fy, x, y) || s.flags.Contains(tOSCWritten) {
 			return seq, 0
 		}
 	}
