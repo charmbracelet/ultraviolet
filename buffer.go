@@ -663,6 +663,11 @@ func (b *RenderBuffer) TouchLine(x, y, n int) {
 		b.Touched = append(b.Touched, make([]*LineData, y-len(b.Touched)+1)...)
 	}
 
+	// Re-check bounds: a concurrent resize may have cleared Touched
+	if y >= len(b.Touched) {
+		return
+	}
+
 	ch := b.Touched[y]
 	if ch == nil {
 		ch = &LineData{FirstCell: x, LastCell: x + n}
