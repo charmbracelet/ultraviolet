@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
@@ -35,12 +34,7 @@ func run(t *uv.Terminal) error {
 
 	display := func() {
 		screen.Clear(scr)
-
-		bounds := scr.Bounds()
-		bounds.Min.X = (bounds.Dx() - viewWidth) / 2
-		bounds.Min.Y = (bounds.Dy() - viewHeight) / 2
-
-		view.Draw(scr, bounds)
+		view.Draw(scr, uv.CenterRect(scr.Bounds(), viewWidth, viewHeight))
 		scr.Render()
 		scr.Flush()
 	}
@@ -87,13 +81,4 @@ func run(t *uv.Terminal) error {
 	}
 
 	return nil
-}
-
-func init() {
-	f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		log.Fatalf("failed to open debug log file: %v", err)
-	}
-	log.SetOutput(f)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
 }
