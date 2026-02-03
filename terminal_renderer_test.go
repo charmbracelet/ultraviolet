@@ -453,7 +453,7 @@ func TestRendererTouched(t *testing.T) {
 	cellbuf := NewRenderBuffer(5, 3)
 
 	// Initially, no lines should be touched (empty buffer)
-	touched := r.Touched(cellbuf)
+	touched := cellbuf.TouchedLines()
 	if touched != 0 {
 		t.Errorf("expected 0 touched lines initially, got %d", touched)
 	}
@@ -464,7 +464,7 @@ func TestRendererTouched(t *testing.T) {
 	cellbuf.SetCell(0, 2, &cell)
 
 	// Should have touched lines where we set cells
-	touched = r.Touched(cellbuf)
+	touched = cellbuf.TouchedLines()
 	if touched != 2 {
 		t.Errorf("expected 2 touched lines after setting cells, got %d", touched)
 	}
@@ -473,7 +473,7 @@ func TestRendererTouched(t *testing.T) {
 	// because the renderer sets all LineData to non-nil (even with FirstCell: -1, LastCell: -1)
 	// This is the actual behavior of the renderer
 	r.Render(cellbuf)
-	touched = r.Touched(cellbuf)
+	touched = cellbuf.TouchedLines()
 	if touched != 3 {
 		t.Errorf("expected 3 touched lines after render (all lines have LineData), got %d", touched)
 	}
