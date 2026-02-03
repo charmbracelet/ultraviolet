@@ -5,6 +5,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func main() {
@@ -28,13 +29,24 @@ func run(t *uv.Terminal) error {
 
 	defer t.Stop()
 
-	view := uv.NewStyledString("    Hello, World!\nPress any key to exit.")
-	viewWidth := view.UnicodeWidth()
-	viewHeight := view.Height()
+	ctx := screen.NewContext(scr)
+	view := []string{
+		"Hello, World!",
+		"Press any key to exit.",
+	}
+	viewWidths := []int{
+		ansi.StringWidth(view[0]),
+		ansi.StringWidth(view[1]),
+	}
 
 	display := func() {
 		screen.Clear(scr)
-		view.Draw(scr, uv.CenterRect(scr.Bounds(), viewWidth, viewHeight))
+		bounds := scr.Bounds()
+		for i, line := range view {
+			x := (bounds.Dx() - viewWidths[i]) / 2
+			y := (bounds.Dy()-len(view))/2 + i
+			ctx.DrawString(line, x, y)
+		}
 		scr.Render()
 		scr.Flush()
 	}
@@ -54,7 +66,7 @@ func run(t *uv.Terminal) error {
 			if scr.AltScreen() {
 				scr.Resize(physicalWidth, physicalHeight)
 			} else {
-				scr.Resize(physicalWidth, viewHeight)
+				scr.Resize(physicalWidth, len(view))
 			}
 			display()
 		case uv.KeyPressEvent:
@@ -62,7 +74,7 @@ func run(t *uv.Terminal) error {
 			case ev.MatchString("space"):
 				if scr.AltScreen() {
 					scr.ExitAltScreen()
-					scr.Resize(physicalWidth, viewHeight)
+					scr.Resize(physicalWidth, len(view))
 				} else {
 					scr.EnterAltScreen()
 					scr.Resize(physicalWidth, physicalHeight)
