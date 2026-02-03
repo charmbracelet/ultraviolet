@@ -13,10 +13,17 @@ import (
 )
 
 func main() {
-	t := uv.DefaultTerminal()
+	t := uv.DefaultTerminal(nil)
+	scr := t.Screen()
+
+	// Start in altscreen mode
+	scr.EnterAltScreen()
+
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
 	}
+
+	defer t.Stop()
 
 	modes := []ansi.Mode{
 		ansi.ButtonEventMouseMode,
@@ -24,12 +31,7 @@ func main() {
 		ansi.FocusEventMode,
 	}
 
-	t.WriteString(ansi.SetMode(modes...))
-
-	width, height, err := t.GetSize()
-	if err != nil {
-		log.Fatalf("failed to get terminal size: %v", err)
-	}
+	scr.WriteString(ansi.SetMode(modes...))
 
 	// Listen for input and mouse events.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,23 +56,26 @@ Press any key to continue...`
 	var prevHelpBuf *uv.Buffer
 	showingHelp := true
 	displayHelp := func(show bool) {
-		midX, midY := width/2, height/2
+		bounds := scr.Bounds()
+		midX, midY := bounds.Dx()/2, bounds.Dy()/2
 		x, y := midX-helpW/2, midY-helpH/2
 		midArea := uv.Rect(x, y, helpW, helpH)
 		if show {
 			// Save the area under the help to restore it later.
-			prevHelpBuf = screen.CloneArea(t, midArea)
-			helpComp.Draw(t, midArea)
+			prevHelpBuf = screen.CloneArea(scr, midArea)
+			helpComp.Draw(scr, midArea)
 		} else if prevHelpBuf != nil {
 			// Restore saved area under the help.
-			prevHelpBuf.Draw(t, midArea)
+			prevHelpBuf.Draw(scr, midArea)
 		}
-		t.Display()
+		scr.Render()
+		scr.Flush()
 	}
 
 	clearScreen := func() {
-		screen.Clear(t)
-		t.Display()
+		screen.Clear(scr)
+		scr.Render()
+		scr.Flush()
 	}
 
 	// Display first frame.
@@ -81,7 +86,7 @@ Press any key to continue...`
 	pen.Content = defaultChar
 	draw := func(ev uv.MouseEvent) {
 		m := ev.Mouse()
-		cur := t.CellAt(m.X, m.Y)
+		cur := scr.CellAt(m.X, m.Y)
 		if cur == nil {
 			// Position out of bounds.
 			return
@@ -92,7 +97,7 @@ Press any key to continue...`
 			var wide *uv.Cell
 			var wideX, wideY int
 			for i := 1; i < 5 && m.X-i >= 0; i++ {
-				wide = t.CellAt(m.X-i, m.Y)
+				wide = scr.CellAt(m.X-i, m.Y)
 				if wide != nil && !wide.IsZero() && wide.Width > 1 {
 					wideX, wideY = m.X-i, m.Y
 					break
@@ -103,7 +108,7 @@ Press any key to continue...`
 				// Found a wide cell, make all cells blank.
 				wc := *wide
 				wc.Empty()
-				t.SetCell(wideX, wideY, &wc)
+				scr.SetCell(wideX, wideY, &wc)
 			}
 		}
 
@@ -114,7 +119,7 @@ Press any key to continue...`
 				fit = false
 			} else {
 				for i := 1; i < w; i++ {
-					cur = t.CellAt(m.X+i, m.Y)
+					cur = scr.CellAt(m.X+i, m.Y)
 					if cur == nil || cur.IsZero() || cur.Width > 1 {
 						// Position out of bounds or not empty.
 						fit = false
@@ -128,8 +133,9 @@ Press any key to continue...`
 			return
 		}
 
-		t.SetCell(m.X, m.Y, &pen)
-		t.Display()
+		scr.SetCell(m.X, m.Y, &pen)
+		scr.Render()
+		scr.Flush()
 	}
 
 LOOP:
@@ -143,9 +149,7 @@ LOOP:
 				if showingHelp {
 					displayHelp(false)
 				}
-				width, height = ev.Width, ev.Height
-				t.Resize(ev.Width, ev.Height)
-				t.Erase()
+				scr.Resize(ev.Width, ev.Height)
 				if showingHelp {
 					displayHelp(showingHelp)
 				}
@@ -194,10 +198,5 @@ LOOP:
 		}
 	}
 
-	t.WriteString(ansi.ResetMode(modes...))
-
-	// Shutdown the program.
-	if err := t.Shutdown(context.Background()); err != nil {
-		log.Fatalf("failed to shutdown program: %v", err)
-	}
+	scr.WriteString(ansi.ResetMode(modes...))
 }

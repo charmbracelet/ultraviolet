@@ -18,6 +18,7 @@ import (
 	_ "image/jpeg" // Register JPEG format
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/iterm2"
 	"github.com/charmbracelet/x/ansi/kitty"
@@ -68,17 +69,16 @@ func main() {
 	flag.Parse()
 
 	t := uv.DefaultTerminal()
+	scr := uv.NewTerminalScreen(t.Writer(), t.Environ())
+	evs := uv.NewTerminalEvents(t.Reader())
 
 	// Use altscreen buffer.
-	t.EnterAltScreen() //nolint:errcheck
+	scr.EnterAltScreen() //nolint:errcheck
 
 	// Enable mouse support.
-	t.WriteString(ansi.SetMode(
-		ansi.ModeMouseButtonEvent,
-		ansi.ModeMouseExtSgr,
-	))
+	scr.SetMouseMode(uv.MouseModeClick)
 
-	if err := t.Start(); err != nil {
+	if _, err := t.MakeRaw(); err != nil {
 		log.Fatalf("failed to start program: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func main() {
 	// Image related variables.
 	var (
 		winSize uv.WindowSizeEvent
-		pixSize uv.WindowPixelSizeEvent
+		pixSize uv.PixelSizeEvent
 		imgEnc  = blocksEncoding
 	)
 	if desiredEnc > 0 {
@@ -121,7 +121,7 @@ func main() {
 		log.Fatalf("failed to get terminal size: %v", err)
 	}
 
-	t.Resize(winSize.Width, winSize.Height) //nolint:errcheck
+	scr.Resize(winSize.Width, winSize.Height) //nolint:errcheck
 
 	upgradeEnc := func(enc imageEncoding) {
 		if desiredEnc == unknownEncoding {
@@ -191,19 +191,19 @@ func main() {
 		log.Printf("image area: %v", imgArea)
 
 		// Clear the screen.
-		t.Clear()
+		screen.Clear(scr)
 		fill := uv.Cell{Content: "/", Width: 1, Style: fillStyle}
-		t.Fill(&fill)
+		screen.Fill(scr, &fill)
 
 		// Draw the image on the screen.
 		switch imgEnc {
 		case blocksEncoding:
 			blocks := mosaic.New().Width(imgCellW).Height(imgCellH).Scale(2)
 			ss := uv.NewStyledString(blocks.Render(img))
-			ss.Draw(t, imgArea)
+			ss.Draw(scr, imgArea)
 
 		case itermEncoding, sixelEncoding:
-			t.FillArea(&uv.EmptyCell, imgArea)
+			screen.FillArea(scr, &uv.EmptyCell, imgArea)
 
 		case kittyEncoding:
 			const imgId = 31 // random id for kitty graphics
@@ -225,9 +225,8 @@ func main() {
 					log.Fatalf("failed to encode image for Kitty Graphics: %v", err)
 				}
 
-				t.WriteString(buf.String()) //nolint:errcheck
+				io.WriteString(t.Writer(), buf.String())
 				transmitKitty = true
-				t.Flush()
 			}
 
 			// Build Kitty graphics unicode place holders
@@ -255,13 +254,13 @@ func main() {
 				if extra > 0 {
 					content = append(content, kitty.Diacritic(extra))
 				}
-				t.SetCell(imgArea.Min.X, imgArea.Min.Y+y, &uv.Cell{
+				scr.SetCell(imgArea.Min.X, imgArea.Min.Y+y, &uv.Cell{
 					Style:   uv.Style{Fg: fg},
 					Content: string(content),
 					Width:   1,
 				})
 				for x := 1; x < imgArea.Dx(); x++ {
-					t.SetCell(imgArea.Min.X+x, imgArea.Min.Y+y, &uv.Cell{
+					scr.SetCell(imgArea.Min.X+x, imgArea.Min.Y+y, &uv.Cell{
 						Style:   uv.Style{Fg: fg},
 						Content: string(kitty.Placeholder),
 						Width:   1,
@@ -271,7 +270,8 @@ func main() {
 
 		}
 
-		t.Display() //nolint:errcheck
+		scr.Render() //nolint:errcheck
+		scr.Flush()
 
 		switch imgEnc {
 		case sixelEncoding:
@@ -283,6 +283,7 @@ func main() {
 			// and the cursor ends up at the bottom of the image
 			// Add a small offset to prevent top cutoff
 			if imgArea.Min.Y > 0 {
+				scr.SetCursorPosition(imgArea.Min.X, imgArea.Min.Y+1)
 				t.MoveTo(imgArea.Min.X, imgArea.Min.Y+1)
 			} else {
 				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
