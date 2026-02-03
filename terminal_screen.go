@@ -710,3 +710,17 @@ func (s *TerminalScreen) Write(p []byte) (n int, err error) {
 func (s *TerminalScreen) WriteString(str string) (n int, err error) {
 	return s.buf.WriteString(str)
 }
+
+// InsertAbove inserts [StyledString] content above the screen.
+//
+// Note that this won't have any visible effect if the screen is in alt screen
+// mode, as the content will be inserted above the alt screen buffer, which is
+// not visible. However, if the screen is in inline mode, the content will be
+// inserted above and will not be managed by the renderer.
+//
+// The changes can be committed to the underlying writer by calling the
+// [TerminalScreen.Flush] method.
+func (s *TerminalScreen) InsertAbove(content string) error {
+	s.rend.PrependString(s.rbuf, content)
+	return s.rend.Flush()
+}
