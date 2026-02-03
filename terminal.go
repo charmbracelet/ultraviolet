@@ -117,7 +117,7 @@ func NewTerminal(con Console, opts *Options) *Terminal {
 	t.buf = make([]byte, opts.BufferSize)
 	// These channels never close during the terminal's lifetime.
 	t.evc = make(chan Event)
-	t.winch = make(chan os.Signal)
+	t.winch = make(chan os.Signal, 1) // buffered to avoid missing signals
 	return t
 }
 
