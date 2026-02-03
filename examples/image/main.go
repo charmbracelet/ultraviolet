@@ -68,19 +68,20 @@ func init() {
 func main() {
 	flag.Parse()
 
-	t := uv.DefaultTerminal()
-	scr := uv.NewTerminalScreen(t.Writer(), t.Environ())
-	evs := uv.NewTerminalEvents(t.Reader())
+	t := uv.DefaultTerminal(nil)
+	if err := t.Start(); err != nil {
+		log.Fatalf("failed to start terminal: %v", err)
+	}
+
+	defer t.Stop()
+
+	scr := t.Screen()
 
 	// Use altscreen buffer.
 	scr.EnterAltScreen() //nolint:errcheck
 
 	// Enable mouse support.
 	scr.SetMouseMode(uv.MouseModeClick)
-
-	if _, err := t.MakeRaw(); err != nil {
-		log.Fatalf("failed to start program: %v", err)
-	}
 
 	// Get image info.
 	charmImgFile, err := os.Open("./charm.jpg")
@@ -114,11 +115,6 @@ func main() {
 	)
 	if desiredEnc > 0 {
 		imgEnc = imageEncoding(desiredEnc)
-	}
-
-	winSize.Width, winSize.Height, err = t.GetSize()
-	if err != nil {
-		log.Fatalf("failed to get terminal size: %v", err)
 	}
 
 	scr.Resize(winSize.Width, winSize.Height) //nolint:errcheck
@@ -203,7 +199,39 @@ func main() {
 			ss.Draw(scr, imgArea)
 
 		case itermEncoding, sixelEncoding:
-			screen.FillArea(scr, &uv.EmptyCell, imgArea)
+			for y := imgArea.Min.Y; y < imgArea.Max.Y; y++ {
+				var content string
+				if y == imgArea.Min.Y {
+					switch imgEnc {
+					case itermEncoding:
+						if charmImgB64 == nil {
+							// Encode the image to base64 for the first time.
+							charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
+						}
+						content = ansi.ITerm2(iterm2.File{
+							Name:              "charm.jpg",
+							Width:             iterm2.Cells(imgArea.Dx()),
+							Height:            iterm2.Cells(imgArea.Dy()),
+							Content:           charmImgB64,
+							Inline:            true,
+							IgnoreAspectRatio: true,
+						}) + ansi.CursorPosition(imgArea.Min.X+imgArea.Dx()+1, imgArea.Min.Y+1)
+					case sixelEncoding:
+						var senc sixel.Encoder
+						var buf bytes.Buffer
+						senc.Encode(&buf, img)
+						content = ansi.SixelGraphics(0, 1, 0, buf.Bytes()) +
+							ansi.CursorPosition(imgArea.Min.X+imgArea.Dx()+1, imgArea.Min.Y+1)
+					}
+				} else {
+					content = ansi.CursorForward(imgArea.Dx())
+				}
+
+				scr.SetCell(imgArea.Min.X, y, &uv.Cell{
+					Content: content,
+					Width:   imgArea.Dx(),
+				})
+			}
 
 		case kittyEncoding:
 			const imgId = 31 // random id for kitty graphics
@@ -225,7 +253,7 @@ func main() {
 					log.Fatalf("failed to encode image for Kitty Graphics: %v", err)
 				}
 
-				io.WriteString(t.Writer(), buf.String())
+				io.WriteString(scr, buf.String())
 				transmitKitty = true
 			}
 
@@ -272,60 +300,14 @@ func main() {
 
 		scr.Render() //nolint:errcheck
 		scr.Flush()
-
-		switch imgEnc {
-		case sixelEncoding:
-			var senc sixel.Encoder
-			var buf bytes.Buffer
-			senc.Encode(&buf, img)
-			six := ansi.SixelGraphics(0, 1, 0, buf.Bytes())
-			// Note: Sixel starts drawing from the current cursor position
-			// and the cursor ends up at the bottom of the image
-			// Add a small offset to prevent top cutoff
-			if imgArea.Min.Y > 0 {
-				scr.SetCursorPosition(imgArea.Min.X, imgArea.Min.Y+1)
-				t.MoveTo(imgArea.Min.X, imgArea.Min.Y+1)
-			} else {
-				t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-			}
-
-			t.WriteString(six) //nolint:errcheck
-			t.WriteString(ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1))
-
-		case itermEncoding:
-			// Now, we need to encode the image and place it in the first
-			// cell before moving the cursor to the correct position.
-			if charmImgB64 == nil {
-				// Encode the image to base64 for the first time.
-				charmImgB64 = []byte(base64.StdEncoding.EncodeToString(charmImgBuf.Bytes()))
-			}
-
-			data := ansi.ITerm2(iterm2.File{
-				Name:              "charm.jpg",
-				Width:             iterm2.Cells(imgArea.Dx()),
-				Height:            iterm2.Cells(imgArea.Dy()),
-				Inline:            true,
-				Content:           charmImgB64,
-				IgnoreAspectRatio: true,
-			})
-
-			cup := ansi.CursorPosition(imgArea.Min.X+1, imgArea.Min.Y+1)
-			t.MoveTo(imgArea.Min.X, imgArea.Min.Y)
-			t.WriteString(data) //nolint:errcheck
-			t.WriteString(cup)  //nolint:errcheck
-		}
-
-		if t.Buffered() > 0 {
-			t.Flush() //nolint:errcheck
-		}
 	}
 
 	// Query image encoding support.
-	t.WriteString(ansi.RequestPrimaryDeviceAttributes)        // Query Sixel support.
-	t.WriteString(ansi.RequestNameVersion)                    // Query terminal version and name.
-	t.WriteString(ansi.WindowOp(ansi.RequestWindowSizeWinOp)) // Request window size.
+	scr.WriteString(ansi.RequestPrimaryDeviceAttributes)        // Query Sixel support.
+	scr.WriteString(ansi.RequestNameVersion)                    // Query terminal version and name.
+	scr.WriteString(ansi.WindowOp(ansi.RequestWindowSizeWinOp)) // Request window size.
 	// Query Kitty Graphics support using random id=31.
-	t.WriteString(ansi.KittyGraphics([]byte("AAAA"), "i=31", "s=1", "v=1", "a=q", "t=d", "f=24"))
+	scr.WriteString(ansi.KittyGraphics([]byte("AAAA"), "i=31", "s=1", "v=1", "a=q", "t=d", "f=24"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -338,7 +320,7 @@ LOOP:
 			break LOOP
 		case ev := <-t.Events():
 			switch ev := ev.(type) {
-			case uv.WindowPixelSizeEvent:
+			case uv.PixelSizeEvent:
 				// XXX: This is only emitted with traditional Unix systems. On
 				// Windows, we would need to use [ansi.RequestWindowSizeWinOp] to
 				// get the pixel size.
@@ -352,9 +334,8 @@ LOOP:
 				imgCellW, imgCellH = imgCellSize()
 				imgOffsetX = winSize.Width/2 - imgCellW/2
 				imgOffsetY = winSize.Height/2 - imgCellH/2
-				t.Erase()
 				log.Printf("image cell size: %d x %d", imgCellW, imgCellH)
-				if err := t.Resize(ev.Width, ev.Height); err != nil {
+				if err := scr.Resize(ev.Width, ev.Height); err != nil {
 					log.Fatalf("failed to resize program: %v", err)
 				}
 
@@ -417,12 +398,12 @@ LOOP:
 	defer cancel()
 
 	// Disable mouse support.
-	t.WriteString(ansi.ResetMode(
+	scr.WriteString(ansi.ResetMode(
 		ansi.ModeMouseButtonEvent,
 		ansi.ModeMouseExtSgr,
 	))
 
-	if err := t.Shutdown(ctx); err != nil {
+	if err := t.Stop(); err != nil {
 		log.Fatalf("failed to shutdown program: %v", err)
 	}
 
