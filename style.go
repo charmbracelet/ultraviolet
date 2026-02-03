@@ -352,20 +352,20 @@ func (lp *LinkParser) Advance(data []byte) {
 			if b >= '0' && b <= '9' {
 				lp.cmd = lp.cmd*10 + int(b-'0')
 			} else if b == ';' {
-				lp.state = linkStateURL
+				lp.state = linkStateParams
 			}
-		case linkStateURL:
+		case linkStateParams:
 			if lp.cmd != 8 {
 				// Unsupported command, ignore rest
 				return
 			}
 			if b == ';' {
-				lp.state = linkStateParams
+				lp.state = linkStateURL
 			} else {
-				lp.link.URL += string(b)
+				lp.link.Params += string(b)
 			}
-		case linkStateParams:
-			lp.link.Params += string(b)
+		case linkStateURL:
+			lp.link.URL += string(b)
 		}
 	}
 }
@@ -394,6 +394,6 @@ type linkState int
 
 const (
 	linkStateStart linkState = iota
-	linkStateURL   linkState = iota
 	linkStateParams
+	linkStateURL
 )
