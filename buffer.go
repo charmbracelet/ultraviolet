@@ -39,9 +39,6 @@ func NewLine(width int) Line {
 
 // Set sets the cell at the given x position.
 func (l Line) Set(x int, c *Cell) {
-	// maxCellWidth is the maximum width a terminal cell is expected to have.
-	const maxCellWidth = 5
-
 	lineWidth := len(l)
 	if x < 0 || x >= lineWidth {
 		return
@@ -60,10 +57,10 @@ func (l Line) Set(x int, c *Cell) {
 			}
 		} else if pw == 0 {
 			// Writing to wide cell placeholders
-			for j := 1; j < maxCellWidth && x-j >= 0; j++ {
+			for j := 1; x-j >= 0; j++ {
 				if wide := l.At(x - j); wide != nil {
 					if ww := wide.Width; ww > 1 && j < ww {
-						for k := 0; k < ww; k++ {
+						for k := range ww {
 							l[x-j+k] = *wide
 							l[x-j+k].Empty()
 						}
