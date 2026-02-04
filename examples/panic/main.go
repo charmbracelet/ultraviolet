@@ -9,22 +9,22 @@ import (
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 )
 
 type tickEvent struct{}
 
 func main() {
-	t := uv.DefaultTerminal()
+	t := uv.DefaultTerminal(nil)
+	scr := t.Screen()
+
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start terminal: %v", err)
 	}
 
-	// Use the main screen
-	t.ExitAltScreen()
-
 	defer func() {
 		if r := recover(); r != nil {
-			_ = t.Teardown()
+			_ = t.Stop()
 			fmt.Fprintf(os.Stderr, "\r\nrecovered from panic: %v", r)
 			debug.PrintStack()
 		}
@@ -57,32 +57,32 @@ OUT:
 			break OUT
 		case ev := <-t.Events():
 			switch e := ev.(type) {
+			case uv.WindowSizeEvent:
+				scr.Resize(e.Width, 2)
 			case uv.KeyPressEvent:
 				switch {
 				case e.MatchString("q", "ctrl+c"):
 					cancel()
 					break OUT
 				}
-			case tickEvent: // ticker event
+			case tickEvent:
 				counter--
 				if counter < 0 {
-					panic("Time's up!")
+					panic("Time's up!\n")
 				}
 			}
 		}
 
-		t.Draw(uv.NewStyledString(view(counter)))
-		if err := t.Display(); err != nil {
-			log.Fatalf("failed to display terminal: %v", err)
-		}
+		ss := uv.NewStyledString(view(counter))
+		screen.Clear(scr)
+		scr.Display(ss)
 	}
 
-	t.Draw(uv.NewStyledString(view(counter) + "\n"))
-	if err := t.Display(); err != nil {
-		log.Fatalf("failed to display terminal: %v", err)
-	}
+	ss := uv.NewStyledString(view(counter) + "\n")
+	screen.Clear(scr)
+	scr.Display(ss)
 
-	if err := t.Shutdown(context.Background()); err != nil {
-		log.Fatalf("failed to shutdown terminal: %v", err)
+	if err := t.Stop(); err != nil {
+		log.Fatalf("failed to stop terminal: %v", err)
 	}
 }

@@ -48,18 +48,15 @@ func clamp(value, min, max float64) float64 {
 type tickEvent struct{}
 
 func main() {
-	t := uv.DefaultTerminal()
+	t := uv.DefaultTerminal(nil)
+	scr := t.Screen()
+	scr.EnterAltScreen()
 
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start terminal: %v", err)
 	}
 
-	var err error
-	var area uv.Rectangle
-	area.Max.X, area.Max.Y, err = t.GetSize()
-	if err != nil {
-		log.Fatalf("failed to get terminal size: %v", err)
-	}
+	defer t.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -70,8 +67,8 @@ func main() {
 	fps := 60.0
 	fpsFrameCount := 0
 
-	var lastWidth, lastHeight int
-	colors := setupColors(area.Dx(), area.Dy())
+	bounds := scr.Bounds()
+	colors := setupColors(bounds.Dx(), bounds.Dy())
 
 	go t.SendEvent(tickEvent{})
 
@@ -90,15 +87,9 @@ LOOP:
 				}
 
 			case uv.WindowSizeEvent:
-				area.Max.X = ev.Width
-				area.Max.Y = ev.Height
-				if width, height := area.Dx(), area.Dy(); width != lastWidth || height != lastHeight {
-					colors = setupColors(width, height)
-					lastWidth = width
-					lastHeight = height
-					t.Resize(area.Dx(), area.Dy())
-					t.Erase()
-				}
+				width, height := ev.Width, ev.Height
+				colors = setupColors(width, height)
+				scr.Resize(width, height)
 			case tickEvent:
 				if len(colors) == 0 {
 					continue
@@ -106,14 +97,16 @@ LOOP:
 
 				frameCount++
 				fpsFrameCount++
-				screen.Clear(t)
+				screen.Clear(scr)
+
+				bounds := scr.Bounds()
 
 				// Title
 				uv.NewStyledString(fmt.Sprintf("\x1b[1mSpace / FPS: %.1f\x1b[m", fps)).
-					Draw(t, uv.Rect(0, 0, area.Dx(), 1))
+					Draw(scr, uv.Rect(0, 0, bounds.Dx(), 1))
 
 				// Color display
-				width, height := area.Dx(), area.Dy() // Reserve one line for the title
+				width, height := bounds.Dx(), bounds.Dy()
 				for y := 1; y < height; y++ {
 					for x := 0; x < width; x++ {
 						xi := (x + frameCount) % width
@@ -123,7 +116,7 @@ LOOP:
 							Fg: fg,
 							Bg: bg,
 						}
-						t.SetCell(x, y, &uv.Cell{
+						scr.SetCell(x, y, &uv.Cell{
 							Content: "▀",
 							Style:   st,
 							Width:   1,
@@ -131,7 +124,9 @@ LOOP:
 					}
 				}
 
-				t.Display()
+				scr.Render()
+				scr.Flush()
+
 				elapsed = time.Since(now)
 				if elapsed > time.Second && fpsFrameCount > 2 {
 					fps = float64(fpsFrameCount) / elapsed.Seconds()
@@ -142,9 +137,5 @@ LOOP:
 				go t.SendEvent(tickEvent{})
 			}
 		}
-	}
-
-	if err := t.Shutdown(context.Background()); err != nil {
-		log.Printf("failed to shutdown terminal: %v", err)
 	}
 }

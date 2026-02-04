@@ -1118,19 +1118,6 @@ func (s *TerminalRenderer) Flush() (err error) {
 	return
 }
 
-// Touched returns the number of lines that have been touched or changed.
-func (s *TerminalRenderer) Touched(buf *RenderBuffer) (n int) {
-	if buf.Touched == nil {
-		return buf.Height()
-	}
-	for _, ch := range buf.Touched {
-		if ch != nil {
-			n++
-		}
-	}
-	return
-}
-
 // Redraw forces a full redraw of the screen. It's equivalent to calling
 // [TerminalRenderer.Erase] and [TerminalRenderer.Render].
 func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
@@ -1142,7 +1129,7 @@ func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
 // [terminalWriter.Flush] to flush pending changes to the screen.
 func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	// Do we need to render anything?
-	touchedLines := s.Touched(newbuf)
+	touchedLines := newbuf.TouchedLines()
 	if !s.clear && touchedLines == 0 {
 		return
 	}

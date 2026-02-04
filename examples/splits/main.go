@@ -1,11 +1,11 @@
 package main
 
 import (
-	"context"
 	"log"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -17,7 +17,6 @@ type layout struct {
 
 func makeLayout(r uv.Rectangle) layout {
 	m, s := uv.SplitHorizontal(r, uv.Percent(80))
-	// m, s := uv.SplitHorizontal(r, uv.Fixed(r.Dx()-40))
 	m, f := uv.SplitVertical(m, uv.Fixed(r.Dy()-7))
 	return layout{
 		main:    m,
@@ -27,11 +26,14 @@ func makeLayout(r uv.Rectangle) layout {
 }
 
 func main() {
-	t := uv.DefaultTerminal()
+	t := uv.DefaultTerminal(nil)
+	scr := t.Screen()
 
 	if err := t.Start(); err != nil {
 		log.Fatalln("failed to start terminal:", err)
 	}
+
+	defer t.Stop()
 
 	var area uv.Rectangle
 	blue := uv.EmptyCell
@@ -42,22 +44,23 @@ func main() {
 	green.Style.Bg = ansi.Green
 
 	ticker := time.NewTicker(time.Second / 60)
+	defer ticker.Stop()
 
 LOOP:
 	for {
 		select {
 		case <-ticker.C:
 			l := makeLayout(area)
-			t.FillArea(&blue, l.main)
-			t.FillArea(&red, l.footer)
-			t.FillArea(&green, l.sidebar)
-			_ = t.Display()
+			screen.FillArea(scr, &blue, l.main)
+			screen.FillArea(scr, &red, l.footer)
+			screen.FillArea(scr, &green, l.sidebar)
+			scr.Render()
+			scr.Flush()
 		case ev := <-t.Events():
 			switch ev := ev.(type) {
 			case uv.WindowSizeEvent:
 				area = ev.Bounds()
-				t.Resize(area.Dx(), area.Dy())
-				t.Erase()
+				scr.Resize(area.Dx(), area.Dy())
 			case uv.KeyPressEvent:
 				switch {
 				case ev.MatchString("ctrl+c", "q"):
@@ -65,9 +68,5 @@ LOOP:
 				}
 			}
 		}
-	}
-
-	if err := t.Shutdown(context.Background()); err != nil {
-		log.Println("failed to shutdown terminal:", err)
 	}
 }

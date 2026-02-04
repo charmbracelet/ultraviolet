@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"image/color"
 	"log"
 	"os"
@@ -17,40 +16,23 @@ import (
 )
 
 const (
-	// In real life situations we'd adjust the document to fit the width we've
-	// detected. In the case of this example we're hardcoding the width, and
-	// later using the detected width only to truncate in order to avoid jaggy
-	// wrapping.
-	width = 96
-
-	// How wide to render various columns in the layout.
+	width       = 96
 	columnWidth = 30
 )
 
 var (
-	// Whether the detected background color is dark. We detect this in init().
 	hasDarkBG bool
-
-	// A helper function for choosing either a light or dark color based on the
-	// detected background color. We create this in init().
 	lightDark lipgloss.LightDarkFunc
 )
 
 func init() {
-	// Detect the background color.
 	hasDarkBG = lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
-
-	// Create a new helper function for choosing either a light or dark color
-	// based on the detected background color.
 	lightDark = lipgloss.LightDark(hasDarkBG)
 }
 
 func main() {
 	// Style definitions.
 	var (
-
-		// General.
-
 		subtle    = lightDark(lipgloss.Color("#D9DCCF"), lipgloss.Color("#383838"))
 		highlight = lightDark(lipgloss.Color("#874BFD"), lipgloss.Color("#7D56F4"))
 		special   = lightDark(lipgloss.Color("#43BF6D"), lipgloss.Color("#73F59F"))
@@ -62,8 +44,6 @@ func main() {
 			String()
 
 		url = lipgloss.NewStyle().Foreground(special).Render
-
-		// Tabs.
 
 		activeTabBorder = lipgloss.Border{
 			Top:         "─",
@@ -99,8 +79,6 @@ func main() {
 			BorderLeft(false).
 			BorderRight(false)
 
-		// Title.
-
 		titleStyle = lipgloss.NewStyle().
 				MarginLeft(1).
 				MarginRight(5).
@@ -115,8 +93,6 @@ func main() {
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderTop(true).
 				BorderForeground(subtle)
-
-		// Dialog.
 
 		dialogBoxStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -138,8 +114,6 @@ func main() {
 					Background(lipgloss.Color("#F25D94")).
 					MarginRight(2).
 					Underline(true)
-
-		// List.
 
 		list = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder(), false, true, false, false).
@@ -169,8 +143,6 @@ func main() {
 				Render(s)
 		}
 
-		// Paragraphs/History.
-
 		historyStyle = lipgloss.NewStyle().
 				Align(lipgloss.Left).
 				Foreground(lipgloss.Color("#FAFAFA")).
@@ -179,8 +151,6 @@ func main() {
 				Padding(1, 2).
 				Height(19).
 				Width(columnWidth)
-
-		// Status Bar.
 
 		statusNugget = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FFFDF5")).
@@ -205,14 +175,11 @@ func main() {
 
 		fishCakeStyle = statusNugget.Background(lipgloss.Color("#6124DF"))
 
-		// Page.
-
 		docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
 	)
 
 	doc := strings.Builder{}
 
-	// Tabs.
 	{
 		row := lipgloss.JoinHorizontal(
 			lipgloss.Top,
@@ -227,7 +194,6 @@ func main() {
 		doc.WriteString(row + "\n\n")
 	}
 
-	// Title.
 	{
 		var (
 			colors = colorGrid(1, 5)
@@ -237,7 +203,7 @@ func main() {
 		for i, v := range colors {
 			const offset = 2
 			c := lipgloss.Color(v[0])
-			fmt.Fprint(&title, titleStyle.MarginLeft(i*offset).Background(c))
+			_, _ = title.WriteString(titleStyle.MarginLeft(i * offset).Background(c).String())
 			if i < len(colors)-1 {
 				title.WriteRune('\n')
 			}
@@ -252,7 +218,6 @@ func main() {
 		doc.WriteString(row + "\n\n")
 	}
 
-	// Dialog.
 	okButton := activeButtonStyle.Render("Yes")
 	cancelButton := buttonStyle.Render("Maybe")
 
@@ -274,14 +239,12 @@ func main() {
 	dialog := lipgloss.Place(width, 9,
 		lipgloss.Center, lipgloss.Center,
 		"",
-		// dialogBoxStyle.Render(dialogUi),
 		lipgloss.WithWhitespaceChars("猫咪"),
 		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Foreground(subtle)),
 	)
 
 	doc.WriteString(dialog + "\n\n")
 
-	// Color grid.
 	colors := func() string {
 		colors := colorGrid(14, 8)
 
@@ -312,7 +275,7 @@ func main() {
 			lipgloss.JoinVertical(lipgloss.Left,
 				listHeader("Actual Lip Gloss Vendors"),
 				listItem("Glossier"),
-				listItem("Claire‘s Boutique"),
+				listItem("Claire's Boutique"),
 				listDone("Nyx"),
 				listItem("Mac"),
 				listDone("Milk"),
@@ -322,12 +285,11 @@ func main() {
 
 	doc.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, lists, colors))
 
-	// Marmalade history.
 	{
 		const (
-			historyA = "The Romans learned from the Greeks that quinces slowly cooked with honey would “set” when cool. The Apicius gives a recipe for preserving whole quinces, stems and leaves attached, in a bath of honey diluted with defrutum: Roman marmalade. Preserves of quince and lemon appear (along with rose, apple, plum and pear) in the Book of ceremonies of the Byzantine Emperor Constantine VII Porphyrogennetos."
+			historyA = "The Romans learned from the Greeks that quinces slowly cooked with honey would \"set\" when cool. The Apicius gives a recipe for preserving whole quinces, stems and leaves attached, in a bath of honey diluted with defrutum: Roman marmalade. Preserves of quince and lemon appear (along with rose, apple, plum and pear) in the Book of ceremonies of the Byzantine Emperor Constantine VII Porphyrogennetos."
 			historyB = "Medieval quince preserves, which went by the French name cotignac, produced in a clear version and a fruit pulp version, began to lose their medieval seasoning of spices in the 16th century. In the 17th century, La Varenne provided recipes for both thick and clear cotignac."
-			historyC = "In 1524, Henry VIII, King of England, received a “box of marmalade” from Mr. Hull of Exeter. This was probably marmelada, a solid quince paste from Portugal, still made and sold in southern Europe today. It became a favourite treat of Anne Boleyn and her ladies in waiting."
+			historyC = "In 1524, Henry VIII, King of England, received a \"box of marmalade\" from Mr. Hull of Exeter. This was probably marmelada, a solid quince paste from Portugal, still made and sold in southern Europe today. It became a favourite treat of Anne Boleyn and her ladies in waiting."
 		)
 
 		doc.WriteString(lipgloss.JoinHorizontal(
@@ -340,7 +302,6 @@ func main() {
 		doc.WriteString("\n\n")
 	}
 
-	// Status bar.
 	{
 		w := lipgloss.Width
 
@@ -366,83 +327,80 @@ func main() {
 		doc.WriteString(statusBarStyle.Width(width).Render(bar))
 	}
 
-	t := uv.DefaultTerminal()
-	// Set terminal to raw mode to read input events.
+	t := uv.DefaultTerminal(nil)
+	scr := t.Screen()
+
 	if err := t.Start(); err != nil {
 		log.Fatalf("starting program: %v", err)
 	}
 
+	defer t.Stop()
+
 	t.SetLogger(log.Default())
 
-	physicalWidth, _, err := t.GetSize()
-	if err != nil {
-		log.Fatalf("getting size: %v", err)
-	}
+	physicalWidth := scr.Bounds().Dx()
 
 	if physicalWidth > 0 {
 		docStyle = docStyle.MaxWidth(physicalWidth)
 	}
 
-	// Use altscreen mode.
-	t.EnterAltScreen()
+	scr.EnterAltScreen()
+	scr.WriteString(ansi.SetMode(ansi.ModeMouseButtonEvent, ansi.ModeMouseExtSgr))
 
-	// Enable mouse events.
-	t.WriteString(ansi.SetButtonEventMouseMode + ansi.SetSgrExtMouseMode)
-
-	// Display the program.
 	dialogWidth := lipgloss.Width(dialogUI) + dialogBoxStyle.GetHorizontalFrameSize()
 	dialogHeight := lipgloss.Height(dialogUI) + dialogBoxStyle.GetVerticalFrameSize()
-	dialogX, dialogY := physicalWidth/2-dialogWidth/2-docStyle.GetVerticalFrameSize()-1, 12
+	dialogX, dialogY := physicalWidth/2-dialogWidth/2+docStyle.GetVerticalFrameSize()-1, 12
 	mainDoc := docStyle.Render(doc.String())
 
 	display := func() {
-		screen.Clear(t)
+		screen.Clear(scr)
 		mainSs := uv.NewStyledString(mainDoc)
-		mainSs.Draw(t, t.Bounds()) //nolint:errcheck
+		mainSs.Draw(scr, scr.Bounds())
 		boxArea := uv.Rect(dialogX, dialogY, dialogWidth, dialogHeight)
 		box := uv.NewStyledString(dialogBoxStyle.Render(dialogUI))
-		box.Draw(t, boxArea) //nolint:errcheck
-		t.Display()
+		box.Draw(scr, boxArea)
+		scr.Render()
+		scr.Flush()
 	}
 
-	// First display.
 	display()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 LOOP:
-	for ev := range t.Events() {
-		log.Printf("event: %T", ev)
-		switch ev := ev.(type) {
-		case uv.WindowSizeEvent:
-			t.Resize(ev.Width, ev.Height)
-			t.Erase()
-		case uv.MouseClickEvent:
-			dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
-		case uv.KeyPressEvent:
-			log.Printf("%T %q %q", ev, ev.String(), ev.Keystroke())
-			switch {
-			case ev.MatchString("ctrl+c", "q"):
-				break LOOP
-			case ev.MatchString("left", "h"):
-				dialogX--
-			case ev.MatchString("down", "j"):
-				dialogY++
-			case ev.MatchString("up", "k"):
-				dialogY--
-			case ev.MatchString("right", "l"):
-				dialogX++
+	for {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case ev := <-t.Events():
+			log.Printf("event: %T", ev)
+			switch ev := ev.(type) {
+			case uv.WindowSizeEvent:
+				scr.Resize(ev.Width, ev.Height)
+			case uv.MouseClickEvent:
+				dialogX, dialogY = ev.X-dialogWidth/2, ev.Y-dialogHeight/2
+			case uv.KeyPressEvent:
+				log.Printf("%T %q %q", ev, ev.String(), ev.Keystroke())
+				switch {
+				case ev.MatchString("ctrl+c", "q"):
+					cancel()
+				case ev.MatchString("left", "h"):
+					dialogX--
+				case ev.MatchString("down", "j"):
+					dialogY++
+				case ev.MatchString("up", "k"):
+					dialogY--
+				case ev.MatchString("right", "l"):
+					dialogX++
+				}
 			}
+
+			display()
 		}
-
-		// Update the display on any event.
-		display()
 	}
 
-	t.WriteString(ansi.ResetButtonEventMouseMode + ansi.ResetSgrExtMouseMode)
-
-	// Shutdown the program gracefully and exit.
-	if err := t.Shutdown(context.Background()); err != nil {
-		log.Fatalf("shutting down program: %v", err)
-	}
+	scr.WriteString(ansi.ResetMode(ansi.ModeMouseButtonEvent, ansi.ModeMouseExtSgr))
 }
 
 func colorGrid(xSteps, ySteps int) [][]string {
@@ -473,29 +431,20 @@ func colorGrid(xSteps, ySteps int) [][]string {
 	return grid
 }
 
-func max(a, b int) int { //nolint:predeclared
+func max(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
 }
 
-// applyGradient applies a gradient to the given string string.
 func applyGradient(base lipgloss.Style, input string, from, to color.Color) string {
-	// We want to get the graphemes of the input string, which is the number of
-	// characters as a human would see them.
-	//
-	// We definitely don't want to use len(), because that returns the
-	// bytes. The rune count would get us closer but there are times, like with
-	// emojis, where the rune count is greater than the number of actual
-	// characters.
 	g := uniseg.NewGraphemes(input)
 	var chars []string
 	for g.Next() {
 		chars = append(chars, g.Str())
 	}
 
-	// Genrate the blend.
 	a, _ := colorful.MakeColor(to)
 	b, _ := colorful.MakeColor(from)
 	var output strings.Builder
