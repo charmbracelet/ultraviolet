@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/clipperhouse/displaywidth"
+	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 
 // Context represents a drawing context for rendering operations on a screen.
@@ -200,7 +200,8 @@ func drawStringAt(scr uv.Screen, s string, x, y int, style uv.Style, link uv.Lin
 		return x, y
 	}
 
-	grs := displaywidth.StringGraphemes(s)
+	wm := scr.WidthMethod()
+	grs := graphemes.FromString(s)
 	for grs.Next() {
 		gr := grs.Value()
 		switch gr {
@@ -210,7 +211,7 @@ func drawStringAt(scr uv.Screen, s string, x, y int, style uv.Style, link uv.Lin
 			continue
 		}
 
-		w := grs.Width()
+		w := wm.StringWidth(gr)
 		pos := uv.Pos(x, y)
 		if x+w > bounds.Max.X {
 			if wrap {

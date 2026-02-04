@@ -58,16 +58,7 @@ func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
 	// output.
 	str = strings.ReplaceAll(str, "\r\n", "\n")
-	// TODO: We should always use the buf's width method here instead of
-	// assuming GraphemeWidth. However, the default [ansi.WcWidth] uses
-	// go-runewidth underneath and that uses narrow (1 cell wide) widths for
-	// east asian ambiguous characters when a CJK locale is detected.
-	// This depends on the font used with most modern fonts treating these
-	// ambiguous characters as wide (2 cells wide). We shouldn't change the
-	// behavior of [ansi.WcWidth] based on the locale and instead provide
-	// another method like the RUNEWIDTH_EASTASIAN environment variable used by
-	// go-runewidth.
-	printString(buf, ansi.GraphemeWidth, area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
+	printString(buf, buf.WidthMethod(), area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
 }
 
 // Height returns the number of lines in the styled string. This is the number
