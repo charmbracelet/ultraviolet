@@ -79,19 +79,25 @@ type Terminal struct {
 // DefaultTerminal creates a new [Terminal] instance using the default standard
 // console and the given options. Options can be nil to use the default
 // options.
-func DefaultTerminal(opts *Options) *Terminal {
-	return NewTerminal(nil, opts)
+//
+// This is a convenience function for creating a terminal that uses the
+// standard input and output file descriptors.
+func DefaultTerminal() *Terminal {
+	return NewTerminal(nil, nil)
 }
 
 // ControllingTerminal creates a new [Terminal] instance using the controlling
 // terminal's input and output file descriptors.
 // Options can be nil to use the default options.
-func ControllingTerminal(opts *Options) (*Terminal, error) {
+//
+// This is a convenience function for creating a terminal that uses the
+// controlling TTY of the current process.
+func ControllingTerminal() (*Terminal, error) {
 	con, err := ControllingConsole()
 	if err != nil {
 		return nil, err
 	}
-	return NewTerminal(con, opts), nil
+	return NewTerminal(con, nil), nil
 }
 
 // NewTerminal creates a new [Terminal] instance with the given console and
