@@ -445,8 +445,8 @@ func (d *eventScanner) storeGraphemeRune(kd int, r rune) {
 // KeyEventRecrods to bytes. Before returning the bytes, it will also try to
 // decode any UTF-16 pairs that might be present in the input buffer.
 func (d *eventScanner) deserializeWin32Input(buf []byte) (int, []byte) {
-	p := parserPool.Get().(*ansi.Parser)
-	defer parserPool.Put(p)
+	p := ansi.GetParser()
+	defer ansi.PutParser(p)
 
 	var processed int
 	var state byte

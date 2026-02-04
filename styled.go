@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"image/color"
 	"strings"
-	"sync"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -92,12 +91,6 @@ func (s *StyledString) Bounds() Rectangle {
 	return Rect(0, 0, w, h)
 }
 
-var parserPool = &sync.Pool{
-	New: func() any {
-		return ansi.NewParser()
-	},
-}
-
 // printString draws a string starting at the given position.
 func printString[T []byte | string](
 	s Screen,
@@ -106,12 +99,8 @@ func printString[T []byte | string](
 	bounds Rectangle, str T,
 	truncate bool, tail string,
 ) {
-	// We don't need to use a large buffer parser here. [ansi.GetParser]
-	// returns a 4MB parsers which are too large for our use case. We use our
-	// own pool of parsers that are smaller and more efficient for our use
-	// case.
-	p := parserPool.Get().(*ansi.Parser)
-	defer parserPool.Put(p)
+	p := ansi.GetParser()
+	defer ansi.PutParser(p)
 
 	var tailc Cell
 	if truncate && len(tail) > 0 {
