@@ -108,9 +108,9 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			} else {
 				// We encode the key to Win32 Input Mode if it is a known key.
 				if kevent.VirtualKeyCode == 0 {
-					d.storeGraphemeRune(kd, kevent.Char)
+					d.eventScanner.storeGraphemeRune(kd, kevent.Char)
 				} else {
-					buf.Write(d.encodeGraphemeBufs())
+					buf.Write(d.eventScanner.encodeGraphemeBufs())
 					fmt.Fprintf(buf,
 						"\x1b[%d;%d;%d;%d;%d;%d_",
 						kevent.VirtualKeyCode,
@@ -200,7 +200,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 	}
 
 	// Flush any remaining grapheme buffers.
-	buf.Write(d.encodeGraphemeBufs())
+	buf.Write(d.eventScanner.encodeGraphemeBufs())
 }
 
 func mouseEventButton(p, s uint32) (MouseButton, bool) {
