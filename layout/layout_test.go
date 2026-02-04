@@ -1,6 +1,10 @@
-package uv
+package layout
 
-import "testing"
+import (
+	"testing"
+
+	uv "github.com/charmbracelet/ultraviolet"
+)
 
 func TestRatio(t *testing.T) {
 	tests := []struct {
@@ -70,28 +74,28 @@ func TestFixedApply(t *testing.T) {
 
 func TestSplitVertical(t *testing.T) {
 	tests := []struct {
-		area           Rectangle
+		area           uv.Rectangle
 		constraint     Constraint
-		expectedTop    Rectangle
-		expectedBottom Rectangle
+		expectedTop    uv.Rectangle
+		expectedBottom uv.Rectangle
 	}{
 		{
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 200}},
 			Percent(50),
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 100}},
-			Rectangle{Min: Position{X: 0, Y: 100}, Max: Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 100}, Max: uv.Position{X: 100, Y: 200}},
 		},
 		{
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 200}},
 			Fixed(80),
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 80}},
-			Rectangle{Min: Position{X: 0, Y: 80}, Max: Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 80}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 80}, Max: uv.Position{X: 100, Y: 200}},
 		},
 		{
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 200}},
 			Percent(150), // Edge case: percent greater than 100
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 200}},
-			Rectangle{Min: Position{X: 0, Y: 200}, Max: Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 200}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 200}, Max: uv.Position{X: 100, Y: 200}},
 		},
 	}
 
@@ -108,28 +112,28 @@ func TestSplitVertical(t *testing.T) {
 
 func TestSplitHorizontal(t *testing.T) {
 	tests := []struct {
-		area          Rectangle
+		area          uv.Rectangle
 		constraint    Constraint
-		expectedLeft  Rectangle
-		expectedRight Rectangle
+		expectedLeft  uv.Rectangle
+		expectedRight uv.Rectangle
 	}{
 		{
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
 			Percent(50),
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 100, Y: 100}},
-			Rectangle{Min: Position{X: 100, Y: 0}, Max: Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 100, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 100, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
 		},
 		{
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
 			Fixed(80),
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 80, Y: 100}},
-			Rectangle{Min: Position{X: 80, Y: 0}, Max: Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 80, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 80, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
 		},
 		{
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
 			Percent(150), // Edge case: percent greater than 100
-			Rectangle{Min: Position{X: 0, Y: 0}, Max: Position{X: 200, Y: 100}},
-			Rectangle{Min: Position{X: 200, Y: 0}, Max: Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 0, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
+			uv.Rectangle{Min: uv.Position{X: 200, Y: 0}, Max: uv.Position{X: 200, Y: 100}},
 		},
 	}
 
