@@ -118,13 +118,14 @@ func (s *TerminalScreen) Resize(width, height int) error {
 	return nil
 }
 
-// Display draws the given [Drawable] onto the terminal screen and flushes the
-// changes to the underlying writer.
+// Display clears the screen and draws the given [Drawable] onto the terminal
+// screen and flushes the changes to the underlying writer.
 //
 // This is a convenience method that combines [TerminalScreen.Render] and
 // [TerminalScreen.Flush].
 func (s *TerminalScreen) Display(d Drawable) error {
 	if d != nil {
+		s.win.Clear()
 		d.Draw(s, s.win.Bounds())
 	}
 	if err := s.Render(); err != nil {
