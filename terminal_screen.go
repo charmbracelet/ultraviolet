@@ -711,16 +711,63 @@ func (s *TerminalScreen) WriteString(str string) (n int, err error) {
 	return s.buf.WriteString(str)
 }
 
-// InsertAbove inserts [StyledString] content above the screen.
+// InsertAbove inserts content above the screen pushing the current content
+// down.
+//
+// This is useful for inserting content above the current screen content
+// without affecting the current cursor position or screen state.
 //
 // Note that this won't have any visible effect if the screen is in alt screen
 // mode, as the content will be inserted above the alt screen buffer, which is
 // not visible. However, if the screen is in inline mode, the content will be
 // inserted above and will not be managed by the renderer.
 //
-// The changes can be committed to the underlying writer by calling the
-// [TerminalScreen.Flush] method.
+// Unlike other methods that modify the screen state, this method writes
+// directly to the underlying writer, so there is no need to call
+// [TerminalScreen.Flush] after calling this method.
 func (s *TerminalScreen) InsertAbove(content string) error {
-	s.rend.PrependString(s.rbuf, content)
-	return s.rend.Flush()
+	if len(content) == 0 {
+		return nil
+	}
+
+	var sb strings.Builder
+	w, h := s.win.Width(), s.win.Height()
+	_, y := s.rend.Position()
+
+	// We need to scroll the screen up by the number of lines in the queue.
+	sb.WriteByte('\r')
+	down := h - y - 1
+	if down > 0 {
+		sb.WriteString(ansi.CursorDown(down))
+	}
+
+	lines := strings.Split(content, "\n")
+	offset := len(lines)
+	for _, line := range lines {
+		lineWidth := s.win.WidthMethod().StringWidth(line)
+		if w > 0 && lineWidth > w {
+			offset += (lineWidth / w)
+		}
+	}
+
+	// Scroll the screen up by the offset to make room for the new lines.
+	sb.WriteString(strings.Repeat("\n", offset))
+
+	// XXX: Now go to the top of the screen, insert new lines, and write
+	// the queued strings. It is important to use [Screen.moveCursor]
+	// instead of [Screen.move] because we don't want to perform any checks
+	// on the cursor position.
+	up := offset + h - 1
+	sb.WriteString(ansi.CursorUp(up))
+	sb.WriteString(ansi.InsertLine(offset))
+	for _, line := range lines {
+		sb.WriteString(line)
+		sb.WriteString(ansi.EraseLineRight)
+		sb.WriteString("\r\n")
+	}
+
+	s.rend.SetPosition(0, 0)
+
+	_, err := io.WriteString(s.w, sb.String())
+	return err
 }
