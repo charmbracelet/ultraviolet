@@ -6,6 +6,7 @@ import (
 	"log"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 )
 
 var (
@@ -27,21 +28,19 @@ var (
 )
 
 func main() {
-	t := uv.DefaultTerminal()
+	t := uv.DefaultTerminal(nil)
+	scr := t.Screen()
+
 	if err := t.Start(); err != nil {
 		log.Fatalf("Error starting terminal: %v", err)
 	}
 
-	var err error
-	var area uv.Rectangle
-	area.Max.X, area.Max.Y, err = t.GetSize()
-	if err != nil {
-		log.Fatalf("Error getting terminal size: %v", err)
-	}
+	defer t.Stop()
 
-	t.EnterAltScreen()
+	scr.EnterAltScreen()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	const barCount = 7
 	const botBarCount = 6
@@ -75,7 +74,9 @@ func main() {
 	}
 
 	display := func() {
-		t.Clear()
+		screen.Clear(scr)
+
+		area := scr.Bounds()
 		topRow := uv.Rect(0, 0, area.Max.X, (area.Max.Y*66)/100)
 		midRow := uv.Rect(0, topRow.Max.Y, area.Max.X, (area.Max.Y*8)/100)
 		botRow := uv.Rect(0, midRow.Max.Y, area.Max.X, (area.Max.Y*26)/100)
@@ -88,7 +89,7 @@ func main() {
 				bar := uv.Rect(j*barWidth, row.Min.Y, (j+1)*barWidth, row.Max.Y)
 				cell := uv.EmptyCell
 				cell.Style.Bg = rowColors[i][j%len(rowColors[i])]
-				t.FillArea(&cell, bar)
+				screen.FillArea(scr, &cell, bar)
 			}
 		}
 
@@ -97,7 +98,7 @@ func main() {
 			bar := uv.Rect(i*botBarWidth, botRow.Min.Y, (i+1)*botBarWidth, botRow.Max.Y)
 			cell := uv.EmptyCell
 			cell.Style.Bg = rowColors[2][i%len(rowColors[2])]
-			t.FillArea(&cell, bar)
+			screen.FillArea(scr, &cell, bar)
 		}
 
 		// Special case for the before last bar
@@ -114,13 +115,15 @@ func main() {
 			case 2:
 				cell.Style.Bg = lightBlack
 			}
-			t.FillArea(&cell, bar)
+			screen.FillArea(scr, &cell, bar)
 		}
 
-		if err := t.Display(); err != nil {
-			log.Fatalf("Error displaying terminal: %v", err)
-		}
+		scr.Render()
+		scr.Flush()
 	}
+
+	// initial render
+	display()
 
 LOOP:
 	for {
@@ -130,9 +133,7 @@ LOOP:
 		case ev := <-t.Events():
 			switch ev := ev.(type) {
 			case uv.WindowSizeEvent:
-				area.Max.X, area.Max.Y = ev.Width, ev.Height
-				t.Resize(area.Max.X, area.Max.Y)
-				t.Erase()
+				scr.Resize(ev.Width, ev.Height)
 				display()
 			case uv.KeyPressEvent:
 				switch {
@@ -141,9 +142,5 @@ LOOP:
 				}
 			}
 		}
-	}
-
-	if err := t.Shutdown(ctx); err != nil {
-		log.Fatalf("Error shutting down terminal: %v", err)
 	}
 }
