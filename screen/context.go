@@ -254,8 +254,8 @@ func (c Context) WithURL(url string, params ...string) Context {
 }
 
 // Position returns the current position of the context.
-func (c *Context) Position() uv.Position {
-	return c.pos
+func (c *Context) Position() (x, y int) {
+	return c.pos.X, c.pos.Y
 }
 
 // SetPosition moves the current position of the context cursor to the given
