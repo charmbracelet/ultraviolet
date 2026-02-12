@@ -374,7 +374,12 @@ func (b *Buffer) FillArea(c *Cell, area Rectangle) {
 
 // Clear clears the buffer with space cells and rectangle.
 func (b *Buffer) Clear() {
-	b.ClearArea(b.Bounds())
+	area := b.Bounds()
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
+			b.Lines[y][x] = EmptyCell
+		}
+	}
 }
 
 // ClearArea clears the buffer with space cells within the specified
