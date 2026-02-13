@@ -452,6 +452,41 @@ func TestFillArea(t *testing.T) {
 		}
 	})
 
+	t.Run("with FillArea method and wide cell", func(t *testing.T) {
+		scr := &mockScreenWithFillArea{
+			mockScreen: newMockScreen(10, 5),
+		}
+
+		fillCell := &uv.Cell{Content: "混", Width: 2}
+		area := uv.Rect(0, 1, 4, 2)
+		FillArea(scr, fillCell, area)
+
+		if !scr.fillAreaCalled {
+			t.Error("FillArea method was not called")
+		}
+
+		if scr.lastCell != fillCell {
+			t.Errorf("FillArea called with wrong cell, expected %v, got %v", fillCell, scr.lastCell)
+		}
+
+		if scr.lastArea != area {
+			t.Errorf("FillArea called with wrong area, expected %v, got %v", area, scr.lastArea)
+		}
+
+		// Verify only the area is filled with the wide cell
+		for y := 0; y < 5; y++ {
+			for x := 0; x < 10; x += fillCell.Width {
+				cell := scr.CellAt(x, y)
+				if x >= 0 && x < 4 && y >= 1 && y < 3 {
+					// Inside filled area
+					if cell == nil || cell.Content != "混" || cell.Width != 2 {
+						t.Errorf("Cell at (%d,%d) should be filled with '混', got %q", x, y, cell)
+					}
+				}
+			}
+		}
+	})
+
 	t.Run("without FillArea method", func(t *testing.T) {
 		scr := newMockScreen(10, 5)
 
