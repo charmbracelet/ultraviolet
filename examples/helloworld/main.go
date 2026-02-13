@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// Create a new terminal screen
-	t := uv.DefaultTerminal(nil)
+	t := uv.DefaultTerminal()
 
 	if err := run(t); err != nil {
 		log.Fatalf("error: %v", err)

@@ -48,7 +48,7 @@ func clamp(value, min, max float64) float64 {
 type tickEvent struct{}
 
 func main() {
-	t := uv.DefaultTerminal(nil)
+	t := uv.DefaultTerminal()
 	scr := t.Screen()
 	scr.EnterAltScreen()
 
