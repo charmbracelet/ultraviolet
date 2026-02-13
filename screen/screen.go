@@ -62,8 +62,12 @@ func FillArea(scr uv.Screen, cell *uv.Cell, area uv.Rectangle) {
 		f.FillArea(cell, area)
 		return
 	}
+	cellWidth := 1
+	if cell != nil && cell.Width > 1 {
+		cellWidth = cell.Width
+	}
 	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
+		for x := area.Min.X; x < area.Max.X; x += cellWidth {
 			scr.SetCell(x, y, cell)
 		}
 	}
@@ -84,12 +88,14 @@ func CloneArea(scr uv.Screen, area uv.Rectangle) *uv.Buffer {
 	}
 	buf := uv.NewBuffer(area.Dx(), area.Dy())
 	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
+		for x := area.Min.X; x < area.Max.X; {
 			cell := scr.CellAt(x, y)
 			if cell == nil || cell.IsZero() {
+				x++
 				continue
 			}
-			buf.SetCell(x-area.Min.X, y-area.Min.Y, cell.Clone())
+			buf.SetCell(x-area.Min.X, y-area.Min.Y, cell)
+			x += max(cell.Width, 1)
 		}
 	}
 	return buf
