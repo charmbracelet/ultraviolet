@@ -9,6 +9,32 @@ import (
 	"github.com/charmbracelet/ultraviolet/screen"
 )
 
+func TestStrengthIsValid(t *testing.T) {
+	t.Parallel()
+
+	assert := func(ok bool) {
+		t.Helper()
+
+		if !ok {
+			t.Error("invalid strength")
+		}
+	}
+
+	// Ensures that the constants are defined in the correct order of priority.
+
+	assert(spacerSizeEq > maxSizeLTE)
+	assert(maxSizeLTE > maxSizeEq)
+	assert(minSizeGTE == maxSizeLTE)
+	assert(maxSizeLTE > lengthSizeEq)
+	assert(lengthSizeEq > percentageSizeEq)
+	assert(percentageSizeEq > ratioSizeEq)
+	assert(ratioSizeEq > maxSizeEq)
+	assert(minSizeGTE > fillGrow)
+	assert(fillGrow > grow)
+	assert(grow > spaceGrow)
+	assert(spaceGrow > allSegmentGrow)
+}
+
 type LayoutSplitTestCase struct {
 	Name        string
 	Flex        Flex
@@ -20,10 +46,14 @@ type LayoutSplitTestCase struct {
 func (tc LayoutSplitTestCase) Test(t *testing.T) {
 	t.Helper()
 
+	t.Parallel()
+
 	letters(t, tc.Flex, tc.Constraints, tc.Width, tc.Want)
 }
 
 func TestLength(t *testing.T) {
+	t.Parallel()
+
 	testCases := []LayoutSplitTestCase{
 		{
 			Name:        "width 1 zero",
@@ -1092,6 +1122,8 @@ func TestPercentageFlexSpaceBetween(t *testing.T) {
 type Rect = uv.Rectangle
 
 func TestEdgeCases(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name        string
 		constraints []Constraint
@@ -1165,6 +1197,8 @@ func TestEdgeCases(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			layout := Layout{
 				Constraints: tc.constraints,
 				Direction:   tc.direction,
@@ -1178,6 +1212,8 @@ func TestEdgeCases(t *testing.T) {
 }
 
 func TestFlexConstraint(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name        string
 		constraints []Constraint
@@ -1196,6 +1232,8 @@ func TestFlexConstraint(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			rect := uv.Rect(0, 0, 100, 1)
 
 			rects := Horizontal(tc.constraints...).WithFlex(tc.flex).Split(rect)

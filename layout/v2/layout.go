@@ -1,3 +1,26 @@
+// Package layout provides a comprehensive set of types and traits for working with layout and
+// positioning in terminal applications. It implements a flexible layout system that allows you to
+// divide the terminal screen into different areas using constraints, manage positioning and
+// sizing, and handle complex UI arrangements.
+//
+// The layout system in Ratatui is based on the [Cassowary constraint solver algorithm].
+// This allows for sophisticated constraint-based layouts where
+// multiple requirements can be satisfied simultaneously, with priorities determining which
+// constraints take precedence when conflicts arise.
+//
+// # Layout Fundamentals
+//
+// Layouts form the structural foundation of your terminal UI. The [Layout] struct divides
+// available screen space into rectangular areas using a constraint-based approach. You define
+// multiple constraints for how space should be allocated, and the Cassowary solver determines
+// the optimal layout that satisfies as many constraints as possible. These areas can then be
+// used to render widgets or nested layouts.
+//
+// Note that the [Layout] struct is not required to create layouts - you can also manually
+// calculate and create [uv.Rectangle] areas using simple mathematics to divide up the terminal space
+// if you prefer direct control over positioning and sizing.
+//
+// [Cassowary constraint solver algorithm]: https://en.wikipedia.org/wiki/Cassowary_(software)
 package layout
 
 import (
@@ -8,25 +31,113 @@ import (
 	"github.com/charmbracelet/ultraviolet/internal/casso"
 )
 
+// floatPrecisionMultiplier decides floating point precision when rounding.
+// The number of zeros in this number is the precision for the rounding in layout calculations.
 const floatPrecisionMultiplier float64 = 100.0
 
 const (
-	spacerSizeEq     casso.Strength = casso.Required / 10.0
-	minSizeGTE       casso.Strength = casso.Strong * 100.0
-	maxSizeLTE       casso.Strength = casso.Strong * 100.0
-	lengthSizeEq     casso.Strength = casso.Strong * 10.0
+	// spacerSizeEq is the strength to apply to Spacers to ensure that their sizes are equal.
+	//
+	// 	┌     ┐┌───┐┌     ┐┌───┐┌     ┐
+	// 	  ==x  │   │  ==x  │   │  ==x
+	// 	└     ┘└───┘└     ┘└───┘└     ┘
+	spacerSizeEq casso.Strength = casso.Required / 10.0
+
+	// minSizeGTE is the strength to apply to Min inequality constraints.
+	//
+	// 	┌────────┐
+	// 	│Min(>=x)│
+	// 	└────────┘
+	minSizeGTE casso.Strength = casso.Strong * 100.0
+
+	// maxSizeLTE is the strength to apply to Max inequality constraints.
+	//
+	// 	┌────────┐
+	// 	│Max(<=x)│
+	// 	└────────┘
+	maxSizeLTE casso.Strength = casso.Strong * 100.0
+
+	// lengthSizeEq is the strength to apply to Length constraints.
+	//
+	// 	┌───────────┐
+	// 	│Length(==x)│
+	// 	└───────────┘
+	lengthSizeEq casso.Strength = casso.Strong * 10.0
+
+	// percentageSizeEq is the strength to apply to Percentage constraints.
+	//
+	// 	┌───────────────┐
+	// 	│Percentage(==x)│
+	// 	└───────────────┘
 	percentageSizeEq casso.Strength = casso.Strong
-	ratioSizeEq      casso.Strength = casso.Strong / 10.0
-	minSizeEq        casso.Strength = casso.Medium * 10.0
-	maxSizeEq        casso.Strength = casso.Medium * 10.0
-	grow             casso.Strength = 100.0
-	fillGrow         casso.Strength = casso.Medium
-	spaceGrow        casso.Strength = casso.Weak * 10.0
-	allSegmentGrow   casso.Strength = casso.Weak
+
+	// ratioSizeEq is the strength to apply to Ratio constraints.
+	//
+	// 	┌────────────┐
+	// 	│Ratio(==x,y)│
+	// 	└────────────┘
+	ratioSizeEq casso.Strength = casso.Strong / 10.0
+
+	// minSizeEq is the strength to apply to Min equality constraints.
+	//
+	// 	┌────────┐
+	// 	│Min(==x)│
+	// 	└────────┘
+	minSizeEq casso.Strength = casso.Medium * 10.0
+
+	// maxSizeEq the strength to apply to Max equality constraints.
+	//
+	// 	┌────────┐
+	// 	│Max(==x)│
+	// 	└────────┘
+	maxSizeEq casso.Strength = casso.Medium * 10.0
+
+	// fillGrow is the strength to apply to Fill growing constraints.
+	//
+	// 	┌─────────────────────┐
+	// 	│<=     Fill(x)     =>│
+	// 	└─────────────────────┘
+	fillGrow casso.Strength = casso.Medium
+
+	// grow is the strength to apply to growing constraints.
+	//
+	// 	┌────────────┐
+	// 	│<= Min(x) =>│
+	// 	└────────────┘
+	grow casso.Strength = 100.0
+
+	// spaceGrow is the strength to apply to Spacer growing constraints.
+	//
+	// 	┌       ┐
+	// 	 <= x =>
+	// 	└       ┘
+	spaceGrow casso.Strength = casso.Weak * 10.0
+
+	// allSegmentGrow is he strength to apply to growing the size of all segments equally.
+	//
+	// ┌───────┐
+	// │<= x =>│
+	// └───────┘
+	allSegmentGrow casso.Strength = casso.Weak
 )
 
+// Splitted represents result of [Layout] splitting
+// as a slice of rectangles.
 type Splitted []uv.Rectangle
 
+// Assign sets splitted rectangles into pointed values.
+//
+// Nil pointers are skipped.
+//
+// Panics if given more areas that [Splitted] length.
+//
+// # Examples
+//
+//	var top, bottom uv.Rectangle
+//
+//	layout.New(layout.Fill(1), layout.Len(1)).
+//		Split(area).
+//	    Assign(&top, &bottom)
 func (s Splitted) Assign(areas ...*uv.Rectangle) {
 	for i := range areas {
 		if areas[i] != nil {
@@ -35,21 +146,20 @@ func (s Splitted) Assign(areas ...*uv.Rectangle) {
 	}
 }
 
+// Direction of a layout.
+//
+// This is used with [Layout] to specify whether layout
+// segments should be arranged horizontally or vertically.
 type Direction int
 
 const (
+	// DirectionVertical - layout segments are arranged top to bottom (default).
 	DirectionVertical Direction = iota
+	// DirectionHorizontal - layout segments are arranged side by side (left to right).
 	DirectionHorizontal
 )
 
-func Vertical(constraints ...Constraint) Layout {
-	return New(DirectionVertical, constraints...)
-}
-
-func Horizontal(constraints ...Constraint) Layout {
-	return New(DirectionHorizontal, constraints...)
-}
-
+// New creates a new layout with default values.
 func New(direction Direction, constraints ...Constraint) Layout {
 	return Layout{
 		Direction:   direction,
@@ -59,6 +169,34 @@ func New(direction Direction, constraints ...Constraint) Layout {
 	}
 }
 
+// Vertical reates a new vertical layout with default values.
+func Vertical(constraints ...Constraint) Layout {
+	return New(DirectionVertical, constraints...)
+}
+
+// Horizontal reates a new horizontal layout with default values.
+func Horizontal(constraints ...Constraint) Layout {
+	return New(DirectionHorizontal, constraints...)
+}
+
+// TODO: research layout caching
+
+// Layout engine for dividing terminal space using constraints and direction.
+//
+// A layout is a set of constraints that can be applied to a given area to split it into smaller
+// rectangular areas. This is the core building block for creating structured user interfaces in
+// terminal applications.
+//
+// A layout is composed of:
+//   - a direction (horizontal or vertical)
+//   - a set of constraints (length, ratio, percentage, fill, min, max)
+//   - a margin (horizontal and vertical), the space between the edge of the main area and the split areas
+//   - a flex option that controls space distribution
+//   - a spacing option that controls gaps between segments
+//
+// The algorithm used to compute the layout is based on the Cassowary solver, a linear constraint
+// solver that computes positions and sizes to satisfy as many constraints as possible in order of
+// their priorities.
 type Layout struct {
 	Direction   Direction
 	Constraints []Constraint
@@ -67,32 +205,46 @@ type Layout struct {
 	Flex        Flex
 }
 
+// WithDirection returns a copy of the layout with the given direction.
 func (l Layout) WithDirection(direction Direction) Layout {
 	l.Direction = direction
 
 	return l
 }
 
+// WithPadding returns a copy of the layout with the given padding.
 func (l Layout) WithPadding(padding Padding) Layout {
 	l.Padding = padding
 	return l
 }
 
+// WithFlex returns a copy of the layout with the given flex.
 func (l Layout) WithFlex(flex Flex) Layout {
 	l.Flex = flex
+
 	return l
 }
 
+// WithSpacing returns a copy of the layout with the given spacing.
 func (l Layout) WithSpacing(spacing Spacing) Layout {
 	l.Spacing = spacing
+
 	return l
 }
 
+// WithConstraints returns a copy of the layout with the given constraints.
 func (l Layout) WithConstraints(constraints ...Constraint) Layout {
 	l.Constraints = append(l.Constraints, constraints...)
+
 	return l
 }
 
+// SplitWithSpacers splits the given area into smaller ones
+// based on the preferred widths or heights and the direction, with the ability to include
+// spacers between the areas.
+//
+// This method is similar to [Layout.Split], but it returns two sets of rectangles: one for the areas
+// and one for the spacers.
 func (l Layout) SplitWithSpacers(area uv.Rectangle) (segments, spacers Splitted) {
 	segments, spacers, err := l.split(area)
 	if err != nil {
@@ -102,6 +254,13 @@ func (l Layout) SplitWithSpacers(area uv.Rectangle) (segments, spacers Splitted)
 	return segments, spacers
 }
 
+// Split a given area into smaller ones based on the preferred
+// widths or heights and the direction.
+//
+// Note that the constraints are applied to the whole area that is to be split, so using
+// percentages and ratios with the other constraints may not have the desired effect of
+// splitting the area up. (e.g. splitting 100 into [min 20, 50%, 50%], may not result
+// in [20, 40, 40] but rather an indeterminate result between [20, 50, 30] and [20, 30, 50]).
 func (l Layout) Split(area uv.Rectangle) Splitted {
 	segments, _ := l.SplitWithSpacers(area)
 
@@ -124,6 +283,23 @@ func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err 
 		areaStart = float64(innerArea.Min.Y) * floatPrecisionMultiplier
 		areaEnd = float64(innerArea.Max.Y) * floatPrecisionMultiplier
 	}
+
+	// 	<───────────────────────────────────area_size──────────────────────────────────>
+	// 	┌─area_start                                                          area_end─┐
+	// 	V                                                                              V
+	// 	┌────┬───────────────────┬────┬─────variables─────┬────┬───────────────────┬────┐
+	// 	│    │                   │    │                   │    │                   │    │
+	// 	V    V                   V    V                   V    V                   V    V
+	// 	┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐
+	// 	     │     Max(20)      │     │      Max(20)     │     │      Max(20)     │
+	// 	└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘
+	// 	^    ^                   ^    ^                   ^    ^                   ^    ^
+	// 	│    │                   │    │                   │    │                   │    │
+	// 	└─┬──┶━━━━━━━━━┳━━━━━━━━━┵─┬──┶━━━━━━━━━┳━━━━━━━━━┵─┬──┶━━━━━━━━━┳━━━━━━━━━┵─┬──┘
+	// 	  │            ┃           │            ┃           │            ┃           │
+	// 	  └────────────╂───────────┴────────────╂───────────┴────────────╂──Spacers──┘
+	// 	               ┃                        ┃                        ┃
+	// 	               ┗━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━Segments━━━━━━━━┛
 
 	variableCount := len(l.Constraints)*2 + 2
 
@@ -231,6 +407,20 @@ func changesToRects(
 	return rects
 }
 
+// configureFillConstraints makes every [Fill] constraint proportionally equal to each other
+// This will make it fill up empty spaces equally
+//
+//	[Fill(1), Fill(1)]
+//	┌──────┐┌──────┐
+//	│abcdef││abcdef│
+//	└──────┘└──────┘
+//
+//	[Fill(1), Fill(2)]
+//	┌──────┐┌────────────┐
+//	│abcdef││abcdefabcdef│
+//	└──────┘└────────────┘
+//
+//	size == base_element * scaling_factor
 func configureFillConstraints(
 	solver *casso.Solver,
 	segments []element,
@@ -405,6 +595,10 @@ func configureFlexConstraints(
 			}
 		}
 
+	// All spacers excluding first and last are the same size and will grow to fill
+	// any remaining space after the constraints are satisfied.
+	// All spacers excluding first and last are also twice the size of the first and last
+	// spacers
 	case FlexSpaceAround:
 		if len(spacersExceptFirstAndLast) >= 2 {
 			for _, indices := range combinations(len(spacersExceptFirstAndLast), 2) {
@@ -532,6 +726,15 @@ func configureVariableConstraints(
 	solver *casso.Solver,
 	variables []casso.Variable,
 ) error {
+	// 	┌────┬───────────────────┬────┬─────variables─────┬────┬───────────────────┬────┐
+	// 	│    │                   │    │                   │    │                   │    │
+	// 	v    v                   v    v                   v    v                   v    v
+	// 	┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐
+	// 	     │     Max(20)      │     │      Max(20)     │     │      Max(20)     │
+	// 	└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘
+	// 	^    ^                   ^    ^                   ^    ^                   ^    ^
+	// 	└v0  └v1                 └v2  └v3                 └v4  └v5                 └v6  └v7
+
 	variables = variables[1:]
 
 	count := len(variables)
