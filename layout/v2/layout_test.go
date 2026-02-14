@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/ultraviolet/screen"
 )
 
+// TODO: translate more tests from Ratatui.
+
 func TestStrengthIsValid(t *testing.T) {
 	t.Parallel()
 

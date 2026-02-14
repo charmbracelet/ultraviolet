@@ -19,11 +19,7 @@ import "fmt"
 //   - [Percentage]
 //   - [Ratio]
 //   - [Fill]
-type Constraint interface {
-	fmt.Stringer
-
-	isConstraint()
-}
+type Constraint interface{ isConstraint() }
 
 type (
 	// Min applies a minimum size constraint to the element

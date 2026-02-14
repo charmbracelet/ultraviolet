@@ -9,9 +9,8 @@ package layout
 type Flex int
 
 const (
-	// Legacy fills the available space within the container, putting excess space into the last
-	// constraint of the lowest priority. This matches the default behavior of ratatui and tui
-	// applications without [`Flex`]
+	// FlexLegacy fills the available space within the container, putting excess space into the last
+	// constraint of the lowest priority.
 	//
 	// The following examples illustrate the allocation of excess in various combinations of
 	// constraints. As a refresher, the priorities of constraints are as follows:
@@ -53,7 +52,7 @@ const (
 	// 	└──────────────────────────────────────────────────────────────────────────────┘
 	FlexLegacy Flex = iota
 
-	// Aligns items to the start of the container.
+	// FlexStart aligns items to the start of the container.
 	//
 	// # Examples
 	//
@@ -73,7 +72,7 @@ const (
 	// 	└──────────────────┘
 	FlexStart
 
-	// Aligns items to the end of the container.
+	// FlexEnd aligns items to the end of the container.
 	//
 	// # Examples
 	//
@@ -93,7 +92,7 @@ const (
 	// 	                                                            └──────────────────┘
 	FlexEnd
 
-	// Centers items within the container.
+	// FlexCenter centers items within the container.
 	//
 	// # Examples
 	//
@@ -113,7 +112,7 @@ const (
 	// 	                              └──────────────────┘
 	FlexCenter
 
-	// Adds excess space between each element.
+	// FlexSpaceBetween adds excess space between each element.
 	//
 	// # Examples
 	//
@@ -133,7 +132,28 @@ const (
 	// 	└──────────────────────────────────────────────────────────────────────────────┘
 	FlexSpaceBetween
 
-	// Adds excess space around each element.
+	// FlexSpaceEvenly evenly distributes excess space between all elements, including before the first and after
+	// the last.
+	//
+	// # Examples
+	//
+	// 	<------------------------------------80 px------------------------------------->
+	// 	      ┌────16 px─────┐      ┌──────20 px───────┐      ┌──────20 px───────┐
+	// 	      │Percentage(20)│      │    Length(20)    │      │     Length(20)   │
+	// 	      └──────────────┘      └──────────────────┘      └──────────────────┘
+	//
+	// 	<------------------------------------80 px------------------------------------->
+	// 	             ┌──────20 px───────┐              ┌──────20 px───────┐
+	// 	             │      Max(20)     │              │      Max(20)     │
+	// 	             └──────────────────┘              └──────────────────┘
+	//
+	// 	<------------------------------------80 px------------------------------------->
+	// 	                              ┌──────20 px───────┐
+	// 	                              │      Max(20)     │
+	// 	                              └──────────────────┘
+	FlexSpaceEvenly
+
+	// FlexSpaceAround adds excess space around each element.
 	//
 	// # Examples
 	//
@@ -153,5 +173,3 @@ const (
 	// 	                              └──────────────────┘
 	FlexSpaceAround
 )
-
-// TODO: add space-evenly flex

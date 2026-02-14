@@ -3,7 +3,7 @@
 // divide the terminal screen into different areas using constraints, manage positioning and
 // sizing, and handle complex UI arrangements.
 //
-// The layout system in Ratatui is based on the [Cassowary constraint solver algorithm].
+// The layout system is based on the [Cassowary constraint solver algorithm].
 // This allows for sophisticated constraint-based layouts where
 // multiple requirements can be satisfied simultaneously, with priorities determining which
 // constraints take precedence when conflicts arise.
@@ -20,7 +20,13 @@
 // calculate and create [uv.Rectangle] areas using simple mathematics to divide up the terminal space
 // if you prefer direct control over positioning and sizing.
 //
+// # Acknowledgements
+//
+// This implementation is heavily based on [Ratatui] source code and
+// is roughly 1:1 translation from Rust with some minor API adjustments.
+//
 // [Cassowary constraint solver algorithm]: https://en.wikipedia.org/wiki/Cassowary_(software)
+// [Ratatui]: https://ratatui.rs/
 package layout
 
 import (
@@ -447,10 +453,6 @@ func configureFillConstraints(
 		}
 	}
 
-	if len(validConstraints) < 2 {
-		return nil
-	}
-
 	for _, indices := range combinations(len(validConstraints), 2) {
 		i, j := indices[0], indices[1]
 
@@ -599,20 +601,18 @@ func configureFlexConstraints(
 	// any remaining space after the constraints are satisfied.
 	// All spacers excluding first and last are also twice the size of the first and last
 	// spacers
-	case FlexSpaceAround:
-		if len(spacersExceptFirstAndLast) >= 2 {
-			for _, indices := range combinations(len(spacersExceptFirstAndLast), 2) {
-				i, j := indices[0], indices[1]
+	case FlexSpaceEvenly:
+		for _, indices := range combinations(len(spacers), 2) {
+			i, j := indices[0], indices[1]
 
-				left, right := spacersExceptFirstAndLast[i], spacersExceptFirstAndLast[j]
+			left, right := spacers[i], spacers[j]
 
-				if err := solver.AddConstraint(left.hasSize(right.size(), spacerSizeEq)); err != nil {
-					return fmt.Errorf("add has size constraint: %w", err)
-				}
+			if err := solver.AddConstraint(left.hasSize(right.size(), spacerSizeEq)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
 			}
 		}
 
-		for _, s := range spacersExceptFirstAndLast {
+		for _, s := range spacers {
 			err := solver.AddConstraints(
 				s.hasMinSize(spacing, spacerSizeEq),
 				s.hasSize(area.size(), spaceGrow),
@@ -620,19 +620,77 @@ func configureFlexConstraints(
 			if err != nil {
 				return fmt.Errorf("add constraints: %w", err)
 			}
-
 		}
 
-	case FlexSpaceBetween:
-		if len(spacersExceptFirstAndLast) >= 2 {
-			for _, indices := range combinations(len(spacersExceptFirstAndLast), 2) {
+	case FlexSpaceAround:
+		// If there are two or less spacers, fallback to [FlexSpaceEvenly].
+		if len(spacers) <= 2 {
+			for _, indices := range combinations(len(spacers), 2) {
 				i, j := indices[0], indices[1]
 
-				left, right := spacersExceptFirstAndLast[i], spacersExceptFirstAndLast[j]
+				left, right := spacers[i], spacers[j]
 
 				if err := solver.AddConstraint(left.hasSize(right.size(), spacerSizeEq)); err != nil {
 					return fmt.Errorf("add has size constraint: %w", err)
 				}
+			}
+
+			for _, s := range spacers {
+				err := solver.AddConstraints(
+					s.hasMinSize(spacing, spacerSizeEq),
+					s.hasSize(area.size(), spaceGrow),
+				)
+				if err != nil {
+					return fmt.Errorf("add constraints: %w", err)
+				}
+			}
+		} else {
+			// Separate the first and last spacer from the middle ones
+			first, rest := spacers[0], spacers[1:]
+			last, middle := rest[len(rest)-1], rest[:len(rest)-1]
+
+			// All middle spacers should be equal in size
+			for _, indices := range combinations(len(middle), 2) {
+				i, j := indices[0], indices[1]
+
+				left, right := middle[i], middle[j]
+
+				if err := solver.AddConstraint(left.hasSize(right.size(), spacerSizeEq)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			}
+
+			// First and last spacers should be half the size of any middle spacer
+			if len(middle) > 0 {
+				firstMiddle := middle[0]
+
+				for _, e := range []element{first, last} {
+					if err := solver.AddConstraint(firstMiddle.hasDoubleSize(e.size(), spacerSizeEq)); err != nil {
+						return fmt.Errorf("add has double size constraint: %w", err)
+					}
+				}
+			}
+
+			// Apply minimum size and growth constraints
+			for _, s := range spacers {
+				if err := solver.AddConstraint(s.hasMinSize(spacing, spacerSizeEq)); err != nil {
+					return fmt.Errorf("add has min size constraint: %w", err)
+				}
+
+				if err := solver.AddConstraint(s.hasSize(area.size(), spaceGrow)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			}
+		}
+
+	case FlexSpaceBetween:
+		for _, indices := range combinations(len(spacersExceptFirstAndLast), 2) {
+			i, j := indices[0], indices[1]
+
+			left, right := spacersExceptFirstAndLast[i], spacersExceptFirstAndLast[j]
+
+			if err := solver.AddConstraint(left.hasSize(right.size(), spacerSizeEq)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
 			}
 		}
 
@@ -816,9 +874,19 @@ func (e element) size() casso.Expression {
 
 func (e element) isEmpty() casso.Constraint {
 	return casso.
-		Equal(casso.Required - 1).
+		Equal(casso.Required - casso.Weak).
 		ExpressionLHS(e.size()).
 		ConstantRHS(0)
+}
+
+func (e element) hasDoubleSize(
+	size casso.Expression,
+	strength casso.Strength,
+) casso.Constraint {
+	return casso.
+		Equal(strength).
+		ExpressionLHS(e.size()).
+		ExpressionRHS(size.MulConstant(2))
 }
 
 func (e element) hasSize(
@@ -865,7 +933,7 @@ func combinations(n, k int) [][]int {
 	combins := binomial(n, k)
 	data := make([][]int, combins)
 	if len(data) == 0 {
-		return data
+		return nil
 	}
 
 	data[0] = make([]int, k)
@@ -905,7 +973,7 @@ func binomial(n, k int) int {
 	}
 
 	if n < k {
-		panic("layout: binomial: bad set size")
+		return 0
 	}
 
 	// (n,k) = (n, n-k)
