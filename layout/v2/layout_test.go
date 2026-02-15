@@ -925,6 +925,8 @@ func TestPercentageFlexStart(t *testing.T) {
 }
 
 func TestPercentageFlexSpaceBetween(t *testing.T) {
+	t.Parallel()
+
 	testCases := []LayoutSplitTestCase{
 		{
 			Name:        "Flex SpaceBetween with Percentage 0, 0",
@@ -1223,12 +1225,484 @@ func TestFlexConstraint(t *testing.T) {
 		flex        Flex
 	}{
 		{
-			name: "length center",
+			name: "length legacy",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "length start",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{0, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "length end",
 			constraints: []Constraint{
 				Len(50),
 			},
 			want: [][]int{{50, 100}},
 			flex: FlexEnd,
+		},
+		{
+			name: "length end",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "ratio legacy",
+			constraints: []Constraint{
+				Ratio{1, 2},
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "ratio start",
+			constraints: []Constraint{
+				Ratio{1, 2},
+			},
+			want: [][]int{{0, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "ratio end",
+			constraints: []Constraint{
+				Ratio{1, 2},
+			},
+			want: [][]int{{50, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "ratio center",
+			constraints: []Constraint{
+				Ratio{1, 2},
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "percent legacy",
+			constraints: []Constraint{
+				Percentage(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "percent start",
+			constraints: []Constraint{
+				Percentage(50),
+			},
+			want: [][]int{{0, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "percent end",
+			constraints: []Constraint{
+				Percentage(50),
+			},
+			want: [][]int{{50, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "percent center",
+			constraints: []Constraint{
+				Percentage(50),
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "min legacy",
+			constraints: []Constraint{
+				Min(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "min start",
+			constraints: []Constraint{
+				Min(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexStart,
+		},
+		{
+			name: "min end",
+			constraints: []Constraint{
+				Min(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "min center",
+			constraints: []Constraint{
+				Min(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexCenter,
+		},
+		{
+			name: "min legacy",
+			constraints: []Constraint{
+				Min(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "max legacy",
+			constraints: []Constraint{
+				Max(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "max start",
+			constraints: []Constraint{
+				Max(50),
+			},
+			want: [][]int{{0, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "max end",
+			constraints: []Constraint{
+				Max(50),
+			},
+			want: [][]int{{50, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "max center",
+			constraints: []Constraint{
+				Max(50),
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "space between becomes stretch",
+			constraints: []Constraint{
+				Min(1),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "space between becomes stretch",
+			constraints: []Constraint{
+				Max(20),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "space between becomes stretch",
+			constraints: []Constraint{
+				Len(20),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "len legacy 2",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{0, 25}, {25, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "len start 2",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{0, 25}, {25, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "len center 2",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{25, 50}, {50, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "len end 2",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{50, 75}, {75, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "len space between",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{0, 25}, {75, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "len space evenly",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{17, 42}, {58, 83}},
+			flex: FlexSpaceEvenly,
+		},
+		{
+			name: "len space around",
+			constraints: []Constraint{
+				Len(25), Len(25),
+			},
+			want: [][]int{{13, 38}, {63, 88}},
+			flex: FlexSpaceAround,
+		},
+		{
+			name: "percentage around",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{0, 25}, {25, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "percentage start",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{0, 25}, {25, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "percentage center",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{25, 50}, {50, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "percentage end",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{50, 75}, {75, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "percentage space between",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{0, 25}, {75, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "percentage space evenly",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{17, 42}, {58, 83}},
+			flex: FlexSpaceEvenly,
+		},
+		{
+			name: "percentage space around",
+			constraints: []Constraint{
+				Percentage(25), Percentage(25),
+			},
+			want: [][]int{{13, 38}, {63, 88}},
+			flex: FlexSpaceAround,
+		},
+		{
+			name: "min legacy 2",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 25}, {25, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "min start 2",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 50}, {50, 100}},
+			flex: FlexStart,
+		},
+		{
+			name: "min center 2",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 50}, {50, 100}},
+			flex: FlexCenter,
+		},
+		{
+			name: "min end 2",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 50}, {50, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "min space between",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 50}, {50, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "min space evenly",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 50}, {50, 100}},
+			flex: FlexSpaceEvenly,
+		},
+		{
+			name: "min space around",
+			constraints: []Constraint{
+				Min(25), Min(25),
+			},
+			want: [][]int{{0, 50}, {50, 100}},
+			flex: FlexSpaceAround,
+		},
+		{
+			name: "max legacy 2",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{0, 25}, {25, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "max start 2",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{0, 25}, {25, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "max center 2",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{25, 50}, {50, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "max end 2",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{50, 75}, {75, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "max space between",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{0, 25}, {75, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "max space evenly",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{17, 42}, {58, 83}},
+			flex: FlexSpaceEvenly,
+		},
+		{
+			name: "max space around",
+			constraints: []Constraint{
+				Max(25), Max(25),
+			},
+			want: [][]int{{13, 38}, {63, 88}},
+			flex: FlexSpaceAround,
+		},
+		{
+			name: "length spaced around",
+			constraints: []Constraint{
+				Len(25), Len(25), Len(25),
+			},
+			want: [][]int{{0, 25}, {38, 63}, {75, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "one segment legacy",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexLegacy,
+		},
+		{
+			name: "one segment start",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{0, 50}},
+			flex: FlexStart,
+		},
+		{
+			name: "one segment end",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{50, 100}},
+			flex: FlexEnd,
+		},
+		{
+			name: "one segment center",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexCenter,
+		},
+		{
+			name: "one segment space between",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{0, 100}},
+			flex: FlexSpaceBetween,
+		},
+		{
+			name: "one segment space evenly",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexSpaceEvenly,
+		},
+		{
+			name: "one segment space around",
+			constraints: []Constraint{
+				Len(50),
+			},
+			want: [][]int{{25, 75}},
+			flex: FlexSpaceAround,
 		},
 	}
 
