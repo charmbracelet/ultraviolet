@@ -27,6 +27,8 @@ type _VariableData struct {
 	id       uint8
 }
 
+// TODO: add variable edits and removal
+
 type Solver struct {
 	cns                map[Constraint]_Tag
 	varData            map[Variable]_VariableData

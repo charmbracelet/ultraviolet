@@ -6,6 +6,14 @@ func (v Variable) Sub(other Variable) Expression {
 	return NewExpression(0, NewTerm(v, 1), NewTerm(other, -1))
 }
 
+func (v Variable) Add(other Variable) Expression {
+	return NewExpression(0, NewTerm(v, 1), NewTerm(other, 1))
+}
+
+func (v Variable) AddConstant(other float64) Expression {
+	return NewExpression(other, NewTerm(v, 1))
+}
+
 func (e Expression) SubConstant(other float64) Expression {
 	e.Constant -= other
 	return e
