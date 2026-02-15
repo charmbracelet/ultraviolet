@@ -19,6 +19,7 @@ require (
 require (
 	github.com/clipperhouse/displaywidth v0.9.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
+	github.com/lithdew/casso v0.0.0-20200531104607-fe75aa82181f // indirect
 )
 
 require (

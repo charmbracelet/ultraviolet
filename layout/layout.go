@@ -65,16 +65,16 @@ const (
 
 	// lengthSizeEq is the strength to apply to [Len] constraints.
 	//
-	// 	┌───────────┐
+	// 	┌────────┐
 	// 	│Len(==x)│
-	// 	└───────────┘
+	// 	└────────┘
 	lengthSizeEq casso.Strength = casso.Strong * 10.0
 
 	// percentSizeEq is the strength to apply to [Percent] constraints.
 	//
-	// 	┌───────────────┐
+	// 	┌────────────┐
 	// 	│Percent(==x)│
-	// 	└───────────────┘
+	// 	└────────────┘
 	percentSizeEq casso.Strength = casso.Strong
 
 	// ratioSizeEq is the strength to apply to [Ratio] constraints.
@@ -185,7 +185,7 @@ func Horizontal(constraints ...Constraint) Layout {
 	return New(DirectionHorizontal, constraints...)
 }
 
-// TODO: research layout caching
+// TODO: Research layout caching
 
 // Layout engine for dividing terminal space using constraints and direction.
 //
@@ -309,9 +309,9 @@ func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err 
 
 	variableCount := len(l.Constraints)*2 + 2
 
-	variables := make([]casso.Variable, variableCount)
+	variables := make([]casso.Symbol, variableCount)
 	for i := range variableCount {
-		variables[i] = casso.NewVariable()
+		variables[i] = casso.New()
 	}
 
 	spacerElements := newElements(variables)
@@ -367,11 +367,10 @@ func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err 
 		}
 	}
 
-	fetched := solver.FetchChanges()
+	changes := make(map[casso.Symbol]float64, variableCount)
 
-	changes := make(map[casso.Variable]float64, len(fetched))
-	for _, c := range fetched {
-		changes[c.Variable] = c.Constant
+	for _, v := range variables {
+		changes[v] = solver.Val(v)
 	}
 
 	segments = changesToRects(changes, segmentElements, innerArea, l.Direction)
@@ -381,7 +380,7 @@ func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err 
 }
 
 func changesToRects(
-	changes map[casso.Variable]float64,
+	changes map[casso.Symbol]float64,
 	elements []element,
 	area uv.Rectangle,
 	direction Direction,
@@ -782,7 +781,7 @@ func configureFlexConstraints(
 
 func configureVariableConstraints(
 	solver *casso.Solver,
-	variables []casso.Variable,
+	variables []casso.Symbol,
 ) error {
 	// 	┌────┬───────────────────┬────┬─────variables─────┬────┬───────────────────┬────┐
 	// 	│    │                   │    │                   │    │                   │    │
@@ -800,7 +799,7 @@ func configureVariableConstraints(
 	for i := 0; i < count-count%2; i += 2 {
 		left, right := variables[i], variables[i+1]
 
-		constraint := casso.LessThanEqual(casso.Required).VariableLHS(left).VariableRHS(right)
+		constraint := casso.LessThanEqual(casso.Required).SymbolLHS(left).SymbolRHS(right)
 
 		if err := solver.AddConstraint(constraint); err != nil {
 			return fmt.Errorf("add constraint: %w", err)
@@ -812,12 +811,12 @@ func configureVariableConstraints(
 
 func configureVariableInAreaConstraints(
 	solver *casso.Solver,
-	variables []casso.Variable,
+	variables []casso.Symbol,
 	area element,
 ) error {
 	for _, v := range variables {
-		start := casso.GreaterThanEqual(casso.Required).VariableLHS(v).VariableRHS(area.Start)
-		end := casso.LessThanEqual(casso.Required).VariableLHS(v).VariableRHS(area.End)
+		start := casso.GreaterThanEqual(casso.Required).SymbolLHS(v).SymbolRHS(area.Start)
+		end := casso.LessThanEqual(casso.Required).SymbolLHS(v).SymbolRHS(area.End)
 
 		if err := solver.AddConstraint(start); err != nil {
 			return fmt.Errorf("add start constraint: %w", err)
@@ -836,8 +835,8 @@ func configureArea(
 	area element,
 	areaStart, areaEnd float64,
 ) error {
-	startConstraint := casso.Equal(casso.Required).VariableLHS(area.Start).ConstantRHS(areaStart)
-	endConstraint := casso.Equal(casso.Required).VariableLHS(area.End).ConstantRHS(areaEnd)
+	startConstraint := casso.Equal(casso.Required).SymbolLHS(area.Start).ConstantRHS(areaStart)
+	endConstraint := casso.Equal(casso.Required).SymbolLHS(area.End).ConstantRHS(areaEnd)
 
 	if err := solver.AddConstraint(startConstraint); err != nil {
 		return fmt.Errorf("add start constraint: %w", err)
@@ -850,7 +849,7 @@ func configureArea(
 	return nil
 }
 
-func newElements(variables []casso.Variable) []element {
+func newElements(variables []casso.Symbol) []element {
 	count := len(variables)
 
 	elements := make([]element, 0, count/2+1)
@@ -865,7 +864,7 @@ func newElements(variables []casso.Variable) []element {
 }
 
 type element struct {
-	Start, End casso.Variable
+	Start, End casso.Symbol
 }
 
 func (e element) size() casso.Expression {
