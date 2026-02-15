@@ -52,9 +52,11 @@ func NewTerminalScreen(w io.Writer, env Environ) *TerminalScreen {
 	s.rbuf = NewRenderBuffer(0, 0)
 	s.env = env
 
-	if f, err := os.OpenFile("uv_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
-		log.SetOutput(f)
-		s.rend.SetLogger(log.Default())
+	if debugFile := env.Getenv("UV_DEBUG"); debugFile != "" {
+		if f, err := os.OpenFile(debugFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+			log.SetOutput(f)
+			s.rend.SetLogger(log.Default())
+		}
 	}
 
 	// Configure renderer optimizations based on console settings.
