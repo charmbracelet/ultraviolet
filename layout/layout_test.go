@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -38,11 +39,14 @@ func TestStrengthIsValid(t *testing.T) {
 }
 
 type LayoutSplitTestCase struct {
-	Name        string
 	Flex        Flex
 	Width       int
 	Constraints []Constraint
 	Want        string
+}
+
+func (tc LayoutSplitTestCase) Name() string {
+	return fmt.Sprintf("Flex(%s) Width(%d) Constraints(%s)", tc.Flex, tc.Width, tc.Constraints)
 }
 
 func (tc LayoutSplitTestCase) Test(t *testing.T) {
@@ -57,870 +61,162 @@ func TestLength(t *testing.T) {
 	t.Parallel()
 
 	testCases := []LayoutSplitTestCase{
-		{
-			Name:        "width 1 zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 2 zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 1 zero zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(0), Len(0)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 zero exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(0), Len(1)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 zero overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(0), Len(2)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 exact zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(1), Len(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 exact exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(1), Len(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 exact overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(1), Len(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(2), Len(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(2), Len(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Len(2), Len(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 2 zero zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(0), Len(0)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 zero underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(0), Len(1)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 zero exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(0), Len(2)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 zero overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(0), Len(3)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 underflow zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(1), Len(0)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 underflow underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(1), Len(1)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 underflow exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(1), Len(2)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 underflow overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(1), Len(3)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 exact zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(2), Len(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(2), Len(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(2), Len(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(2), Len(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(3), Len(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(3), Len(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(3), Len(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Len(3), Len(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 3 with stretch last",
-			Flex:        FlexLegacy,
-			Width:       3,
-			Constraints: []Constraint{Len(2), Len(2)},
-			Want:        "aab",
-		},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(0), Len(0)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(0), Len(1)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(0), Len(2)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(1), Len(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(1), Len(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(1), Len(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(2), Len(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(2), Len(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Len(2), Len(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(0), Len(0)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(0), Len(1)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(0), Len(2)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(0), Len(3)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(1), Len(0)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(1), Len(1)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(1), Len(2)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(1), Len(3)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(2), Len(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(2), Len(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(2), Len(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(2), Len(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(3), Len(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(3), Len(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(3), Len(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Len(3), Len(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 3, Constraints: []Constraint{Len(2), Len(2)}, Want: "aab"},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, tc.Test)
+		t.Run(tc.Name(), tc.Test)
 	}
 }
 
 func TestMax(t *testing.T) {
+	t.Parallel()
+
 	testCases := []LayoutSplitTestCase{
-		{
-			Name:        "width 1 zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 2 zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 1 zero zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(0), Max(0)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 zero exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(0), Max(1)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 zero overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(0), Max(2)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 exact zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(1), Max(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 exact exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(1), Max(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 exact overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(1), Max(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(2), Max(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(2), Max(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 overflow overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Max(2), Max(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 2 zero zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(0), Max(0)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 zero underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(0), Max(1)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 zero exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(0), Max(2)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 zero overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(0), Max(3)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 underflow zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(1), Max(0)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 underflow underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(1), Max(1)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 underflow exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(1), Max(2)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 underflow overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(1), Max(3)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 exact zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(2), Max(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(2), Max(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(2), Max(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 exact overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(2), Max(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(3), Max(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(3), Max(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(3), Max(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 overflow overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Max(3), Max(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 3 with stretch last",
-			Flex:        FlexLegacy,
-			Width:       3,
-			Constraints: []Constraint{Max(2), Max(2)},
-			Want:        "aab",
-		},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(0), Max(0)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(0), Max(1)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(0), Max(2)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(1), Max(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(1), Max(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(1), Max(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(2), Max(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(2), Max(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Max(2), Max(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(0), Max(0)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(0), Max(1)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(0), Max(2)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(0), Max(3)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(1), Max(0)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(1), Max(1)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(1), Max(2)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(1), Max(3)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(2), Max(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(2), Max(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(2), Max(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(2), Max(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(3), Max(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(3), Max(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(3), Max(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Max(3), Max(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 3, Constraints: []Constraint{Max(2), Max(2)}, Want: "aab"},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, tc.Test)
+		t.Run(tc.Name(), tc.Test)
 	}
 }
 
 func TestMin(t *testing.T) {
+	t.Parallel()
+
 	testCases := []LayoutSplitTestCase{
-		{
-			Name:        "width 1 min zero zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(0), Min(0)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 min zero exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(0), Min(1)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 min zero overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(0), Min(2)},
-			Want:        "b",
-		},
-		{
-			Name:        "width 1 min exact zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(1), Min(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 min exact exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(1), Min(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 min exact overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(1), Min(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 min overflow zero",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(2), Min(0)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 min overflow exact",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(2), Min(1)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 1 min overflow overflow",
-			Flex:        FlexLegacy,
-			Width:       1,
-			Constraints: []Constraint{Min(2), Min(2)},
-			Want:        "a",
-		},
-		{
-			Name:        "width 2 min zero zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(0), Min(0)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 min zero underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(0), Min(1)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 min zero exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(0), Min(2)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 min zero overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(0), Min(3)},
-			Want:        "bb",
-		},
-		{
-			Name:        "width 2 min underflow zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(1), Min(0)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 min underflow underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(1), Min(1)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 min underflow exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(1), Min(2)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 min underflow overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(1), Min(3)},
-			Want:        "ab",
-		},
-		{
-			Name:        "width 2 min exact zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(2), Min(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min exact underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(2), Min(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min exact exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(2), Min(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min exact overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(2), Min(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min overflow zero",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(3), Min(0)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min overflow underflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(3), Min(1)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min overflow exact",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(3), Min(2)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 2 min overflow overflow",
-			Flex:        FlexLegacy,
-			Width:       2,
-			Constraints: []Constraint{Min(3), Min(3)},
-			Want:        "aa",
-		},
-		{
-			Name:        "width 3 min with stretch last",
-			Flex:        FlexLegacy,
-			Width:       3,
-			Constraints: []Constraint{Min(2), Min(2)},
-			Want:        "aab",
-		},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(0), Min(0)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(0), Min(1)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(0), Min(2)}, Want: "b"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(1), Min(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(1), Min(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(1), Min(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(2), Min(0)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(2), Min(1)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Min(2), Min(2)}, Want: "a"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(0), Min(0)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(0), Min(1)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(0), Min(2)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(0), Min(3)}, Want: "bb"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(1), Min(0)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(1), Min(1)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(1), Min(2)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(1), Min(3)}, Want: "ab"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(2), Min(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(2), Min(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(2), Min(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(2), Min(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(3), Min(0)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(3), Min(1)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(3), Min(2)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Min(3), Min(3)}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 3, Constraints: []Constraint{Min(2), Min(2)}, Want: "aab"},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, tc.Test)
+		t.Run(tc.Name(), tc.Test)
 	}
 }
 
 func TestPercentFlexStart(t *testing.T) {
+	t.Parallel()
+
 	testCases := []LayoutSplitTestCase{
-		{
-			Name:        "Flex Start with Percentage 0, 0",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(0)},
-			Want:        "          ",
-		},
-		{
-			Name:        "Flex Start with Percentage 0, 25",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(25)},
-			Want:        "bbb       ",
-		},
-		{
-			Name:        "Flex Start with Percentage 0, 50",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(50)},
-			Want:        "bbbbb     ",
-		},
-		{
-			Name:        "Flex Start with Percentage 0, 100",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(100)},
-			Want:        "bbbbbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 0, 200",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(200)},
-			Want:        "bbbbbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 10, 0",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(0)},
-			Want:        "a         ",
-		},
-		{
-			Name:        "Flex Start with Percentage 10, 25",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(25)},
-			Want:        "abbb      ",
-		},
-		{
-			Name:        "Flex Start with Percentage 10, 50",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(50)},
-			Want:        "abbbbb    ",
-		},
-		{
-			Name:        "Flex Start with Percentage 10, 100",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(100)},
-			Want:        "abbbbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 10, 200",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(200)},
-			Want:        "abbbbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 25, 0",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(0)},
-			Want:        "aaa       ",
-		},
-		{
-			Name:        "Flex Start with Percentage 25, 25",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(25)},
-			Want:        "aaabb     ",
-		},
-		{
-			Name:        "Flex Start with Percentage 25, 50",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(50)},
-			Want:        "aaabbbbb  ",
-		},
-		{
-			Name:        "Flex Start with Percentage 25, 100",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(100)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 25, 200",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(200)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 33, 0",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(0)},
-			Want:        "aaa       ",
-		},
-		{
-			Name:        "Flex Start with Percentage 33, 25",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(25)},
-			Want:        "aaabbb    ",
-		},
-		{
-			Name:        "Flex Start with Percentage 33, 50",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(50)},
-			Want:        "aaabbbbb  ",
-		},
-		{
-			Name:        "Flex Start with Percentage 33, 100",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(100)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 33, 200",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(200)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 50, 0",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(50), Percent(0)},
-			Want:        "aaaaa     ",
-		},
-		{
-			Name:        "Flex Start with Percentage 50, 50",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(50), Percent(50)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 50, 100",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(50), Percent(100)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 100, 0",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(0)},
-			Want:        "aaaaaaaaaa",
-		},
-		{
-			Name:        "Flex Start with Percentage 100, 50",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(50)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 100, 100",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(100)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex Start with Percentage 100, 200",
-			Flex:        FlexStart,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(200)},
-			Want:        "aaaaabbbbb",
-		},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(0), Percent(0)}, Want: "          "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(0), Percent(25)}, Want: "bbb       "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(0), Percent(50)}, Want: "bbbbb     "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(0), Percent(100)}, Want: "bbbbbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(0), Percent(200)}, Want: "bbbbbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(10), Percent(0)}, Want: "a         "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(10), Percent(25)}, Want: "abbb      "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(10), Percent(50)}, Want: "abbbbb    "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(10), Percent(100)}, Want: "abbbbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(10), Percent(200)}, Want: "abbbbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(25), Percent(0)}, Want: "aaa       "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(25), Percent(25)}, Want: "aaabb     "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(25), Percent(50)}, Want: "aaabbbbb  "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(25), Percent(100)}, Want: "aaabbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(25), Percent(200)}, Want: "aaabbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(33), Percent(0)}, Want: "aaa       "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(33), Percent(25)}, Want: "aaabbb    "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(33), Percent(50)}, Want: "aaabbbbb  "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(33), Percent(100)}, Want: "aaabbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(33), Percent(200)}, Want: "aaabbbbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(50), Percent(0)}, Want: "aaaaa     "},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(50), Percent(50)}, Want: "aaaaabbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(50), Percent(100)}, Want: "aaaaabbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(100), Percent(0)}, Want: "aaaaaaaaaa"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(100), Percent(50)}, Want: "aaaaabbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(100), Percent(100)}, Want: "aaaaabbbbb"},
+		{Flex: FlexStart, Width: 10, Constraints: []Constraint{Percent(100), Percent(200)}, Want: "aaaaabbbbb"},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, tc.Test)
+		t.Run(tc.Name(), tc.Test)
 	}
 }
 
@@ -928,198 +224,77 @@ func TestPercentFlexSpaceBetween(t *testing.T) {
 	t.Parallel()
 
 	testCases := []LayoutSplitTestCase{
-		{
-			Name:        "Flex SpaceBetween with Percentage 0, 0",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(0)},
-			Want:        "          ",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 0, 25",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(25)},
-			Want:        "        bb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 0, 50",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(50)},
-			Want:        "     bbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 0, 100",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(100)},
-			Want:        "bbbbbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 0, 200",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(0), Percent(200)},
-			Want:        "bbbbbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 10, 0",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(0)},
-			Want:        "a         ",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 10, 25",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(25)},
-			Want:        "a       bb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 10, 50",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(50)},
-			Want:        "a    bbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 10, 100",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(100)},
-			Want:        "abbbbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 10, 200",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(10), Percent(200)},
-			Want:        "abbbbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 25, 0",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(0)},
-			Want:        "aaa       ",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 25, 25",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(25)},
-			Want:        "aaa     bb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 25, 50",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(50)},
-			Want:        "aaa  bbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 25, 100",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(100)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name: "Flex SpaceBetween with Percentage 25, 200", Flex: FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(25), Percent(200)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 33, 0",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(0)},
-			Want:        "aaa       ",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 33, 25",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(25)},
-			Want:        "aaa     bb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 33, 50",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(50)},
-			Want:        "aaa  bbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 33, 100",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(100)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 33, 200",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(33), Percent(200)},
-			Want:        "aaabbbbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 50, 0",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(50), Percent(0)},
-			Want:        "aaaaa     ",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 50, 50",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(50), Percent(50)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 50, 100",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(50), Percent(100)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 100, 0",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(0)},
-			Want:        "aaaaaaaaaa",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 100, 50",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(50)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 100, 100",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(100)},
-			Want:        "aaaaabbbbb",
-		},
-		{
-			Name:        "Flex SpaceBetween with Percentage 100, 200",
-			Flex:        FlexSpaceBetween,
-			Width:       10,
-			Constraints: []Constraint{Percent(100), Percent(200)},
-			Want:        "aaaaabbbbb",
-		},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(0), Percent(0)}, Want: "          "},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(0), Percent(25)}, Want: "        bb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(0), Percent(50)}, Want: "     bbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(0), Percent(100)}, Want: "bbbbbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(0), Percent(200)}, Want: "bbbbbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(10), Percent(0)}, Want: "a         "},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(10), Percent(25)}, Want: "a       bb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(10), Percent(50)}, Want: "a    bbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(10), Percent(100)}, Want: "abbbbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(10), Percent(200)}, Want: "abbbbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(25), Percent(0)}, Want: "aaa       "},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(25), Percent(25)}, Want: "aaa     bb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(25), Percent(50)}, Want: "aaa  bbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(25), Percent(100)}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Percent(25), Percent(200)}, Want: "aaabbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(33), Percent(0)}, Want: "aaa       "},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(33), Percent(25)}, Want: "aaa     bb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(33), Percent(50)}, Want: "aaa  bbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(33), Percent(100)}, Want: "aaabbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(33), Percent(200)}, Want: "aaabbbbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(50), Percent(0)}, Want: "aaaaa     "},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(50), Percent(50)}, Want: "aaaaabbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(50), Percent(100)}, Want: "aaaaabbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(100), Percent(0)}, Want: "aaaaaaaaaa"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(100), Percent(50)}, Want: "aaaaabbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(100), Percent(100)}, Want: "aaaaabbbbb"},
+		{Flex: FlexSpaceBetween, Width: 10, Constraints: []Constraint{Percent(100), Percent(200)}, Want: "aaaaabbbbb"},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, tc.Test)
+		t.Run(tc.Name(), tc.Test)
+	}
+}
+
+func TestRatio(t *testing.T) {
+	t.Parallel()
+
+	testCases := []LayoutSplitTestCase{
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Ratio{0, 1}}, Want: "a"},
+		{Flex: FlexLegacy, Width: 1, Constraints: []Constraint{Ratio{0, 1}}, Want: "a"},
+		{Flex: FlexLegacy, Width: 2, Constraints: []Constraint{Ratio{0, 1}}, Want: "aa"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{0, 1}, Ratio{0, 1}}, Want: "bbbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{0, 1}, Ratio{1, 4}}, Want: "bbbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{0, 1}, Ratio{1, 2}}, Want: "bbbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{0, 1}, Ratio{1, 1}}, Want: "bbbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{0, 1}, Ratio{2, 1}}, Want: "bbbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 10}, Ratio{0, 1}}, Want: "abbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 10}, Ratio{1, 4}}, Want: "abbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 10}, Ratio{1, 2}}, Want: "abbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 10}, Ratio{1, 1}}, Want: "abbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 10}, Ratio{2, 1}}, Want: "abbbbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 4}, Ratio{0, 1}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 4}, Ratio{1, 4}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 4}, Ratio{1, 2}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 4}, Ratio{1, 1}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 4}, Ratio{2, 1}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 3}, Ratio{0, 1}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 3}, Ratio{1, 4}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 3}, Ratio{1, 2}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 3}, Ratio{1, 1}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 3}, Ratio{2, 1}}, Want: "aaabbbbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 2}, Ratio{0, 1}}, Want: "aaaaabbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 2}, Ratio{1, 2}}, Want: "aaaaabbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 2}, Ratio{1, 1}}, Want: "aaaaabbbbb"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 1}, Ratio{0, 1}}, Want: "aaaaaaaaaa"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 1}, Ratio{1, 2}}, Want: "aaaaaaaaaa"},
+		{Flex: FlexLegacy, Width: 10, Constraints: []Constraint{Ratio{1, 1}, Ratio{1, 1}}, Want: "aaaaaaaaaa"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name(), tc.Test)
 	}
 }
 
@@ -1722,6 +897,148 @@ func TestFlexConstraint(t *testing.T) {
 
 			if !reflect.DeepEqual(tc.want, ranges) {
 				t.Fatalf("not equal: want %#+v, got %#+v", tc.want, ranges)
+			}
+		})
+	}
+}
+
+func TestFlexSpacing(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		want        [][]int
+		constraints []Constraint
+		flex        Flex
+		spacing     int
+	}{
+		{
+			name:        "length zero spacing",
+			want:        [][]int{{0, 20}, {20, 20}, {40, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexStart,
+			spacing:     0,
+		},
+		{
+			name:        "length overlap 2",
+			want:        [][]int{{0, 20}, {19, 20}, {38, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexStart,
+			spacing:     -1,
+		},
+		{
+			name:        "length overlap 3",
+			want:        [][]int{{21, 20}, {40, 20}, {59, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexCenter,
+			spacing:     -1,
+		},
+		{
+			name:        "length overlap 4",
+			want:        [][]int{{42, 20}, {61, 20}, {80, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexEnd,
+			spacing:     -1,
+		},
+		{
+			name:        "length overlap 5",
+			want:        [][]int{{0, 20}, {19, 20}, {38, 62}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexLegacy,
+			spacing:     -1,
+		},
+		{
+			name:        "length overlap 6",
+			want:        [][]int{{0, 20}, {40, 20}, {80, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexSpaceBetween,
+			spacing:     -1,
+		},
+		{
+			name:        "length overlap 7",
+			want:        [][]int{{10, 20}, {40, 20}, {70, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexSpaceEvenly,
+			spacing:     -1,
+		},
+		{
+			name:        "length overlap 8",
+			want:        [][]int{{7, 20}, {40, 20}, {73, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexSpaceAround,
+			spacing:     -1,
+		},
+
+		{
+			name:        "length spacing 1",
+			want:        [][]int{{0, 20}, {22, 20}, {44, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexStart,
+			spacing:     2,
+		},
+		{
+			name:        "length spacing 2",
+			want:        [][]int{{18, 20}, {40, 20}, {62, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexCenter,
+			spacing:     2,
+		},
+		{
+			name:        "length spacing 3",
+			want:        [][]int{{36, 20}, {58, 20}, {80, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexEnd,
+			spacing:     2,
+		},
+		{
+			name:        "length spacing 4",
+			want:        [][]int{{0, 20}, {22, 20}, {44, 56}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexLegacy,
+			spacing:     2,
+		},
+		{
+			name:        "length spacing 5",
+			want:        [][]int{{0, 20}, {40, 20}, {80, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexSpaceBetween,
+			spacing:     2,
+		},
+		{
+			name:        "length spacing 6",
+			want:        [][]int{{10, 20}, {40, 20}, {70, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexSpaceEvenly,
+			spacing:     2,
+		},
+		{
+			name:        "length spacing 7",
+			want:        [][]int{{7, 20}, {40, 20}, {73, 20}},
+			constraints: []Constraint{Len(20), Len(20), Len(20)},
+			flex:        FlexSpaceAround,
+			spacing:     2,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			rect := uv.Rect(0, 0, 100, 1)
+
+			splitted := Horizontal(tc.constraints...).
+				WithFlex(tc.flex).
+				WithSpacing(Space(tc.spacing)).
+				Split(rect)
+
+			got := make([][]int, 0, len(splitted))
+
+			for _, r := range splitted {
+				got = append(got, []int{r.Min.X, r.Dx()})
+			}
+
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Fatalf("not equal: want %#+v, got %#+v", tc.want, got)
 			}
 		})
 	}

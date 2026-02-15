@@ -1,5 +1,9 @@
 package layout
 
+import (
+	"fmt"
+)
+
 // Flex defines the options for layout flex justify content in a container.
 //
 // This enumeration controls the distribution of space when layout constraints are met and there
@@ -173,3 +177,31 @@ const (
 	// 	                              └──────────────────┘
 	FlexSpaceAround
 )
+
+func (f Flex) String() string {
+	switch f {
+	case FlexCenter:
+		return "Center"
+
+	case FlexEnd:
+		return "End"
+
+	case FlexLegacy:
+		return "Legacy"
+
+	case FlexSpaceAround:
+		return "Space Around"
+
+	case FlexSpaceBetween:
+		return "Space Between"
+
+	case FlexSpaceEvenly:
+		return "Space Evenly"
+
+	case FlexStart:
+		return "Start"
+
+	default:
+		return fmt.Sprintf("Flex(%d)", f)
+	}
+}

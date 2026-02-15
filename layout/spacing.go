@@ -18,3 +18,15 @@ type (
 
 func (SpacingSpace) isSpacing()   {}
 func (SpacingOverlap) isSpacing() {}
+
+// Space returns a new [Spacing] based on the given number.
+//
+// For positive and zero values it returns [SpacingSpace],
+// for negative values it returns [SpacingOverlap] with modulus of a value.
+func Space(n int) Spacing {
+	if n < 0 {
+		return SpacingOverlap(-n)
+	}
+
+	return SpacingSpace(n)
+}
