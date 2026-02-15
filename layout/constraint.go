@@ -20,10 +20,6 @@ import "fmt"
 //   - [Ratio]
 //   - [Fill]
 type Constraint interface {
-	// Apply the constraint to the given size and returns the
-	// constrained size.
-	Apply(size int) int
-
 	// isConstraint is a private method to prevent users implementing the
 	// interface making it a sealed enum.
 	isConstraint()
@@ -155,51 +151,19 @@ type (
 )
 
 func (m Min) String() string { return fmt.Sprintf("Min(%d)", m) }
-
-// Apply applies the min size constraint to the given size.
-func (m Min) Apply(size int) int { return max(size, int(m)) }
-
-func (Min) isConstraint() {}
+func (Min) isConstraint()    {}
 
 func (m Max) String() string { return fmt.Sprintf("Max(%d)", m) }
-
-// Apply applies the max size constraint to the given size.
-func (m Max) Apply(size int) int { return min(size, int(m)) }
-
-func (Max) isConstraint() {}
+func (Max) isConstraint()    {}
 
 func (l Len) String() string { return fmt.Sprintf("Len(%d)", l) }
-
-// Apply applies the fixed len size constraint to the given size.
-func (l Len) Apply(size int) int { return min(size, int(l)) }
-
-func (Len) isConstraint() {}
+func (Len) isConstraint()    {}
 
 func (p Percent) String() string { return fmt.Sprintf("Percent(%d)", p) }
-
-// Apply applies the percentage size constraint to the given size.
-func (p Percent) Apply(size int) int {
-	pf := float32(p) / 100.0
-
-	return int(min(float32(size), pf*float32(size)))
-}
-
-func (Percent) isConstraint() {}
+func (Percent) isConstraint()    {}
 
 func (r Ratio) String() string { return fmt.Sprintf("Ratio(%d / %d)", r.Num, r.Den) }
-
-// Apply applies the ratio size constraint to the given size.
-func (r Ratio) Apply(size int) int {
-	p := float32(r.Num) / float32(max(1, r.Den))
-
-	return int(min(float32(size), p*float32(size)))
-}
-
-func (Ratio) isConstraint() {}
+func (Ratio) isConstraint()    {}
 
 func (f Fill) String() string { return fmt.Sprintf("Fill(%d)", f) }
-
-// Apply applies the fill size constraint to the given size.
-func (f Fill) Apply(size int) int { return min(size, int(f)) }
-
-func (Fill) isConstraint() {}
+func (Fill) isConstraint()    {}
