@@ -33,7 +33,7 @@ func (s *Solver) AddConstraint(constraint Constraint) error {
 
 	c := casso.NewConstraint(casso.Op(constraint.op), constraint.expression.Constant, terms...)
 
-	_, err := s.solver.AddConstraintWithPriority(casso.Priority(constraint.strength), c)
+	_, err := s.solver.AddConstraintWithPriority(casso.Priority(constraint.priority), c)
 
 	return err
 }

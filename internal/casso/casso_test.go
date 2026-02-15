@@ -36,7 +36,7 @@ func TestQuadrilateral(t *testing.T) {
 
 	solver := NewSolver()
 
-	weight := Strength(1.0)
+	weight := Priority(1.0)
 	multiplier := 2.0
 
 	for i := range 4 {
@@ -48,7 +48,7 @@ func TestQuadrilateral(t *testing.T) {
 			t.Fatalf("failed to add constraints: %v", err)
 		}
 
-		weight *= Strength(multiplier)
+		weight *= Priority(multiplier)
 	}
 
 	for _, p := range []image.Point{{0, 1}, {1, 2}, {2, 3}, {3, 0}} {

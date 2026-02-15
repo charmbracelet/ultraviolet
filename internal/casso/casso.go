@@ -13,13 +13,13 @@ import (
 	"github.com/lithdew/casso"
 )
 
-type Strength float64
+type Priority = casso.Priority
 
 const (
-	Required Strength = 1_001_001_000
-	Strong   Strength = 1_000_000
-	Medium   Strength = 1_000
-	Weak     Strength = 1
+	Required Priority = 1_001_001_000
+	Strong   Priority = 1_000_000
+	Medium   Priority = 1_000
+	Weak     Priority = 1
 )
 
 type Symbol casso.Symbol
@@ -78,16 +78,16 @@ func (e Expression) Negate() Expression {
 
 type ConstraintData struct {
 	expression Expression
-	strength   Strength
+	priority   Priority
 	op         casso.Op
 }
 
 type Constraint *ConstraintData
 
-func NewConstraint(e Expression, op casso.Op, strength Strength) Constraint {
+func NewConstraint(e Expression, op casso.Op, priority Priority) Constraint {
 	data := ConstraintData{
 		expression: e,
-		strength:   strength,
+		priority:   priority,
 		op:         op,
 	}
 
@@ -96,7 +96,7 @@ func NewConstraint(e Expression, op casso.Op, strength Strength) Constraint {
 
 type WeightedRelation struct {
 	Operator casso.Op
-	Strength Strength
+	Priority Priority
 }
 
 func (w WeightedRelation) ExpressionLHS(expression Expression) PartialConstraint {
@@ -113,16 +113,16 @@ func (w WeightedRelation) SymbolLHS(variable Symbol) PartialConstraint {
 	}
 }
 
-func Equal(strength Strength) WeightedRelation {
-	return WeightedRelation{Operator: casso.EQ, Strength: strength}
+func Equal(priority Priority) WeightedRelation {
+	return WeightedRelation{Operator: casso.EQ, Priority: priority}
 }
 
-func LessThanEqual(strength Strength) WeightedRelation {
-	return WeightedRelation{Operator: casso.LTE, Strength: strength}
+func LessThanEqual(priority Priority) WeightedRelation {
+	return WeightedRelation{Operator: casso.LTE, Priority: priority}
 }
 
-func GreaterThanEqual(strength Strength) WeightedRelation {
-	return WeightedRelation{Operator: casso.GTE, Strength: strength}
+func GreaterThanEqual(priority Priority) WeightedRelation {
+	return WeightedRelation{Operator: casso.GTE, Priority: priority}
 }
 
 type PartialConstraint struct {
@@ -134,7 +134,7 @@ func (p PartialConstraint) ConstantRHS(v float64) Constraint {
 	return NewConstraint(
 		p.Expression.SubConstant(v),
 		p.Relation.Operator,
-		p.Relation.Strength,
+		p.Relation.Priority,
 	)
 }
 
@@ -142,7 +142,7 @@ func (p PartialConstraint) ExpressionRHS(e Expression) Constraint {
 	return NewConstraint(
 		p.Expression.Sub(e),
 		p.Relation.Operator,
-		p.Relation.Strength,
+		p.Relation.Priority,
 	)
 }
 
@@ -150,6 +150,6 @@ func (p PartialConstraint) SymbolRHS(v Symbol) Constraint {
 	return NewConstraint(
 		p.Expression.SubSymbol(v),
 		p.Relation.Operator,
-		p.Relation.Strength,
+		p.Relation.Priority,
 	)
 }

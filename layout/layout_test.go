@@ -12,14 +12,14 @@ import (
 
 // TODO: translate more tests from Ratatui.
 
-func TestStrengthIsValid(t *testing.T) {
+func TestPriorityIsValid(t *testing.T) {
 	t.Parallel()
 
 	assert := func(ok bool) {
 		t.Helper()
 
 		if !ok {
-			t.Error("invalid strength")
+			t.Error("invalid priority")
 		}
 	}
 

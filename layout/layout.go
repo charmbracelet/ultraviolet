@@ -42,89 +42,89 @@ import (
 const floatPrecisionMultiplier float64 = 100.0
 
 const (
-	// spacerSizeEq is the strength to apply to Spacers to ensure that their sizes are equal.
+	// spacerSizeEq is the priority to apply to Spacers to ensure that their sizes are equal.
 	//
 	// 	┌     ┐┌───┐┌     ┐┌───┐┌     ┐
 	// 	  ==x  │   │  ==x  │   │  ==x
 	// 	└     ┘└───┘└     ┘└───┘└     ┘
-	spacerSizeEq casso.Strength = casso.Required / 10.0
+	spacerSizeEq casso.Priority = casso.Required / 10.0
 
-	// minSizeGTE is the strength to apply to [Min] inequality constraints.
+	// minSizeGTE is the priority to apply to [Min] inequality constraints.
 	//
 	// 	┌────────┐
 	// 	│Min(>=x)│
 	// 	└────────┘
-	minSizeGTE casso.Strength = casso.Strong * 100.0
+	minSizeGTE casso.Priority = casso.Strong * 100.0
 
-	// maxSizeLTE is the strength to apply to [Max] inequality constraints.
+	// maxSizeLTE is the priority to apply to [Max] inequality constraints.
 	//
 	// 	┌────────┐
 	// 	│Max(<=x)│
 	// 	└────────┘
-	maxSizeLTE casso.Strength = casso.Strong * 100.0
+	maxSizeLTE casso.Priority = casso.Strong * 100.0
 
-	// lengthSizeEq is the strength to apply to [Len] constraints.
+	// lengthSizeEq is the priority to apply to [Len] constraints.
 	//
 	// 	┌────────┐
 	// 	│Len(==x)│
 	// 	└────────┘
-	lengthSizeEq casso.Strength = casso.Strong * 10.0
+	lengthSizeEq casso.Priority = casso.Strong * 10.0
 
-	// percentSizeEq is the strength to apply to [Percent] constraints.
+	// percentSizeEq is the priority to apply to [Percent] constraints.
 	//
 	// 	┌────────────┐
 	// 	│Percent(==x)│
 	// 	└────────────┘
-	percentSizeEq casso.Strength = casso.Strong
+	percentSizeEq casso.Priority = casso.Strong
 
-	// ratioSizeEq is the strength to apply to [Ratio] constraints.
+	// ratioSizeEq is the priority to apply to [Ratio] constraints.
 	//
 	// 	┌────────────┐
 	// 	│Ratio(==x,y)│
 	// 	└────────────┘
-	ratioSizeEq casso.Strength = casso.Strong / 10.0
+	ratioSizeEq casso.Priority = casso.Strong / 10.0
 
-	// minSizeEq is the strength to apply to [Min] equality constraints.
+	// minSizeEq is the priority to apply to [Min] equality constraints.
 	//
 	// 	┌────────┐
 	// 	│Min(==x)│
 	// 	└────────┘
-	minSizeEq casso.Strength = casso.Medium * 10.0
+	minSizeEq casso.Priority = casso.Medium * 10.0
 
-	// maxSizeEq the strength to apply to [Max] equality constraints.
+	// maxSizeEq the priority to apply to [Max] equality constraints.
 	//
 	// 	┌────────┐
 	// 	│Max(==x)│
 	// 	└────────┘
-	maxSizeEq casso.Strength = casso.Medium * 10.0
+	maxSizeEq casso.Priority = casso.Medium * 10.0
 
-	// fillGrow is the strength to apply to [Fill] growing constraints.
+	// fillGrow is the priority to apply to [Fill] growing constraints.
 	//
 	// 	┌─────────────────────┐
 	// 	│<=     Fill(x)     =>│
 	// 	└─────────────────────┘
-	fillGrow casso.Strength = casso.Medium
+	fillGrow casso.Priority = casso.Medium
 
-	// grow is the strength to apply to growing constraints.
+	// grow is the priority to apply to growing constraints.
 	//
 	// 	┌────────────┐
 	// 	│<= Min(x) =>│
 	// 	└────────────┘
-	grow casso.Strength = 100.0
+	grow casso.Priority = 100.0
 
-	// spaceGrow is the strength to apply to Spacer growing constraints.
+	// spaceGrow is the priority to apply to spacer growing constraints.
 	//
 	// 	┌       ┐
 	// 	 <= x =>
 	// 	└       ┘
-	spaceGrow casso.Strength = casso.Weak * 10.0
+	spaceGrow casso.Priority = casso.Weak * 10.0
 
-	// allSegmentGrow is he strength to apply to growing the size of all segments equally.
+	// allSegmentGrow is he priority to apply to growing the size of all segments equally.
 	//
 	// ┌───────┐
 	// │<= x =>│
 	// └───────┘
-	allSegmentGrow casso.Strength = casso.Weak
+	allSegmentGrow casso.Priority = casso.Weak
 )
 
 // Splitted represents result of [Layout] splitting
@@ -184,7 +184,7 @@ func Horizontal(constraints ...Constraint) Layout {
 	return New(DirectionHorizontal, constraints...)
 }
 
-// TODO: Research layout caching
+// TODO: Research caching for [Layout.Split].
 
 // Layout engine for dividing terminal space using constraints and direction.
 //
@@ -875,50 +875,50 @@ func (e element) isEmpty() casso.Constraint {
 
 func (e element) hasDoubleSize(
 	size casso.Expression,
-	strength casso.Strength,
+	priority casso.Priority,
 ) casso.Constraint {
 	return casso.
-		Equal(strength).
+		Equal(priority).
 		ExpressionLHS(e.size()).
 		ExpressionRHS(size.MulConstant(2))
 }
 
 func (e element) hasSize(
 	size casso.Expression,
-	strength casso.Strength,
+	priority casso.Priority,
 ) casso.Constraint {
 	return casso.
-		Equal(strength).
+		Equal(priority).
 		ExpressionLHS(e.size()).
 		ExpressionRHS(size)
 }
 
 func (e element) hasMaxSize(
 	size int,
-	strength casso.Strength,
+	priority casso.Priority,
 ) casso.Constraint {
 	return casso.
-		LessThanEqual(strength).
+		LessThanEqual(priority).
 		ExpressionLHS(e.size()).
 		ConstantRHS(float64(size) * floatPrecisionMultiplier)
 }
 
 func (e element) hasMinSize(
 	size int,
-	strength casso.Strength,
+	priority casso.Priority,
 ) casso.Constraint {
 	return casso.
-		GreaterThanEqual(strength).
+		GreaterThanEqual(priority).
 		ExpressionLHS(e.size()).
 		ConstantRHS(float64(size) * floatPrecisionMultiplier)
 }
 
 func (e element) hasIntSize(
 	size int,
-	strength casso.Strength,
+	priority casso.Priority,
 ) casso.Constraint {
 	return casso.
-		Equal(strength).
+		Equal(priority).
 		ExpressionLHS(e.size()).
 		ConstantRHS(float64(size) * floatPrecisionMultiplier)
 }
