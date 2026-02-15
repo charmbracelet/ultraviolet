@@ -6,8 +6,8 @@ import "fmt"
 //
 // Constraints are the core mechanism for defining how space should be allocated within a
 // [Layout]. They can specify fixed sizes ([Len]), proportional sizes
-// ([Percentage], [Ratio]), size limits ([Min], [Max]), or proportional fill values for layout elements.
-// Relative constraints ([Percentage], [Ratio]) are calculated relative to the entire space being
+// ([Percent], [Ratio]), size limits ([Min], [Max]), or proportional fill values for layout elements.
+// Relative constraints ([Percent], [Ratio]) are calculated relative to the entire space being
 // divided, rather than the space available after applying more fixed
 // constraints ([Min], [Max], [Len]).
 //
@@ -16,10 +16,18 @@ import "fmt"
 //   - [Min]
 //   - [Max]
 //   - [Len]
-//   - [Percentage]
+//   - [Percent]
 //   - [Ratio]
 //   - [Fill]
-type Constraint interface{ isConstraint() }
+type Constraint interface {
+	// Apply the constraint to the given size and returns the
+	// constrained size.
+	Apply(size int) int
+
+	// isConstraint is a private method to prevent users implementing the
+	// interface making it a sealed enum.
+	isConstraint()
+}
 
 type (
 	// Min applies a minimum size constraint to the element
@@ -28,13 +36,13 @@ type (
 	//
 	// # Examples
 	//
-	// 	[Percentage(100), Min(20)]
+	// 	[Percent(100), Min(20)]
 	//
 	// 	┌────────────────────────────┐┌──────────────────┐
 	// 	│            30 px           ││       20 px      │
 	// 	└────────────────────────────┘└──────────────────┘
 	//
-	// 	[Percentage(100), Min(10)]
+	// 	[Percent(100), Min(10)]
 	//
 	// 	┌──────────────────────────────────────┐┌────────┐
 	// 	│                 40 px                ││  10 px │
@@ -47,13 +55,13 @@ type (
 	//
 	// # Examples
 	//
-	// 	[Percentage(0), Max(20)]
+	// 	[Percent(0), Max(20)]
 	//
 	// 	┌────────────────────────────┐┌──────────────────┐
 	// 	│            30 px           ││       20 px      │
 	// 	└────────────────────────────┘└──────────────────┘
 	//
-	// 	[Percentage(0), Max(10)]
+	// 	[Percent(0), Max(10)]
 	//
 	// 	┌──────────────────────────────────────┐┌────────┐
 	// 	│                 40 px                ││  10 px │
@@ -66,20 +74,20 @@ type (
 	//
 	// # Examples
 	//
-	// 	[Length(20), Length(20)]
+	// 	[Len(20), Len(20)]
 	//
 	// 	┌──────────────────┐┌──────────────────┐
 	// 	│       20 px      ││       20 px      │
 	// 	└──────────────────┘└──────────────────┘
 	//
-	// 	[Length(20), Length(30)]
+	// 	[Len(20), Len(30)]
 	//
 	// 	┌──────────────────┐┌────────────────────────────┐
 	// 	│       20 px      ││            30 px           │
 	// 	└──────────────────┘└────────────────────────────┘
 	Len int
 
-	// Percentage applies a percentage of the available space to the element
+	// Percent applies a percentage of the available space to the element
 	//
 	// Converts the given percentage to a floating-point value and multiplies that with area. This
 	// value is rounded back to a integer as part of the layout split calculation.
@@ -90,18 +98,18 @@ type (
 	//
 	// # Examples
 	//
-	// 	[Percentage(75), Fill(1)]
+	// 	[Percent(75), Fill(1)]
 	//
 	// 	┌────────────────────────────────────┐┌──────────┐
 	// 	│                38 px               ││   12 px  │
 	// 	└────────────────────────────────────┘└──────────┘
 	//
-	// 	[Percentage(50), Fill(1)]
+	// 	[Percent(50), Fill(1)]
 	//
 	// 	┌───────────────────────┐┌───────────────────────┐
 	// 	│         25 px         ││         25 px         │
 	// 	└───────────────────────┘└───────────────────────┘
-	Percentage int
+	Percent int
 
 	// Ratio applies a ratio of the available space to the element
 	//
@@ -138,7 +146,7 @@ type (
 	// 	│ 8 px ││     17 px     ││         25 px         │
 	// 	└──────┘└───────────────┘└───────────────────────┘
 	//
-	// 	[Fill(1), Percentage(50), Fill(1)]
+	// 	[Fill(1), Percent(50), Fill(1)]
 	//
 	// 	┌───────────┐┌───────────────────────┐┌──────────┐
 	// 	│   13 px   ││         25 px         ││   12 px  │
@@ -147,19 +155,51 @@ type (
 )
 
 func (m Min) String() string { return fmt.Sprintf("Min(%d)", m) }
-func (Min) isConstraint()    {}
+
+// Apply applies the min size constraint to the given size.
+func (m Min) Apply(size int) int { return max(size, int(m)) }
+
+func (Min) isConstraint() {}
 
 func (m Max) String() string { return fmt.Sprintf("Max(%d)", m) }
-func (Max) isConstraint()    {}
+
+// Apply applies the max size constraint to the given size.
+func (m Max) Apply(size int) int { return min(size, int(m)) }
+
+func (Max) isConstraint() {}
 
 func (l Len) String() string { return fmt.Sprintf("Len(%d)", l) }
-func (Len) isConstraint()    {}
 
-func (p Percentage) String() string { return fmt.Sprintf("Percentage(%d)", p) }
-func (Percentage) isConstraint()    {}
+// Apply applies the fixed len size constraint to the given size.
+func (l Len) Apply(size int) int { return min(size, int(l)) }
+
+func (Len) isConstraint() {}
+
+func (p Percent) String() string { return fmt.Sprintf("Percent(%d)", p) }
+
+// Apply applies the percentage size constraint to the given size.
+func (p Percent) Apply(size int) int {
+	pf := float32(p) / 100.0
+
+	return int(min(float32(size), pf*float32(size)))
+}
+
+func (Percent) isConstraint() {}
 
 func (r Ratio) String() string { return fmt.Sprintf("Ratio(%d / %d)", r.Num, r.Den) }
-func (Ratio) isConstraint()    {}
+
+// Apply applies the ratio size constraint to the given size.
+func (r Ratio) Apply(size int) int {
+	p := float32(r.Num) / float32(max(1, r.Den))
+
+	return int(min(float32(size), p*float32(size)))
+}
+
+func (Ratio) isConstraint() {}
 
 func (f Fill) String() string { return fmt.Sprintf("Fill(%d)", f) }
-func (Fill) isConstraint()    {}
+
+// Apply applies the fill size constraint to the given size.
+func (f Fill) Apply(size int) int { return min(size, int(f)) }
+
+func (Fill) isConstraint() {}
