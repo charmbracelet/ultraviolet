@@ -171,7 +171,6 @@ func New(direction Direction, constraints ...Constraint) Layout {
 		Direction:   direction,
 		Constraints: constraints,
 		Flex:        FlexLegacy,
-		Spacing:     SpacingSpace(0),
 	}
 }
 
@@ -207,8 +206,12 @@ type Layout struct {
 	Direction   Direction
 	Constraints []Constraint
 	Padding     Padding
-	Spacing     Spacing
-	Flex        Flex
+	// Spacing reprsents spacing between
+	// segments as a number of cells.
+	//
+	// Negative spacing causes overlap between segments.
+	Spacing int
+	Flex    Flex
 }
 
 // WithDirection returns a copy of the layout with the given direction.
@@ -232,7 +235,7 @@ func (l Layout) WithFlex(flex Flex) Layout {
 }
 
 // WithSpacing returns a copy of the layout with the given spacing.
-func (l Layout) WithSpacing(spacing Spacing) Layout {
+func (l Layout) WithSpacing(spacing int) Layout {
 	l.Spacing = spacing
 
 	return l
@@ -317,15 +320,7 @@ func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err 
 	spacerElements := newElements(variables)
 	segmentElements := newElements(variables[1:])
 
-	var spacing int
-
-	switch s := l.Spacing.(type) {
-	case SpacingSpace:
-		spacing = int(s)
-
-	case SpacingOverlap:
-		spacing = -int(s)
-	}
+	spacing := l.Spacing
 
 	areaSize := element{
 		Start: variables[0],

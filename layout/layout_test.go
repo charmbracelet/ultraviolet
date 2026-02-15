@@ -1028,7 +1028,7 @@ func TestFlexSpacing(t *testing.T) {
 
 			splitted := Horizontal(tc.constraints...).
 				WithFlex(tc.flex).
-				WithSpacing(Space(tc.spacing)).
+				WithSpacing(tc.spacing).
 				Split(rect)
 
 			got := make([][]int, 0, len(splitted))
@@ -1053,7 +1053,6 @@ func letters(t *testing.T, flex Flex, constraints []Constraint, width int, expec
 		Direction:   DirectionHorizontal,
 		Constraints: constraints,
 		Flex:        flex,
-		Spacing:     SpacingSpace(0),
 	}.Split(area)
 
 	got := uv.NewScreenBuffer(area.Dx(), area.Dy())
