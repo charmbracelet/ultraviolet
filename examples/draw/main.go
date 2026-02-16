@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	t := uv.DefaultTerminal(nil)
+	t := uv.DefaultTerminal()
 	scr := t.Screen()
 
 	// Start in altscreen mode
@@ -137,6 +137,7 @@ Press any key to continue...`
 		scr.Render()
 		scr.Flush()
 	}
+	displayHelp(showingHelp)
 
 LOOP:
 	for {

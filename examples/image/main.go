@@ -68,7 +68,7 @@ func init() {
 func main() {
 	flag.Parse()
 
-	t := uv.DefaultTerminal(nil)
+	t := uv.DefaultTerminal()
 	if err := t.Start(); err != nil {
 		log.Fatalf("failed to start terminal: %v", err)
 	}
