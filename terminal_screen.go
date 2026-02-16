@@ -182,17 +182,32 @@ func (s *TerminalScreen) Flush() error {
 	var buf bytes.Buffer
 	buf.Grow(s.buf.Len())
 
-	if s.syncUpdates && s.buf.Len() > 0 {
-		buf.Grow(len(ansi.SetModeSynchronizedOutput) + len(ansi.ResetModeSynchronizedOutput))
+	if s.buf.Len() > 0 {
+		if s.syncUpdates {
+			buf.Grow(len(ansi.SetModeSynchronizedOutput) + len(ansi.ResetModeSynchronizedOutput))
 
-		// If synchronized updates are enabled, we need to wrap the output in
-		// the appropriate control sequences to ensure that the terminal treats
-		// it as a single atomic update. This is necessary to prevent flickering
-		// and other visual artifacts that can occur when multiple updates are sent
-		// separately.
-		buf.WriteString(ansi.SetModeSynchronizedOutput)
+			// If synchronized updates are enabled, we need to wrap the output in
+			// the appropriate control sequences to ensure that the terminal treats
+			// it as a single atomic update. This is necessary to prevent flickering
+			// and other visual artifacts that can occur when multiple updates are sent
+			// separately.
+			buf.WriteString(ansi.SetModeSynchronizedOutput)
+		} else if s.cursor != nil && !s.cursor.Hidden {
+			buf.Grow(len(ansi.HideCursor) + len(ansi.ShowCursor))
+
+			// If synchronized updates are not enabled, we need to ensure that
+			// the cursor is hidden before writing any output to prevent
+			// unwanted cursor visual artifacts.
+			buf.WriteString(ansi.HideCursor)
+		}
+
 		buf.Write(s.buf.Bytes())
-		buf.WriteString(ansi.ResetModeSynchronizedOutput)
+
+		if s.syncUpdates {
+			buf.WriteString(ansi.ResetModeSynchronizedOutput)
+		} else if s.cursor != nil && !s.cursor.Hidden {
+			buf.WriteString(ansi.ShowCursor)
+		}
 	}
 
 	_, err := s.w.Write(buf.Bytes())
