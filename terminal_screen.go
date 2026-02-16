@@ -180,9 +180,11 @@ func (s *TerminalScreen) Flush() error {
 	}
 
 	var buf bytes.Buffer
-	buf.Grow(s.buf.Len() + len(ansi.SetModeSynchronizedOutput) + len(ansi.ResetModeSynchronizedOutput))
+	buf.Grow(s.buf.Len())
 
 	if s.syncUpdates && s.buf.Len() > 0 {
+		buf.Grow(len(ansi.SetModeSynchronizedOutput) + len(ansi.ResetModeSynchronizedOutput))
+
 		// If synchronized updates are enabled, we need to wrap the output in
 		// the appropriate control sequences to ensure that the terminal treats
 		// it as a single atomic update. This is necessary to prevent flickering
