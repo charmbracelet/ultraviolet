@@ -55,6 +55,15 @@ func main() {
 }
 
 func render(sc uv.Screen, area uv.Rectangle) {
+	var textArea uv.Rectangle
+
+	layout.Vertical(layout.Len(4), layout.Min(0)).Split(area).Assign(&textArea, &area)
+
+	screen.NewContext(sc).DrawString(`Horizontal Layout Example. Press q to quit
+Each line has 2 constraints, plus Min(0) to fill the remaining space.
+E.g. the second line of the Len/Min box is [Len(2), Min(2), Min(0)]
+Note: constraint labels that don't fit are truncated`, textArea.Min.X, textArea.Min.Y)
+
 	rows := layout.Vertical(
 		layout.Len(9),
 		layout.Len(9),
