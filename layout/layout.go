@@ -169,7 +169,6 @@ func New(direction Direction, constraints ...Constraint) Layout {
 	return Layout{
 		Direction:   direction,
 		Constraints: constraints,
-		Flex:        FlexLegacy,
 	}
 }
 
