@@ -120,9 +120,9 @@ const (
 
 	// allSegmentGrow is the priority to apply to growing the size of all segments equally.
 	//
-	// ┌───────┐
-	// │<= x =>│
-	// └───────┘
+	// 	┌───────┐
+	// 	│<= x =>│
+	// 	└───────┘
 	allSegmentGrow = weak
 )
 
