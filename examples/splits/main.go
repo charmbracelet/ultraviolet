@@ -17,6 +17,7 @@ import (
 func main() {
 	t := uv.DefaultTerminal()
 	scr := t.Screen()
+	scr.EnterAltScreen()
 
 	if err := t.Start(); err != nil {
 		log.Fatalln("failed to start terminal:", err)
