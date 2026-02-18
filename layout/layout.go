@@ -1,141 +1,937 @@
+// Package layout provides types for working with layout and positioning in terminal applications.
+// It implements a flexible layout system that allows you to divide the terminal screen into
+// different areas using constraints, manage positioning and sizing, and handle complex UI
+// arrangements.
+//
+// The layout system is based on the [Cassowary constraint solver algorithm].
+// This allows for sophisticated constraint-based layouts where
+// multiple requirements can be satisfied simultaneously, with priorities determining which
+// constraints take precedence when conflicts arise.
+//
+// # Layout Fundamentals
+//
+// Layouts form the structural foundation of your terminal UI. The [Layout] struct divides
+// available screen space into rectangular areas using a constraint-based approach. You define
+// multiple constraints for how space should be allocated, and the Cassowary solver determines
+// the optimal layout that satisfies as many constraints as possible. These areas can then be
+// used to render widgets or nested layouts.
+//
+// Note that the [Layout] struct is not required to create layouts - you can also manually
+// calculate and create [uv.Rectangle] areas using simple mathematics to divide up the terminal space
+// if you prefer direct control over positioning and sizing.
 package layout
 
 import (
-	"image"
+	"fmt"
+	"math"
 
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/internal/casso"
 )
 
-// Constraint represents a size constraint for layout purposes.
-type Constraint interface {
-	// Apply applies the constraint to the given size and returns the
-	// constrained size.
-	Apply(size int) int
-}
+// floatPrecisionMultiplier decides floating point precision when rounding.
+// The number of zeros in this number is the precision for the rounding in layout calculations.
+const floatPrecisionMultiplier float64 = 100.0
 
-// Percent is a constraint that represents a percentage of the available size.
-type Percent int
+const (
+	required casso.Priority = 1_001_001_000
+	strong   casso.Priority = 1_000_000
+	medium   casso.Priority = 1_000
+	weak     casso.Priority = 1
+)
 
-// Apply applies the percentage constraint to the given size.
-func (p Percent) Apply(size int) int {
-	if p < 0 {
-		return 0
-	}
-	if p > 100 {
-		return size
-	}
-	return size * int(p) / 100
-}
+const (
+	// spacerSizeEq is the priority to apply to Spacers to ensure that their sizes are equal.
+	//
+	// 	┌     ┐┌───┐┌     ┐┌───┐┌     ┐
+	// 	  ==x  │   │  ==x  │   │  ==x
+	// 	└     ┘└───┘└     ┘└───┘└     ┘
+	spacerSizeEq = required / 10.0
 
-// Ratio is a constraint that represents a ratio of the available size. It is a
-// syntactic sugar for [Percent].
-func Ratio(numerator, denominator int) Percent {
-	if denominator == 0 {
-		return 0
-	}
-	return Percent(numerator * 100 / denominator)
-}
+	// minSizeGTE is the priority to apply to [Min] inequality constraints.
+	//
+	// 	┌────────┐
+	// 	│Min(>=x)│
+	// 	└────────┘
+	minSizeGTE = strong * 100.0
 
-// Fixed is a constraint that represents a fixed size.
-type Fixed int
+	// maxSizeLTE is the priority to apply to [Max] inequality constraints.
+	//
+	// 	┌────────┐
+	// 	│Max(<=x)│
+	// 	└────────┘
+	maxSizeLTE = strong * 100.0
 
-// Apply applies the fixed size constraint to the given size.
-func (f Fixed) Apply(size int) int {
-	if f < 0 {
-		return 0
-	}
-	if int(f) > size {
-		return size
-	}
-	return int(f)
-}
+	// lengthSizeEq is the priority to apply to [Len] constraints.
+	//
+	// 	┌────────┐
+	// 	│Len(==x)│
+	// 	└────────┘
+	lengthSizeEq = strong * 10.0
 
-// SplitVertical splits the area vertically into two parts based on the given
-// [Constraint].
+	// percentSizeEq is the priority to apply to [Percent] constraints.
+	//
+	// 	┌────────────┐
+	// 	│Percent(==x)│
+	// 	└────────────┘
+	percentSizeEq = strong
+
+	// ratioSizeEq is the priority to apply to [Ratio] constraints.
+	//
+	// 	┌────────────┐
+	// 	│Ratio(==x,y)│
+	// 	└────────────┘
+	ratioSizeEq = strong / 10.0
+
+	// minSizeEq is the priority to apply to [Min] equality constraints.
+	//
+	// 	┌────────┐
+	// 	│Min(==x)│
+	// 	└────────┘
+	minSizeEq = medium * 10.0
+
+	// maxSizeEq the priority to apply to [Max] equality constraints.
+	//
+	// 	┌────────┐
+	// 	│Max(==x)│
+	// 	└────────┘
+	maxSizeEq = medium * 10.0
+
+	// fillGrow is the priority to apply to [Fill] growing constraints.
+	//
+	// 	┌─────────────────────┐
+	// 	│<=     Fill(x)     =>│
+	// 	└─────────────────────┘
+	fillGrow = medium
+
+	// grow is the priority to apply to growing constraints.
+	//
+	// 	┌────────────┐
+	// 	│<= Min(x) =>│
+	// 	└────────────┘
+	grow casso.Priority = 100.0
+
+	// spaceGrow is the priority to apply to spacer growing constraints.
+	//
+	// 	┌       ┐
+	// 	 <= x =>
+	// 	└       ┘
+	spaceGrow = weak * 10.0
+
+	// allSegmentGrow is the priority to apply to growing the size of all segments equally.
+	//
+	// 	┌───────┐
+	// 	│<= x =>│
+	// 	└───────┘
+	allSegmentGrow = weak
+)
+
+// Splitted represents result of [Layout] splitting
+// as a slice of rectangles.
+type Splitted []uv.Rectangle
+
+// Assign sets splitted rectangles into pointed values.
 //
-// It returns the top and bottom rectangles.
-func SplitVertical(area uv.Rectangle, constraint Constraint) (top uv.Rectangle, bottom uv.Rectangle) {
-	height := min(constraint.Apply(area.Dy()), area.Dy())
-	top = uv.Rectangle{Min: area.Min, Max: uv.Position{X: area.Max.X, Y: area.Min.Y + height}}
-	bottom = uv.Rectangle{Min: uv.Position{X: area.Min.X, Y: area.Min.Y + height}, Max: area.Max}
-	return
-}
-
-// SplitHorizontal splits the area horizontally into two parts based on the
-// given [Constraint].
+// Nil pointers are skipped.
 //
-// It returns the left and right rectangles.
-func SplitHorizontal(area uv.Rectangle, constraint Constraint) (left uv.Rectangle, right uv.Rectangle) {
-	width := min(constraint.Apply(area.Dx()), area.Dx())
-	left = uv.Rectangle{Min: area.Min, Max: uv.Position{X: area.Min.X + width, Y: area.Max.Y}}
-	right = uv.Rectangle{Min: uv.Position{X: area.Min.X + width, Y: area.Min.Y}, Max: area.Max}
-	return
+// Panics if given more areas that [Splitted] length.
+//
+// # Examples
+//
+//	var top, bottom uv.Rectangle
+//
+//	layout.New(layout.Fill(1), layout.Len(1)).
+//		Split(area).
+//	    Assign(&top, &bottom)
+func (s Splitted) Assign(areas ...*uv.Rectangle) {
+	for i := range areas {
+		if areas[i] != nil {
+			*areas[i] = s[i]
+		}
+	}
 }
 
-// CenterRect returns a new [uv.Rectangle] centered within the given area with the
-// specified width and height.
-func CenterRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	centerX := area.Min.X + area.Dx()/2
-	centerY := area.Min.Y + area.Dy()/2
-	minX := centerX - width/2
-	minY := centerY - height/2
-	maxX := minX + width
-	maxY := minY + height
-	return image.Rect(minX, minY, maxX, maxY)
+// Direction of a layout.
+//
+// This is used with [Layout] to specify whether layout
+// segments should be arranged horizontally or vertically.
+type Direction int
+
+const (
+	// DirectionVertical - layout segments are arranged top to bottom (default).
+	DirectionVertical Direction = iota
+	// DirectionHorizontal - layout segments are arranged side by side (left to right).
+	DirectionHorizontal
+)
+
+// New creates a new layout with default values.
+func New(direction Direction, constraints ...Constraint) Layout {
+	return Layout{
+		Direction:   direction,
+		Constraints: constraints,
+	}
 }
 
-// TopLeftRect returns a new [uv.Rectangle] positioned at the top-left corner of the
-// given area with the specified width and height.
-func TopLeftRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	return image.Rect(area.Min.X, area.Min.Y, area.Min.X+width, area.Min.Y+height).Intersect(area)
+// Vertical reates a new vertical layout with default values.
+func Vertical(constraints ...Constraint) Layout {
+	return New(DirectionVertical, constraints...)
 }
 
-// TopCenterRect returns a new [uv.Rectangle] positioned at the top-center of the
-// given area with the specified width and height.
-func TopCenterRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	centerX := area.Min.X + area.Dx()/2
-	minX := centerX - width/2
-	return image.Rect(minX, area.Min.Y, minX+width, area.Min.Y+height).Intersect(area)
+// Horizontal reates a new horizontal layout with default values.
+func Horizontal(constraints ...Constraint) Layout {
+	return New(DirectionHorizontal, constraints...)
 }
 
-// TopRightRect returns a new [uv.Rectangle] positioned at the top-right corner of
-// the given area with the specified width and height.
-func TopRightRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	return image.Rect(area.Max.X-width, area.Min.Y, area.Max.X, area.Min.Y+height).Intersect(area)
+// Layout engine for dividing terminal space using constraints and direction.
+//
+// A layout is a set of constraints that can be applied to a given area to split it into smaller
+// rectangular areas. This is the core building block for creating structured user interfaces in
+// terminal applications.
+//
+// A layout is composed of:
+//   - a direction (horizontal or vertical)
+//   - a set of constraints ([Len], [Ratio], [Percent], [Fill], [Min], [Max])
+//   - a margin (horizontal and vertical), the space between the edge of the main area and the split areas
+//   - a flex option that controls space distribution
+//   - a spacing option that controls gaps between segments
+//
+// The algorithm used to compute the layout is based on the Cassowary solver, a linear constraint
+// solver that computes positions and sizes to satisfy as many constraints as possible in order of
+// their priorities.
+type Layout struct {
+	Direction   Direction
+	Constraints []Constraint
+	Padding     Padding
+	// Spacing reprsents spacing between
+	// segments as a number of cells.
+	//
+	// Negative spacing causes overlap between segments.
+	Spacing int
+	Flex    Flex
 }
 
-// RightCenterRect returns a new [uv.Rectangle] positioned at the right-center of
-// the given area with the specified width and height.
-func RightCenterRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	centerY := area.Min.Y + area.Dy()/2
-	minY := centerY - height/2
-	return image.Rect(area.Max.X-width, minY, area.Max.X, minY+height).Intersect(area)
+// WithDirection returns a copy of the layout with the given direction.
+func (l Layout) WithDirection(direction Direction) Layout {
+	l.Direction = direction
+
+	return l
 }
 
-// LeftCenterRect returns a new [uv.Rectangle] positioned at the left-center of the
-// given area with the specified width and height.
-func LeftCenterRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	centerY := area.Min.Y + area.Dy()/2
-	minY := centerY - height/2
-	return image.Rect(area.Min.X, minY, area.Min.X+width, minY+height).Intersect(area)
+// WithPadding returns a copy of the layout with the given padding.
+func (l Layout) WithPadding(padding Padding) Layout {
+	l.Padding = padding
+	return l
 }
 
-// BottomLeftRect returns a new [uv.Rectangle] positioned at the bottom-left corner
-// of the given area with the specified width and height.
-func BottomLeftRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	return image.Rect(area.Min.X, area.Max.Y-height, area.Min.X+width, area.Max.Y).Intersect(area)
+// WithFlex returns a copy of the layout with the given flex.
+func (l Layout) WithFlex(flex Flex) Layout {
+	l.Flex = flex
+
+	return l
 }
 
-// BottomCenterRect returns a new [uv.Rectangle] positioned at the bottom-center of
-// the given area with the specified width and height.
-func BottomCenterRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	centerX := area.Min.X + area.Dx()/2
-	minX := centerX - width/2
-	return image.Rect(minX, area.Max.Y-height, minX+width, area.Max.Y).Intersect(area)
+// WithSpacing returns a copy of the layout with the given spacing.
+func (l Layout) WithSpacing(spacing int) Layout {
+	l.Spacing = spacing
+
+	return l
 }
 
-// BottomRightRect returns a new [uv.Rectangle] positioned at the bottom-right
-// corner of the given area with the specified width and height.
-func BottomRightRect(area uv.Rectangle, width, height int) uv.Rectangle {
-	return image.Rect(area.Max.X-width, area.Max.Y-height, area.Max.X, area.Max.Y).Intersect(area)
+// WithConstraints returns a copy of the layout with the given constraints.
+func (l Layout) WithConstraints(constraints ...Constraint) Layout {
+	l.Constraints = append(l.Constraints, constraints...)
+
+	return l
+}
+
+// SplitWithSpacers splits the given area into smaller ones
+// based on the preferred widths or heights and the direction, with the ability to include
+// spacers between the areas.
+//
+// This method is similar to [Layout.Split], but it returns two sets of rectangles: one for the areas
+// and one for the spacers.
+func (l Layout) SplitWithSpacers(area uv.Rectangle) (segments, spacers Splitted) {
+	segments, spacers, err := l.split(area)
+	if err != nil {
+		panic(err)
+	}
+
+	return segments, spacers
+}
+
+// Split a given area into smaller ones based on the preferred
+// widths or heights and the direction.
+//
+// Note that the constraints are applied to the whole area that is to be split, so using
+// percentages and ratios with the other constraints may not have the desired effect of
+// splitting the area up. (e.g. splitting 100 into [min 20, 50%, 50%], may not result
+// in [20, 40, 40] but rather an indeterminate result between [20, 50, 30] and [20, 30, 50]).
+func (l Layout) Split(area uv.Rectangle) Splitted {
+	segments, _ := l.SplitWithSpacers(area)
+
+	return segments
+}
+
+func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err error) {
+	s := casso.NewSolver()
+
+	innerArea := l.Padding.apply(area)
+
+	var areaStart, areaEnd float64
+
+	switch l.Direction {
+	case DirectionHorizontal:
+		areaStart = float64(innerArea.Min.X) * floatPrecisionMultiplier
+		areaEnd = float64(innerArea.Max.X) * floatPrecisionMultiplier
+
+	case DirectionVertical:
+		areaStart = float64(innerArea.Min.Y) * floatPrecisionMultiplier
+		areaEnd = float64(innerArea.Max.Y) * floatPrecisionMultiplier
+	}
+
+	// 	<───────────────────────────────────area_size──────────────────────────────────>
+	// 	┌─area_start                                                          area_end─┐
+	// 	V                                                                              V
+	// 	┌────┬───────────────────┬────┬─────variables─────┬────┬───────────────────┬────┐
+	// 	│    │                   │    │                   │    │                   │    │
+	// 	V    V                   V    V                   V    V                   V    V
+	// 	┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐
+	// 	     │     Max(20)      │     │      Max(20)     │     │      Max(20)     │
+	// 	└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘
+	// 	^    ^                   ^    ^                   ^    ^                   ^    ^
+	// 	│    │                   │    │                   │    │                   │    │
+	// 	└─┬──┶━━━━━━━━━┳━━━━━━━━━┵─┬──┶━━━━━━━━━┳━━━━━━━━━┵─┬──┶━━━━━━━━━┳━━━━━━━━━┵─┬──┘
+	// 	  │            ┃           │            ┃           │            ┃           │
+	// 	  └────────────╂───────────┴────────────╂───────────┴────────────╂──Spacers──┘
+	// 	               ┃                        ┃                        ┃
+	// 	               ┗━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━Segments━━━━━━━━┛
+
+	variableCount := len(l.Constraints)*2 + 2
+
+	variables := make([]casso.Symbol, variableCount)
+	for i := range variableCount {
+		variables[i] = casso.New()
+	}
+
+	spacerElements := newElements(variables)
+	segmentElements := newElements(variables[1:])
+
+	spacing := l.Spacing
+
+	areaEl := element{
+		start: variables[0],
+		end:   variables[len(variables)-1],
+	}
+
+	if err := configureArea(s, areaEl, areaStart, areaEnd); err != nil {
+		return nil, nil, fmt.Errorf("configure area: %w", err)
+	}
+
+	if err := configureVariableInAreaConstraints(s, variables, areaEl); err != nil {
+		return nil, nil, fmt.Errorf("configure variable in area constraints: %w", err)
+	}
+
+	if err := configureVariableConstraints(s, variables); err != nil {
+		return nil, nil, fmt.Errorf("configure variable constraints: %w", err)
+	}
+
+	if err := configureFlexConstraints(s, areaEl, spacerElements, l.Flex, spacing); err != nil {
+		return nil, nil, fmt.Errorf("configure flex constraints: %w", err)
+	}
+
+	if err := configureConstraints(s, areaEl, segmentElements, l.Constraints, l.Flex); err != nil {
+		return nil, nil, fmt.Errorf("configure constraints: %w", err)
+	}
+
+	if err := configureFillConstraints(s, segmentElements, l.Constraints, l.Flex); err != nil {
+		return nil, nil, fmt.Errorf("configure fill constraints: %w", err)
+	}
+
+	if l.Flex != FlexLegacy {
+		for i := 0; i < len(segmentElements)-1; i++ {
+			left := segmentElements[i]
+			right := segmentElements[i+1]
+
+			if _, err := s.Add(allSegmentGrow, left.sizeEqSize(right)); err != nil {
+				return nil, nil, fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+	}
+
+	changes := make(map[casso.Symbol]float64, variableCount)
+
+	for _, v := range variables {
+		changes[v] = s.Val(v)
+	}
+
+	segments = changesToRects(changes, segmentElements, innerArea, l.Direction)
+	spacers = changesToRects(changes, spacerElements, innerArea, l.Direction)
+
+	return segments, spacers, nil
+}
+
+func changesToRects(
+	changes map[casso.Symbol]float64,
+	elements []element,
+	area uv.Rectangle,
+	direction Direction,
+) []uv.Rectangle {
+	var rects []uv.Rectangle
+
+	for _, e := range elements {
+		startVal := changes[e.start]
+		endVal := changes[e.end]
+
+		startRounded := int(math.Round(math.Round(startVal) / floatPrecisionMultiplier))
+		endRounded := int(math.Round(math.Round(endVal) / floatPrecisionMultiplier))
+
+		size := max(0, endRounded-startRounded)
+
+		switch direction {
+		case DirectionHorizontal:
+			rect := uv.Rect(startRounded, area.Min.Y, size, area.Dy())
+
+			rects = append(rects, rect)
+
+		case DirectionVertical:
+			rect := uv.Rect(area.Min.X, startRounded, area.Dx(), size)
+
+			rects = append(rects, rect)
+		}
+	}
+
+	return rects
+}
+
+// configureFillConstraints makes every [Fill] constraint proportionally equal to each other
+// This will make it fill up empty spaces equally
+//
+//	[Fill(1), Fill(1)]
+//	┌──────┐┌──────┐
+//	│abcdef││abcdef│
+//	└──────┘└──────┘
+//
+//	[Fill(1), Fill(2)]
+//	┌──────┐┌────────────┐
+//	│abcdef││abcdefabcdef│
+//	└──────┘└────────────┘
+//
+//	size == base_element * scaling_factor
+func configureFillConstraints(
+	s *casso.Solver,
+	segments []element,
+	constraints []Constraint,
+	flex Flex,
+) error {
+	var (
+		validConstraints []Constraint
+		validSegments    []element
+	)
+
+	for i := 0; i < min(len(constraints), len(segments)); i++ {
+		c := constraints[i]
+		seg := segments[i]
+
+		switch c.(type) {
+		case Fill, Min:
+			if _, ok := c.(Min); ok && flex == FlexLegacy {
+				continue
+			}
+
+			validConstraints = append(validConstraints, c)
+			validSegments = append(validSegments, seg)
+		}
+	}
+
+	for _, indices := range combinations(len(validConstraints), 2) {
+		i, j := indices[0], indices[1]
+
+		leftConstraint := validConstraints[i]
+		leftSegment := validSegments[i]
+
+		rightConstraint := validConstraints[j]
+		rightSegment := validSegments[j]
+
+		getScalingFactor := func(c Constraint) float64 {
+			var scalingFactor float64
+
+			switch c := c.(type) {
+			case Fill:
+				scale := float64(c)
+
+				scalingFactor = 1e-6
+				scalingFactor = max(scalingFactor, scale)
+
+			case Min:
+				scalingFactor = 1
+			}
+
+			return scalingFactor
+		}
+
+		leftScalingFactor := getScalingFactor(leftConstraint)
+		rightScalingFactor := getScalingFactor(rightConstraint)
+
+		c := casso.NewConstraint(casso.EQ, 0,
+			leftSegment.end.T(rightScalingFactor),
+			leftSegment.start.T(-rightScalingFactor),
+			rightSegment.end.T(-leftScalingFactor),
+			rightSegment.start.T(leftScalingFactor),
+		)
+
+		if _, err := s.Add(grow, c); err != nil {
+			return fmt.Errorf("add constraint: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func configureConstraints(
+	s *casso.Solver,
+	area element,
+	segments []element,
+	constraints []Constraint,
+	flex Flex,
+) error {
+	for i := 0; i < min(len(constraints), len(segments)); i++ {
+		constraint := constraints[i]
+		segment := segments[i]
+
+		switch constraint := constraint.(type) {
+		case Max:
+			size := int(constraint)
+
+			if _, err := s.Add(maxSizeLTE, segment.sizeLTE(size)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(maxSizeEq, segment.sizeEqConst(size)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+		case Min:
+			size := int(constraint)
+
+			if _, err := s.Add(minSizeGTE, segment.sizeGTE(size)); err != nil {
+				return fmt.Errorf("add has min size constraint: %w", err)
+			}
+
+			if flex == FlexLegacy {
+				if _, err := s.Add(minSizeEq, segment.sizeEqConst(size)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			} else {
+				if _, err := s.Add(fillGrow, segment.sizeEqSize(area)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			}
+
+		case Len:
+			length := int(constraint)
+
+			if _, err := s.Add(lengthSizeEq, segment.sizeEqConst(length)); err != nil {
+				return fmt.Errorf("add has int size constraint: %w", err)
+			}
+
+		case Percent:
+			f := float64(constraint) / 100
+
+			if _, err := s.Add(percentSizeEq, segment.sizeEqScaledSize(area, f)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+
+		case Ratio:
+			f := float64(constraint.Num) / float64(max(1, constraint.Den))
+
+			if _, err := s.Add(ratioSizeEq, segment.sizeEqScaledSize(area, f)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+
+		case Fill:
+			if _, err := s.Add(fillGrow, segment.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func configureFlexConstraints(
+	s *casso.Solver,
+	area element,
+	spacers []element,
+	flex Flex,
+	spacing int,
+) error {
+	var spacersExceptFirstAndLast []element
+
+	if len(spacers) > 2 {
+		spacersExceptFirstAndLast = spacers[1 : len(spacers)-1]
+	}
+
+	switch flex {
+	case FlexLegacy:
+		for _, sp := range spacersExceptFirstAndLast {
+			if _, err := s.Add(spacerSizeEq, sp.sizeEqConst(spacing)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+
+		if len(spacers) >= 2 {
+			first, last := spacers[0], spacers[len(spacers)-1]
+
+			if _, err := s.Add(required-weak, first.empty()); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(required-weak, last.empty()); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+
+	case FlexSpaceEvenly:
+		for _, indices := range combinations(len(spacers), 2) {
+			i, j := indices[0], indices[1]
+
+			left, right := spacers[i], spacers[j]
+
+			if _, err := s.Add(spacerSizeEq, left.sizeEqSize(right)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+
+		for _, sp := range spacers {
+			if _, err := s.Add(spacerSizeEq, sp.sizeGTE(spacing)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(spaceGrow, sp.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+
+	case FlexSpaceAround:
+		if len(spacers) <= 2 {
+			for _, indices := range combinations(len(spacers), 2) {
+				i, j := indices[0], indices[1]
+
+				left, right := spacers[i], spacers[j]
+
+				if _, err := s.Add(spacerSizeEq, left.sizeEqSize(right)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			}
+
+			for _, sp := range spacers {
+				if _, err := s.Add(spacerSizeEq, sp.sizeGTE(spacing)); err != nil {
+					return fmt.Errorf("add constraints: %w", err)
+				}
+
+				if _, err := s.Add(spaceGrow, sp.sizeEqSize(area)); err != nil {
+					return fmt.Errorf("add constraints: %w", err)
+				}
+			}
+		} else {
+			first, rest := spacers[0], spacers[1:]
+			last, middle := rest[len(rest)-1], rest[:len(rest)-1]
+
+			for _, indices := range combinations(len(middle), 2) {
+				i, j := indices[0], indices[1]
+
+				left, right := middle[i], middle[j]
+
+				if _, err := s.Add(spacerSizeEq, left.sizeEqSize(right)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			}
+
+			if len(middle) > 0 {
+				firstMiddle := middle[0]
+
+				for _, e := range []element{first, last} {
+					if _, err := s.Add(spacerSizeEq, firstMiddle.sizeEqDouble(e)); err != nil {
+						return fmt.Errorf("add has double size constraint: %w", err)
+					}
+				}
+			}
+
+			for _, sp := range spacers {
+				if _, err := s.Add(spacerSizeEq, sp.sizeGTE(spacing)); err != nil {
+					return fmt.Errorf("add has min size constraint: %w", err)
+				}
+
+				if _, err := s.Add(spaceGrow, sp.sizeEqSize(area)); err != nil {
+					return fmt.Errorf("add has size constraint: %w", err)
+				}
+			}
+		}
+
+	case FlexSpaceBetween:
+		for _, indices := range combinations(len(spacersExceptFirstAndLast), 2) {
+			i, j := indices[0], indices[1]
+
+			left, right := spacersExceptFirstAndLast[i], spacersExceptFirstAndLast[j]
+
+			if _, err := s.Add(spacerSizeEq, left.sizeEqSize(right)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+
+		for _, sp := range spacersExceptFirstAndLast {
+			if _, err := s.Add(spacerSizeEq, sp.sizeGTE(spacing)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(spaceGrow, sp.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+
+		if len(spacers) >= 2 {
+			first, last := spacers[0], spacers[len(spacers)-1]
+
+			if _, err := s.Add(required-weak, first.empty()); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(required-weak, last.empty()); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+
+	case FlexStart:
+		for _, sp := range spacersExceptFirstAndLast {
+			if _, err := s.Add(spacerSizeEq, sp.sizeEqConst(spacing)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+
+		if len(spacers) >= 2 {
+			first := spacers[0]
+			last := spacers[len(spacers)-1]
+
+			if _, err := s.Add(required-weak, first.empty()); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(grow, last.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+
+	case FlexCenter:
+		for _, sp := range spacersExceptFirstAndLast {
+			if _, err := s.Add(spacerSizeEq, sp.sizeEqConst(spacing)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+
+		if len(spacers) >= 2 {
+			first, last := spacers[0], spacers[len(spacers)-1]
+
+			if _, err := s.Add(grow, first.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(grow, last.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(spacerSizeEq, first.sizeEqSize(last)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+
+	case FlexEnd:
+		for _, sp := range spacersExceptFirstAndLast {
+			if _, err := s.Add(spacerSizeEq, sp.sizeEqConst(spacing)); err != nil {
+				return fmt.Errorf("add has size constraint: %w", err)
+			}
+		}
+
+		if len(spacers) >= 2 {
+			first := spacers[0]
+			last := spacers[len(spacers)-1]
+
+			if _, err := s.Add(required-weak, last.empty()); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+
+			if _, err := s.Add(grow, first.sizeEqSize(area)); err != nil {
+				return fmt.Errorf("add constraints: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func configureVariableConstraints(
+	s *casso.Solver,
+	variables []casso.Symbol,
+) error {
+	// 	┌────┬───────────────────┬────┬─────variables─────┬────┬───────────────────┬────┐
+	// 	│    │                   │    │                   │    │                   │    │
+	// 	v    v                   v    v                   v    v                   v    v
+	// 	┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐┌──────────────────┐┌   ┐
+	// 	     │     Max(20)      │     │      Max(20)     │     │      Max(20)     │
+	// 	└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘└──────────────────┘└   ┘
+	// 	^    ^                   ^    ^                   ^    ^                   ^    ^
+	// 	└v0  └v1                 └v2  └v3                 └v4  └v5                 └v6  └v7
+
+	variables = variables[1:]
+
+	count := len(variables)
+
+	for i := 0; i < count-count%2; i += 2 {
+		left, right := variables[i], variables[i+1]
+
+		if _, err := s.Add(required, casso.NewConstraint(casso.LTE, 0, left.T(1), right.T(-1))); err != nil {
+			return fmt.Errorf("add constraint: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func configureVariableInAreaConstraints(
+	s *casso.Solver,
+	variables []casso.Symbol,
+	area element,
+) error {
+	for _, v := range variables {
+		if _, err := s.Add(required, casso.NewConstraint(casso.GTE, 0, v.T(1), area.start.T(-1))); err != nil {
+			return fmt.Errorf("add start constraint: %w", err)
+		}
+
+		if _, err := s.Add(required, casso.NewConstraint(casso.LTE, 0, v.T(1), area.end.T(-1))); err != nil {
+			return fmt.Errorf("add end constraint: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func configureArea(
+	s *casso.Solver,
+	area element,
+	areaStart, areaEnd float64,
+) error {
+	if _, err := s.Add(required, casso.NewConstraint(casso.EQ, -areaStart, area.start.T(1))); err != nil {
+		return fmt.Errorf("add start constraint: %w", err)
+	}
+
+	if _, err := s.Add(required, casso.NewConstraint(casso.EQ, -areaEnd, area.end.T(1))); err != nil {
+		return fmt.Errorf("add end constraint: %w", err)
+	}
+
+	return nil
+}
+
+func newElements(variables []casso.Symbol) []element {
+	count := len(variables)
+
+	elements := make([]element, 0, count/2+1)
+
+	for i := 0; i < count-count%2; i += 2 {
+		s, e := variables[i], variables[i+1]
+
+		elements = append(elements, element{start: s, end: e})
+	}
+
+	return elements
+}
+
+type element struct {
+	start, end casso.Symbol
+}
+
+func (e element) empty() casso.Constraint {
+	return casso.NewConstraint(casso.EQ, 0, e.end.T(1), e.start.T(-1))
+}
+
+func (e element) sizeEqConst(size int) casso.Constraint {
+	return casso.NewConstraint(casso.EQ, -float64(size)*floatPrecisionMultiplier, e.end.T(1), e.start.T(-1))
+}
+
+func (e element) sizeLTE(size int) casso.Constraint {
+	return casso.NewConstraint(casso.LTE, -float64(size)*floatPrecisionMultiplier, e.end.T(1), e.start.T(-1))
+}
+
+func (e element) sizeGTE(size int) casso.Constraint {
+	return casso.NewConstraint(casso.GTE, -float64(size)*floatPrecisionMultiplier, e.end.T(1), e.start.T(-1))
+}
+
+func (e element) sizeEqSize(other element) casso.Constraint {
+	return casso.NewConstraint(casso.EQ, 0, e.end.T(1), e.start.T(-1), other.end.T(-1), other.start.T(1))
+}
+
+func (e element) sizeEqScaledSize(other element, f float64) casso.Constraint {
+	return casso.NewConstraint(casso.EQ, 0, e.end.T(1), e.start.T(-1), other.end.T(-f), other.start.T(f))
+}
+
+func (e element) sizeEqDouble(other element) casso.Constraint {
+	return casso.NewConstraint(casso.EQ, 0, e.end.T(1), e.start.T(-1), other.end.T(-2), other.start.T(2))
+}
+
+func combinations(n, k int) [][]int {
+	combins := binomial(n, k)
+	data := make([][]int, combins)
+	if len(data) == 0 {
+		return nil
+	}
+
+	data[0] = make([]int, k)
+	for i := range data[0] {
+		data[0][i] = i
+	}
+
+	for i := 1; i < combins; i++ {
+		next := make([]int, k)
+		copy(next, data[i-1])
+		nextCombination(next, n, k)
+		data[i] = next
+	}
+
+	return data
+}
+
+func nextCombination(s []int, n, k int) {
+	for j := k - 1; j >= 0; j-- {
+		if s[j] == n+j-k {
+			continue
+		}
+
+		s[j]++
+
+		for l := j + 1; l < k; l++ {
+			s[l] = s[j] + l - j
+		}
+
+		break
+	}
+}
+
+func binomial(n, k int) int {
+	if n < 0 || k < 0 {
+		panic("layout: binomial: negative input")
+	}
+
+	if n < k {
+		return 0
+	}
+
+	// (n,k) = (n, n-k)
+	if k > n/2 {
+		k = n - k
+	}
+
+	b := 1
+	for i := 1; i <= k; i++ {
+		b = (n - k + i) * b / i
+	}
+
+	return b
 }
