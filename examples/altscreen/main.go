@@ -2,13 +2,14 @@ package main
 
 import (
 	"log"
+	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
 )
 
 func main() {
-	t := uv.DefaultTerminal(nil)
+	t := uv.DefaultTerminal()
 	scr := t.Screen()
 
 	if err := t.Start(); err != nil {
@@ -23,17 +24,15 @@ func main() {
 	display := func() {
 		var str string
 		if altScreen {
-			str = "This is using alternate screen mode.\n" + help
+			str = "This is using alternate screen mode."
 		} else {
-			str = "This is using inline mode.\n" + help
+			str = "This is using inline mode."
 		}
 
-		ss := uv.NewStyledString(str)
+		str = strings.Join([]string{str, help}, "\n")
+
 		screen.Clear(scr)
-		bounds := scr.Bounds()
-		bounds.Min.X = (bounds.Dx() - ss.UnicodeWidth()) / 2
-		bounds.Min.Y = (bounds.Dy() - ss.Height()) / 2
-		ss.Draw(scr, bounds)
+		screen.NewContext(scr).Print(str)
 		scr.Render()
 		scr.Flush()
 	}
