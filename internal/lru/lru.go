@@ -3,7 +3,6 @@ package lru
 import (
 	"container/list"
 	"fmt"
-	"sync"
 )
 
 type LRU[K comparable, V any] struct {
@@ -11,8 +10,6 @@ type LRU[K comparable, V any] struct {
 
 	items map[K]*list.Element
 	evict *list.List
-
-	mu sync.Mutex
 }
 
 type entry[K comparable, T any] struct {
@@ -33,9 +30,6 @@ func New[K comparable, V any](size int) *LRU[K, V] {
 }
 
 func (c *LRU[K, V]) Get(key K) (V, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	e, ok := c.items[key]
 	if !ok {
 		var zero V
@@ -49,9 +43,6 @@ func (c *LRU[K, V]) Get(key K) (V, bool) {
 }
 
 func (c *LRU[K, V]) Add(key K, value V) (evicted bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if e, ok := c.items[key]; ok {
 		c.evict.MoveToFront(e)
 		e.Value = value

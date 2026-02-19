@@ -1,6 +1,8 @@
 package layout
 
 import (
+	"sync"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/internal/lru"
 )
@@ -11,7 +13,10 @@ import (
 // row and every column, twice over, which should be enough for most apps.
 const globalCacheSize = 500
 
-var globalCache = lru.New[cacheKey, cacheValue](globalCacheSize)
+var (
+	globalCache   = lru.New[cacheKey, cacheValue](globalCacheSize)
+	globalCacheMu sync.Mutex
+)
 
 type cacheKey struct {
 	Area            uv.Rectangle

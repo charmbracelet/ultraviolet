@@ -274,6 +274,9 @@ func (l Layout) Split(area uv.Rectangle) Splitted {
 }
 
 func (l Layout) splitCached(area uv.Rectangle) (segments, spacers []uv.Rectangle, err error) {
+	globalCacheMu.Lock()
+	defer globalCacheMu.Unlock()
+
 	key := l.cacheKey(area)
 
 	if v, ok := globalCache.Get(key); ok {
