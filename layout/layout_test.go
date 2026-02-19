@@ -10,6 +10,30 @@ import (
 	"github.com/charmbracelet/ultraviolet/screen"
 )
 
+func BenchmarkLayout_Split(b *testing.B) {
+	layout := Vertical(Len(2), Fill(1), Ratio{1, 5}, Percent(10))
+
+	area := uv.Rect(123, 123, 1000, 2000)
+
+	b.Run("without cache", func(b *testing.B) {
+		for b.Loop() {
+			_, _, err := layout.split(area)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("with cache", func(b *testing.B) {
+		for b.Loop() {
+			_, _, err := layout.splitCached(area)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
 func TestPriorityIsValid(t *testing.T) {
 	t.Parallel()
 
