@@ -266,7 +266,7 @@ func (a *App) HandleEvent(id string, ev uv.Event) bool {
 				ctx.Printf("\n")
 				return true
 			case len(ev.Text) > 0:
-				ctx.Printf(ev.Text)
+				ctx.Print(ev.Text)
 				return true
 			}
 		}
