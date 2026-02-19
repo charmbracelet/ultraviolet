@@ -327,7 +327,7 @@ func main() {
 		doc.WriteString(statusBarStyle.Width(width).Render(bar))
 	}
 
-	t := uv.DefaultTerminal(nil)
+	t := uv.DefaultTerminal()
 	scr := t.Screen()
 
 	if err := t.Start(); err != nil {
