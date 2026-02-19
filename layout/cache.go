@@ -1,10 +1,8 @@
 package layout
 
 import (
-	"fmt"
-
 	uv "github.com/charmbracelet/ultraviolet"
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/charmbracelet/ultraviolet/internal/lru"
 )
 
 // This is a somewhat arbitrary size for the layout cache based on adding
@@ -13,7 +11,7 @@ import (
 // row and every column, twice over, which should be enough for most apps.
 const globalCacheSize = 500
 
-var globalCache = newCache(globalCacheSize)
+var globalCache = lru.New[cacheKey, cacheValue](globalCacheSize)
 
 type cacheKey struct {
 	Area            uv.Rectangle
@@ -25,13 +23,3 @@ type cacheKey struct {
 }
 
 type cacheValue struct{ Segments, Spacers Splitted }
-
-func newCache(size int) *lru.Cache[cacheKey, cacheValue] {
-	cache, err := lru.New[cacheKey, cacheValue](size)
-	if err != nil {
-		// fails only when given negative size.
-		panic(fmt.Sprintf("layout: failed to create lru cache of size %d: %v", size, err))
-	}
-
-	return cache
-}
