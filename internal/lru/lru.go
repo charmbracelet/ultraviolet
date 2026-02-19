@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-type Cache[K comparable, V any] struct {
+type LRU[K comparable, V any] struct {
 	size int
 
 	items map[K]*list.Element
@@ -20,19 +20,19 @@ type entry[K comparable, T any] struct {
 	Value T
 }
 
-func New[K comparable, V any](size int) *Cache[K, V] {
+func New[K comparable, V any](size int) *LRU[K, V] {
 	if size < 0 {
 		panic(fmt.Sprintf("lru: negative size given: %d", size))
 	}
 
-	return &Cache[K, V]{
+	return &LRU[K, V]{
 		size:  size,
 		items: make(map[K]*list.Element),
 		evict: list.New(),
 	}
 }
 
-func (c *Cache[K, V]) Get(key K) (V, bool) {
+func (c *LRU[K, V]) Get(key K) (V, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -48,7 +48,7 @@ func (c *Cache[K, V]) Get(key K) (V, bool) {
 	return e.Value.(entry[K, V]).Value, true
 }
 
-func (c *Cache[K, V]) Add(key K, value V) (evicted bool) {
+func (c *LRU[K, V]) Add(key K, value V) (evicted bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

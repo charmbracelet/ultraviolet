@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCache(t *testing.T) {
+func TestLRU(t *testing.T) {
 	const size = 20
 
 	cache := New[int, string](size)
