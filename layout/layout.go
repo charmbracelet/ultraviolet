@@ -23,6 +23,7 @@ package layout
 
 import (
 	"fmt"
+	"hash/fnv"
 	"math"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -251,7 +252,7 @@ func (l Layout) WithConstraints(constraints ...Constraint) Layout {
 // This method is similar to [Layout.Split], but it returns two sets of rectangles: one for the areas
 // and one for the spacers.
 func (l Layout) SplitWithSpacers(area uv.Rectangle) (segments, spacers Splitted) {
-	segments, spacers, err := l.split(area)
+	segments, spacers, err := l.splitCached(area)
 	if err != nil {
 		panic(err)
 	}
@@ -270,6 +271,26 @@ func (l Layout) Split(area uv.Rectangle) Splitted {
 	segments, _ := l.SplitWithSpacers(area)
 
 	return segments
+}
+
+func (l Layout) splitCached(area uv.Rectangle) (segments, spacers []uv.Rectangle, err error) {
+	globalCacheMu.Lock()
+	defer globalCacheMu.Unlock()
+
+	key := l.cacheKey(area)
+
+	if v, ok := globalCache.Get(key); ok {
+		return v.Segments, v.Spacers, nil
+	}
+
+	segments, spacers, err = l.split(area)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	globalCache.Add(key, cacheValue{Segments: segments, Spacers: spacers})
+
+	return segments, spacers, nil
 }
 
 func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err error) {
@@ -368,6 +389,23 @@ func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err 
 	spacers = changesToRects(changes, spacerElements, innerArea, l.Direction)
 
 	return segments, spacers, nil
+}
+
+func (l Layout) cacheKey(area uv.Rectangle) cacheKey {
+	h := fnv.New64a()
+
+	for _, c := range l.Constraints {
+		c.hash(h)
+	}
+
+	return cacheKey{
+		Area:            area,
+		Direction:       l.Direction,
+		ConstraintsHash: h.Sum64(),
+		Padding:         l.Padding,
+		Spacing:         l.Spacing,
+		Flex:            l.Flex,
+	}
 }
 
 func changesToRects(

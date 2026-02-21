@@ -1,6 +1,9 @@
 package layout
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // Constraint that defines the size of a layout element.
 //
@@ -20,6 +23,8 @@ import "fmt"
 //   - [Ratio]
 //   - [Fill]
 type Constraint interface {
+	hash(w io.Writer)
+
 	// isConstraint is a private method to prevent users implementing the
 	// interface making it a sealed enum.
 	isConstraint()
@@ -150,20 +155,26 @@ type (
 	Fill int
 )
 
-func (m Min) String() string { return fmt.Sprintf("Min(%d)", m) }
-func (Min) isConstraint()    {}
+func (m Min) String() string   { return fmt.Sprintf("Min(%d)", m) }
+func (m Min) hash(w io.Writer) { fmt.Fprint(w, "min", m) }
+func (Min) isConstraint()      {}
 
-func (m Max) String() string { return fmt.Sprintf("Max(%d)", m) }
-func (Max) isConstraint()    {}
+func (m Max) String() string   { return fmt.Sprintf("Max(%d)", m) }
+func (m Max) hash(w io.Writer) { fmt.Fprint(w, "max", m) }
+func (Max) isConstraint()      {}
 
-func (l Len) String() string { return fmt.Sprintf("Len(%d)", l) }
-func (Len) isConstraint()    {}
+func (l Len) String() string   { return fmt.Sprintf("Len(%d)", l) }
+func (l Len) hash(w io.Writer) { fmt.Fprint(w, "len", l) }
+func (Len) isConstraint()      {}
 
-func (p Percent) String() string { return fmt.Sprintf("Percent(%d)", p) }
-func (Percent) isConstraint()    {}
+func (p Percent) String() string   { return fmt.Sprintf("Percent(%d)", p) }
+func (p Percent) hash(w io.Writer) { fmt.Fprint(w, "percent", p) }
+func (Percent) isConstraint()      {}
 
-func (r Ratio) String() string { return fmt.Sprintf("Ratio(%d / %d)", r.Num, r.Den) }
-func (Ratio) isConstraint()    {}
+func (r Ratio) String() string   { return fmt.Sprintf("Ratio(%d / %d)", r.Num, r.Den) }
+func (r Ratio) hash(w io.Writer) { fmt.Fprint(w, "ratio", r.Num, r.Den) }
+func (Ratio) isConstraint()      {}
 
-func (f Fill) String() string { return fmt.Sprintf("Fill(%d)", f) }
-func (Fill) isConstraint()    {}
+func (f Fill) String() string   { return fmt.Sprintf("Fill(%d)", f) }
+func (f Fill) hash(w io.Writer) { fmt.Fprint(w, "fill", f) }
+func (Fill) isConstraint()      {}
