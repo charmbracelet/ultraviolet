@@ -4,17 +4,15 @@ import (
 	"fmt"
 )
 
-// Flex defines the options for layout flex justify content in a container.
-//
-// This enumeration controls the distribution of space when layout constraints are met and there
-// is excess space available. The [Flex] option is used with [Layout] to
-// control how extra space is distributed among layout segments, which is particularly useful for
-// creating responsive layouts that adapt to different terminal sizes.
+// Flex controls how leftover space is distributed once every segment's
+// constraint has been resolved. It is analogous to the CSS
+// justify-content property and is used together with [Layout].
 type Flex int
 
 const (
 
-	// FlexStart aligns items to the start of the container.
+	// FlexStart pushes segments to the leading edge of the area, leaving
+	// any surplus space at the trailing edge.
 	//
 	// # Examples
 	//
@@ -34,11 +32,12 @@ const (
 	// 	└──────────────────┘
 	FlexStart Flex = iota
 
-	// FlexLegacy fills the available space within the container, putting excess space into the last
-	// constraint of the lowest priority.
+	// FlexLegacy fills the entire area by assigning surplus space to the
+	// lowest-priority trailing segment. This reproduces the original
+	// Ratatui/tui-rs layout behaviour.
 	//
-	// The following examples illustrate the allocation of excess in various combinations of
-	// constraints. As a refresher, the priorities of constraints are as follows:
+	// The examples below show how surplus space is allocated for different
+	// constraint combinations. Recall the priority order (highest first):
 	//
 	// 	- [Min]
 	// 	- [Max]
@@ -47,7 +46,7 @@ const (
 	// 	- [Ratio]
 	// 	- [Fill]
 	//
-	// When every constraint is [Len], the last element gets the excess.
+	// With all-[Len] constraints the surplus goes to the final segment.
 	//
 	// 	<----------------------------------- 80 px ------------------------------------>
 	// 	┌──────20 px───────┐┌──────20 px───────┐┌────────────────40 px─────────────────┐
@@ -55,8 +54,7 @@ const (
 	// 	└──────────────────┘└──────────────────┘└──────────────────────────────────────┘
 	// 	                                        ^^^^^^^^^^^^^^^^ EXCESS ^^^^^^^^^^^^^^^^
 	//
-	// Fill constraints have the lowest priority amongst all the constraints and hence
-	// will always take up any excess space available.
+	// [Fill] has the lowest priority, so it always absorbs surplus.
 	//
 	// 	<----------------------------------- 80 px ------------------------------------>
 	// 	┌──────20 px───────┐┌──────20 px───────┐┌──────20 px───────┐┌──────20 px───────┐
@@ -77,7 +75,8 @@ const (
 	// 	└──────────────────────────────────────────────────────────────────────────────┘
 	FlexLegacy
 
-	// FlexEnd aligns items to the end of the container.
+	// FlexEnd pushes segments to the trailing edge of the area, leaving
+	// surplus space at the leading edge.
 	//
 	// # Examples
 	//
@@ -97,7 +96,8 @@ const (
 	// 	                                                            └──────────────────┘
 	FlexEnd
 
-	// FlexCenter centers items within the container.
+	// FlexCenter places segments in the middle of the area, distributing
+	// surplus space equally before the first and after the last segment.
 	//
 	// # Examples
 	//
@@ -117,7 +117,8 @@ const (
 	// 	                              └──────────────────┘
 	FlexCenter
 
-	// FlexSpaceBetween adds excess space between each element.
+	// FlexSpaceBetween distributes surplus space equally between adjacent
+	// segments, with no space before the first or after the last.
 	//
 	// # Examples
 	//
@@ -137,8 +138,8 @@ const (
 	// 	└──────────────────────────────────────────────────────────────────────────────┘
 	FlexSpaceBetween
 
-	// FlexSpaceEvenly evenly distributes excess space between all elements, including before the first and after
-	// the last.
+	// FlexSpaceEvenly distributes surplus space so that every gap
+	// (including before the first and after the last segment) is the same width.
 	//
 	// # Examples
 	//
@@ -158,7 +159,8 @@ const (
 	// 	                              └──────────────────┘
 	FlexSpaceEvenly
 
-	// FlexSpaceAround adds excess space around each element.
+	// FlexSpaceAround places equal space on both sides of each segment.
+	// Adjacent segments therefore have twice the gap of the outer edges.
 	//
 	// # Examples
 	//

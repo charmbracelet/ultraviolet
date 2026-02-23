@@ -7,10 +7,9 @@ import (
 	"github.com/charmbracelet/ultraviolet/internal/lru"
 )
 
-// This is a somewhat arbitrary size for the layout cache based on adding
-// the columns and rows (171+51 = 222) and doubling it for good measure and then adding a
-// bit more to make it a round number. This gives enough entries to store a layout for every
-// row and every column, twice over, which should be enough for most apps.
+// globalCacheSize is chosen to comfortably hold one entry per row and column
+// of a typical terminal, with headroom to spare. A 171-column x 51-row
+// display yields 222 unique keys; doubling and rounding up gives 500.
 const globalCacheSize = 500
 
 var (

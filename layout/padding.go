@@ -2,7 +2,7 @@ package layout
 
 import uv "github.com/charmbracelet/ultraviolet"
 
-// Padding represents space around inner area of a layout.
+// Padding defines the inset applied to a [Layout]'s outer area before solving.
 type Padding struct {
 	Top, Right, Bottom, Left int
 }
@@ -23,15 +23,14 @@ func (p Padding) apply(area uv.Rectangle) uv.Rectangle {
 	)
 }
 
-// Pad constructs a new [Padding] with the given sides.
+// Pad builds a [Padding] value from a variable number of sides,
+// following the same shorthand convention as CSS:
+//   - 0 args: all sides zero.
+//   - 1 arg: uniform on every side.
+//   - 2 args: first is top/bottom, second is left/right.
+//   - 4 args: top, right, bottom, left.
 //
-// The number of arguments determines the interpretation, similar to CSS:
-//   - 0: all sides are zero.
-//   - 1: all sides set to the given value.
-//   - 2: first is vertical (top and bottom), second is horizontal (left and right).
-//   - 4: directly correspond to top, right, bottom, left.
-//
-// Any other number of arguments causes a panic.
+// Any other count causes a panic.
 func Pad(sides ...int) Padding {
 	switch len(sides) {
 	case 0:

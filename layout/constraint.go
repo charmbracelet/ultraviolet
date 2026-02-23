@@ -5,16 +5,16 @@ import (
 	"io"
 )
 
-// Constraint that defines the size of a layout element.
+// Constraint describes how a single segment of a [Layout] should be sized.
 //
-// Constraints are the core mechanism for defining how space should be allocated within a
-// [Layout]. They can specify fixed sizes ([Len]), proportional sizes
-// ([Percent], [Ratio]), size limits ([Min], [Max]), or proportional fill values for layout elements.
-// Relative constraints ([Percent], [Ratio]) are calculated relative to the entire space being
-// divided, rather than the space available after applying more fixed
-// constraints ([Min], [Max], [Len]).
+// Each constraint type expresses a different kind of sizing rule:
+// fixed ([Len]), proportional ([Percent], [Ratio]), bounded ([Min], [Max]),
+// or greedy ([Fill]). Proportional constraints are evaluated against the
+// full area being split rather than the remaining space after fixed
+// constraints have been applied.
 //
-// Constraints are prioritized in the following order:
+// When the solver cannot satisfy every constraint, it resolves conflicts
+// according to the following priority order (highest first):
 //
 //   - [Min]
 //   - [Max]
@@ -31,9 +31,7 @@ type Constraint interface {
 }
 
 type (
-	// Min applies a minimum size constraint to the element
-	//
-	// The element size is set to at least the specified amount.
+	// Min ensures the segment is no smaller than the given number of cells.
 	//
 	// # Examples
 	//
@@ -50,9 +48,7 @@ type (
 	// 	└──────────────────────────────────────┘└────────┘
 	Min int
 
-	// Max applies a maximum size constraint to the element
-	//
-	// The element size is set to at most the specified amount.
+	// Max caps the segment at the given number of cells.
 	//
 	// # Examples
 	//
@@ -69,9 +65,7 @@ type (
 	// 	└──────────────────────────────────────┘└────────┘
 	Max int
 
-	// Len applies a length constraint to the element
-	//
-	// The element size is set to the specified amount.
+	// Len fixes the segment to exactly the given number of cells.
 	//
 	// # Examples
 	//
@@ -88,14 +82,13 @@ type (
 	// 	└──────────────────┘└────────────────────────────┘
 	Len int
 
-	// Percent applies a percentage of the available space to the element
+	// Percent sizes the segment as a fraction of the total area.
 	//
-	// Converts the given percentage to a floating-point value and multiplies that with area. This
-	// value is rounded back to a integer as part of the layout split calculation.
+	// The integer value is treated as a percentage (0-100+) and multiplied
+	// by the total area; the result is rounded to the nearest cell.
 	//
-	// **Note**: As this value only accepts a int, certain percentages that cannot be
-	// represented exactly (e.g. 1/3) are not possible. You might want to use
-	// [Ratio] or [Fill] in such cases.
+	// Because only whole integers are accepted, some fractions (e.g. 1/3)
+	// cannot be represented exactly. Consider [Ratio] or [Fill] instead.
 	//
 	// # Examples
 	//
@@ -112,10 +105,10 @@ type (
 	// 	└───────────────────────┘└───────────────────────┘
 	Percent int
 
-	// Ratio applies a ratio of the available space to the element
+	// Ratio sizes the segment as a numerator/denominator fraction of the total area.
 	//
-	// Converts the given ratio to a floating-point value and multiplies that with area.
-	// This value is rounded back to a integer as part of the layout split calculation.
+	// The fraction is converted to a float, multiplied by the area, and
+	// rounded to the nearest cell.
 	//
 	// # Examples
 	//
@@ -132,11 +125,12 @@ type (
 	// 	└───────────┘└──────────┘└───────────┘└──────────┘
 	Ratio struct{ Num, Den int }
 
-	// Fill applies the scaling factor proportional to all other [Fill] elements
-	// to fill excess space
+	// Fill distributes remaining space proportionally among all Fill segments
+	// according to their respective weights.
 	//
-	// The element will only expand or fill into excess available space, proportionally matching
-	// other [Fill] elements while satisfying all other constraints.
+	// A Fill segment only expands into space left over after higher-priority
+	// constraints have been satisfied. Multiple Fill segments share that
+	// leftover in proportion to their integer values.
 	//
 	// # Examples
 	//

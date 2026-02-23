@@ -1,24 +1,27 @@
-// Package layout provides types for working with layout and positioning in terminal applications.
-// It implements a flexible layout system that allows you to divide the terminal screen into
-// different areas using constraints, manage positioning and sizing, and handle complex UI
-// arrangements.
+// Package layout partitions terminal screen space into rectangular regions
+// using a constraint-based solver.
 //
-// The layout system is based on the [Cassowary constraint solver algorithm].
-// This allows for sophisticated constraint-based layouts where
-// multiple requirements can be satisfied simultaneously, with priorities determining which
-// constraints take precedence when conflicts arise.
+// Under the hood, it relies on the [Cassowary constraint solver algorithm] to
+// resolve competing size requirements. Each constraint carries a priority, so
+// the solver can pick the best trade-off when not every requirement fits.
 //
-// # Layout Fundamentals
+// # How It Works
 //
-// Layouts form the structural foundation of your terminal UI. The [Layout] struct divides
-// available screen space into rectangular areas using a constraint-based approach. You define
-// multiple constraints for how space should be allocated, and the Cassowary solver determines
-// the optimal layout that satisfies as many constraints as possible. These areas can then be
-// used to render widgets or nested layouts.
+// A [Layout] takes the available area and a list of constraints ([Len], [Ratio],
+// [Percent], [Fill], [Min], [Max]) and produces a set of non-overlapping rectangles.
+// The solver tries to honour every constraint; when that is impossible it
+// relaxes lower-priority ones first.
 //
-// Note that the [Layout] struct is not required to create layouts - you can also manually
-// calculate and create [uv.Rectangle] areas using simple mathematics to divide up the terminal space
-// if you prefer direct control over positioning and sizing.
+// You are not required to use [Layout] at all. If you prefer manual control,
+// you can compute [uv.Rectangle] values yourself with plain arithmetic.
+//
+// # Acknowledgements
+//
+// This implementation is heavily based on [Ratatui] source code and
+// is roughly 1:1 translation from Rust with some minor API adjustments.
+//
+// [Cassowary constraint solver algorithm]: https://en.wikipedia.org/wiki/Cassowary_(software)
+// [Ratatui]: https://ratatui.rs/
 package layout
 
 import (
@@ -30,8 +33,10 @@ import (
 	"github.com/charmbracelet/ultraviolet/internal/casso"
 )
 
-// floatPrecisionMultiplier decides floating point precision when rounding.
-// The number of zeros in this number is the precision for the rounding in layout calculations.
+// floatPrecisionMultiplier scales cell positions into a higher-precision
+// floating-point domain before handing them to the constraint solver.
+// The number of trailing zeros determines the decimal precision kept
+// during rounding.
 const floatPrecisionMultiplier float64 = 100.0
 
 const (
@@ -42,84 +47,86 @@ const (
 )
 
 const (
-	// spacerSizeEq is the priority to apply to Spacers to ensure that their sizes are equal.
+	// spacerSizeEq enforces equal sizing across spacers.
 	//
 	// 	┌     ┐┌───┐┌     ┐┌───┐┌     ┐
 	// 	  ==x  │   │  ==x  │   │  ==x
 	// 	└     ┘└───┘└     ┘└───┘└     ┘
 	spacerSizeEq = required / 10.0
 
-	// minSizeGTE is the priority to apply to [Min] inequality constraints.
+	// minSizeGTE enforces the lower-bound inequality for [Min] constraints.
 	//
 	// 	┌────────┐
 	// 	│Min(>=x)│
 	// 	└────────┘
 	minSizeGTE = strong * 100.0
 
-	// maxSizeLTE is the priority to apply to [Max] inequality constraints.
+	// maxSizeLTE enforces the upper-bound inequality for [Max] constraints.
 	//
 	// 	┌────────┐
 	// 	│Max(<=x)│
 	// 	└────────┘
 	maxSizeLTE = strong * 100.0
 
-	// lengthSizeEq is the priority to apply to [Len] constraints.
+	// lengthSizeEq pins the segment to the exact size requested by a [Len] constraint.
 	//
 	// 	┌────────┐
 	// 	│Len(==x)│
 	// 	└────────┘
 	lengthSizeEq = strong * 10.0
 
-	// percentSizeEq is the priority to apply to [Percent] constraints.
+	// percentSizeEq tries to make the segment match its [Percent] target.
 	//
 	// 	┌────────────┐
 	// 	│Percent(==x)│
 	// 	└────────────┘
 	percentSizeEq = strong
 
-	// ratioSizeEq is the priority to apply to [Ratio] constraints.
+	// ratioSizeEq tries to make the segment match its [Ratio] target.
 	//
 	// 	┌────────────┐
 	// 	│Ratio(==x,y)│
 	// 	└────────────┘
 	ratioSizeEq = strong / 10.0
 
-	// minSizeEq is the priority to apply to [Min] equality constraints.
+	// minSizeEq is an equality companion for the [Min] lower-bound; it
+	// nudges the segment toward the minimum value when room is tight.
 	//
 	// 	┌────────┐
 	// 	│Min(==x)│
 	// 	└────────┘
 	minSizeEq = medium * 10.0
 
-	// maxSizeEq the priority to apply to [Max] equality constraints.
+	// maxSizeEq is an equality companion for the [Max] upper-bound;
+	// it nudges the segment toward the maximum value.
 	//
 	// 	┌────────┐
 	// 	│Max(==x)│
 	// 	└────────┘
 	maxSizeEq = medium * 10.0
 
-	// fillGrow is the priority to apply to [Fill] growing constraints.
+	// fillGrow lets [Fill] segments expand into available space.
 	//
 	// 	┌─────────────────────┐
 	// 	│<=     Fill(x)     =>│
 	// 	└─────────────────────┘
 	fillGrow = medium
 
-	// grow is the priority to apply to growing constraints.
+	// grow is a general expansion priority (used by [Min] in non-legacy flex).
 	//
 	// 	┌────────────┐
 	// 	│<= Min(x) =>│
 	// 	└────────────┘
 	grow casso.Priority = 100.0
 
-	// spaceGrow is the priority to apply to spacer growing constraints.
+	// spaceGrow allows spacers to expand and absorb remaining room.
 	//
 	// 	┌       ┐
 	// 	 <= x =>
 	// 	└       ┘
 	spaceGrow = weak * 10.0
 
-	// allSegmentGrow is the priority to apply to growing the size of all segments equally.
+	// allSegmentGrow encourages all segments to share the same size.
 	//
 	// 	┌───────┐
 	// 	│<= x =>│
@@ -127,15 +134,14 @@ const (
 	allSegmentGrow = weak
 )
 
-// Splitted represents result of [Layout] splitting
-// as a slice of rectangles.
+// Splitted holds the rectangles produced by a [Layout.Split] call.
 type Splitted []uv.Rectangle
 
-// Assign sets splitted rectangles into pointed values.
+// Assign stores each resulting rectangle into the corresponding pointer.
 //
-// Nil pointers are skipped.
+// Nil pointers are silently skipped.
 //
-// Panics if given more areas that [Splitted] length.
+// Panics when len(areas) exceeds the number of rectangles in [Splitted].
 //
 // # Examples
 //
@@ -152,10 +158,8 @@ func (s Splitted) Assign(areas ...*uv.Rectangle) {
 	}
 }
 
-// Direction of a layout.
-//
-// This is used with [Layout] to specify whether layout
-// segments should be arranged horizontally or vertically.
+// Direction controls whether a [Layout] arranges its segments
+// horizontally (left to right) or vertically (top to bottom).
 type Direction int
 
 const (
@@ -165,7 +169,7 @@ const (
 	DirectionHorizontal
 )
 
-// New creates a new layout with default values.
+// New returns a [Layout] configured with the given direction and constraints.
 func New(direction Direction, constraints ...Constraint) Layout {
 	return Layout{
 		Direction:   direction,
@@ -173,84 +177,77 @@ func New(direction Direction, constraints ...Constraint) Layout {
 	}
 }
 
-// Vertical reates a new vertical layout with default values.
+// Vertical is shorthand for New(DirectionVertical, constraints...).
 func Vertical(constraints ...Constraint) Layout {
 	return New(DirectionVertical, constraints...)
 }
 
-// Horizontal reates a new horizontal layout with default values.
+// Horizontal is shorthand for New(DirectionHorizontal, constraints...).
 func Horizontal(constraints ...Constraint) Layout {
 	return New(DirectionHorizontal, constraints...)
 }
 
-// Layout engine for dividing terminal space using constraints and direction.
+// Layout splits a rectangular area into smaller rectangles using a set of constraints.
+// It is the primary building block for structuring terminal user interfaces.
 //
-// A layout is a set of constraints that can be applied to a given area to split it into smaller
-// rectangular areas. This is the core building block for creating structured user interfaces in
-// terminal applications.
+// Fields:
+//   - Direction: whether segments flow vertically or horizontally.
+//   - Constraints: the sizing rules ([Len], [Ratio], [Percent], [Fill], [Min], [Max]).
+//   - Padding: inset applied to the outer area before solving.
+//   - Flex: strategy for distributing leftover space among segments.
+//   - Spacing: gap (or overlap, if negative) between adjacent segments.
 //
-// A layout is composed of:
-//   - a direction (horizontal or vertical)
-//   - a set of constraints ([Len], [Ratio], [Percent], [Fill], [Min], [Max])
-//   - a margin (horizontal and vertical), the space between the edge of the main area and the split areas
-//   - a flex option that controls space distribution
-//   - a spacing option that controls gaps between segments
-//
-// The algorithm used to compute the layout is based on the Cassowary solver, a linear constraint
-// solver that computes positions and sizes to satisfy as many constraints as possible in order of
-// their priorities.
+// Internally, sizes are resolved by a Cassowary linear-constraint solver that
+// satisfies as many rules as it can, preferring higher-priority constraints
+// when trade-offs are necessary.
 type Layout struct {
 	Direction   Direction
 	Constraints []Constraint
 	Padding     Padding
-	// Spacing reprsents spacing between
-	// segments as a number of cells.
-	//
-	// Negative spacing causes overlap between segments.
+	// Spacing is the gap between adjacent segments, measured in cells.
+	// A negative value causes segments to overlap by that many cells.
 	Spacing int
 	Flex    Flex
 }
 
-// WithDirection returns a copy of the layout with the given direction.
+// WithDirection returns a shallow copy of the layout using the specified direction.
 func (l Layout) WithDirection(direction Direction) Layout {
 	l.Direction = direction
 
 	return l
 }
 
-// WithPadding returns a copy of the layout with the given padding.
+// WithPadding returns a shallow copy of the layout using the specified padding.
 func (l Layout) WithPadding(padding Padding) Layout {
 	l.Padding = padding
 	return l
 }
 
-// WithFlex returns a copy of the layout with the given flex.
+// WithFlex returns a shallow copy of the layout using the specified flex strategy.
 func (l Layout) WithFlex(flex Flex) Layout {
 	l.Flex = flex
 
 	return l
 }
 
-// WithSpacing returns a copy of the layout with the given spacing.
+// WithSpacing returns a shallow copy of the layout using the specified spacing value.
 func (l Layout) WithSpacing(spacing int) Layout {
 	l.Spacing = spacing
 
 	return l
 }
 
-// WithConstraints returns a copy of the layout with the given constraints.
+// WithConstraints returns a shallow copy of the layout with the given
+// constraints appended to its existing list.
 func (l Layout) WithConstraints(constraints ...Constraint) Layout {
 	l.Constraints = append(l.Constraints, constraints...)
 
 	return l
 }
 
-// SplitWithSpacers splits the given area into smaller ones
-// based on the preferred widths or heights and the direction, with the ability to include
-// spacers between the areas.
-//
-// This method is similar to [Layout.Split], but it returns two sets of rectangles: one for the areas
-// and one for the spacers.
+// SplitWithSpacers divides the given area into content segments and the
+// gaps (spacers) between them. It returns both slices; use [Layout.Split]
+// if you only need the content rectangles.
 func (l Layout) SplitWithSpacers(area uv.Rectangle) (segments, spacers Splitted) {
 	segments, spacers, err := l.splitCached(area)
 	if err != nil {
@@ -260,13 +257,13 @@ func (l Layout) SplitWithSpacers(area uv.Rectangle) (segments, spacers Splitted)
 	return segments, spacers
 }
 
-// Split a given area into smaller ones based on the preferred
-// widths or heights and the direction.
+// Split partitions the area into content rectangles according to the
+// layout's direction and constraints.
 //
-// Note that the constraints are applied to the whole area that is to be split, so using
-// percentages and ratios with the other constraints may not have the desired effect of
-// splitting the area up. (e.g. splitting 100 into [min 20, 50%, 50%], may not result
-// in [20, 40, 40] but rather an indeterminate result between [20, 50, 30] and [20, 30, 50]).
+// Because every constraint is evaluated against the total area, mixing
+// relative constraints (Percent, Ratio) with absolute ones (Min, Max, Len)
+// can produce ambiguous results. For example, splitting 100 cells as
+// [Min(20), Percent(50), Percent(50)] will not necessarily yield [20, 40, 40].
 func (l Layout) Split(area uv.Rectangle) Splitted {
 	segments, _ := l.SplitWithSpacers(area)
 
@@ -441,8 +438,9 @@ func changesToRects(
 	return rects
 }
 
-// configureFillConstraints makes every [Fill] constraint proportionally equal to each other
-// This will make it fill up empty spaces equally
+// configureFillConstraints ensures that every [Fill] (and, outside legacy mode,
+// every [Min]) segment grows proportionally to its scaling factor, so that
+// remaining space is shared according to the declared weights.
 //
 //	[Fill(1), Fill(1)]
 //	┌──────┐┌──────┐
