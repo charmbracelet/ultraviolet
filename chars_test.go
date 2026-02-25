@@ -196,7 +196,7 @@ func TestWrap(t *testing.T) {
 			},
 		},
 		{
-			name:  "long string ",
+			name:  "long string",
 			input: "the quick brown foxxxxxxxxxxxxxxxx jumped over the lazy dog.",
 			width: 16,
 			want: []Line{

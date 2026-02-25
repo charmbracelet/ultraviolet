@@ -37,7 +37,7 @@ func DrawLines(scr Screen, area Rectangle, lines ...Line) {
 //
 // It ignores any newline characters, so the resulting slice will not contain
 // any line breaks. If you want to preserve line breaks, use [Lines] instead or
-// spilt the input string into lines first and then call [Characters] on each
+// split the input string into lines first and then call [Characters] on each
 // line.
 //
 // Any tab characters will be converted into 8 spaces. To convert tabs into a
