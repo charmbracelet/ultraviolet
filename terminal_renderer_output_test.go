@@ -21,7 +21,7 @@ func TestRendererOutput(t *testing.T) {
 			relative: true,
 		},
 		{
-			name: "scroll one line",
+			name: "render wrapped text shift in fullscreen mode",
 			input: []string{
 				loremIpsum[0],
 				loremIpsum[0][10:],
@@ -38,15 +38,15 @@ func TestRendererOutput(t *testing.T) {
 					}
 				} else {
 					return []string{
-						"\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h",
-						"\r\n elit. Vi\x1b[?7lv\x1b[?7h",
+						"\x1b[H\x1b[2JLorem ipsu\r\x1b[2;1Hm dolor si\r\x1b[3;1Ht amet, co\r\x1b[4;1Hnsectetur\x1b[5;1Hadipiscin\x1b[?7lg\x1b[?7h",
+						"\x1b[5;1H\n\x1b[5;2Helit. Vi\x1b[?7lv\x1b[?7h",
 					}
 				}
 			}(),
 			altscreen: true,
 		},
 		{
-			name: "scroll two lines",
+			name: "render large content shift in fullscreen mode",
 			input: []string{
 				loremIpsum[0],
 				loremIpsum[0][20:],
@@ -63,15 +63,15 @@ func TestRendererOutput(t *testing.T) {
 					}
 				} else {
 					return []string{
-						"\x1b[H\x1b[2JLorem ipsu\r\nm dolor si\r\nt amet, co\r\nnsectetur\r\nadipiscin\x1b[?7lg\x1b[?7h",
-						"\r\x1b[2S\x1bM elit. Viv\r\namus at o\x1b[?7lr\x1b[?7h",
+						"\x1b[H\x1b[2JLorem ipsu\r\x1b[2;1Hm dolor si\r\x1b[3;1Ht amet, co\r\x1b[4;1Hnsectetur\x1b[5;1Hadipiscin\x1b[?7lg\x1b[?7h",
+						"\x1b[5;1H\x1b[2S\x1b[4;2Helit. Viv\r\x1b[5;1Hamus at o\x1b[?7lr\x1b[?7h",
 					}
 				}
 			}(),
 			altscreen: true,
 		},
 		{
-			name: "insert line in the middle",
+			name: "render inserted blank line in fullscreen mode",
 			input: []string{
 				"ABC\nDEF\nGHI\n",
 				"ABC\n\nDEF\nGHI",
@@ -88,8 +88,8 @@ func TestRendererOutput(t *testing.T) {
 					}
 				} else {
 					return []string{
-						"\x1b[H\x1b[2JABC\r\nDEF\r\nGHI",
-						"\r\x1bM\x1b[L",
+						"\x1b[H\x1b[2JABC\x1b[2;1HDEF\x1b[3;1HGHI",
+						"\x1b[2;1H\x1b[L",
 					}
 				}
 			}(),

@@ -1488,8 +1488,10 @@ func moveCursor(s *TerminalRenderer, newbuf *RenderBuffer, x, y int, overwrite b
 			width = newbuf.Width()
 		}
 		// Method #0: Use [ansi.CUP] if the distance is long.
+		// In full-screen mode, always use absolute cursor positioning to avoid
+		// stale screen content caused by combinations of relative movements.
 		seq = ansi.CursorPosition(x+1, y+1)
-		if fx == -1 || fy == -1 || width == -1 || notLocal(width, fx, fy, x, y) {
+		if s.flags.Contains(tFullscreen) || fx == -1 || fy == -1 || width == -1 || notLocal(width, fx, fy, x, y) {
 			return seq, 0
 		}
 	}
