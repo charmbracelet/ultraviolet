@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/termios v0.1.1
 	github.com/charmbracelet/x/windows v0.2.2
+	github.com/clipperhouse/displaywidth v0.9.0
 	github.com/clipperhouse/uax29/v2 v2.7.0
 	github.com/muesli/cancelreader v0.2.2
 	github.com/rivo/uniseg v0.4.7
@@ -16,10 +17,7 @@ require (
 	golang.org/x/sys v0.41.0
 )
 
-require (
-	github.com/clipperhouse/displaywidth v0.9.0 // indirect
-	github.com/clipperhouse/stringish v0.1.1 // indirect
-)
+require github.com/clipperhouse/stringish v0.1.1 // indirect
 
 require (
 	github.com/lucasb-eyer/go-colorful v1.3.0
