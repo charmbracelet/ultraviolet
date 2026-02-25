@@ -196,48 +196,6 @@ func renderLine(buf io.StringWriter, l Line) {
 	}
 }
 
-// Lines represents a slice of lines.
-type Lines []Line
-
-// Height returns the height of the lines.
-func (ls Lines) Height() int {
-	return len(ls)
-}
-
-// Width returns the width of the widest line.
-func (ls Lines) Width() int {
-	maxWidth := 0
-	for _, l := range ls {
-		maxWidth = max(maxWidth, len(l))
-	}
-	return maxWidth
-}
-
-// String returns the string representation of the lines.
-func (ls Lines) String() string {
-	var buf strings.Builder
-	for i, l := range ls {
-		buf.WriteString(l.String())
-		if i < len(ls)-1 {
-			_ = buf.WriteByte('\n')
-		}
-	}
-	return buf.String()
-}
-
-// Render renders the lines to a styled string with all the required attributes
-// and styles.
-func (ls Lines) Render() string {
-	var buf strings.Builder
-	for i, l := range ls {
-		renderLine(&buf, l)
-		if i < len(ls)-1 {
-			_ = buf.WriteByte('\n')
-		}
-	}
-	return buf.String()
-}
-
 // Buffer represents a cell buffer that contains the contents of a screen.
 type Buffer struct {
 	// Lines is a slice of lines that make up the cells of the buffer.
@@ -263,13 +221,27 @@ func NewBuffer(width int, height int) *Buffer {
 
 // String returns the string representation of the buffer.
 func (b *Buffer) String() string {
-	return Lines(b.Lines).String()
+	var buf strings.Builder
+	for i, l := range b.Lines {
+		buf.WriteString(l.String())
+		if i < len(b.Lines)-1 {
+			_ = buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
 }
 
 // Render renders the buffer to a styled string with all the required
 // attributes and styles.
 func (b *Buffer) Render() string {
-	return Lines(b.Lines).Render()
+	var buf strings.Builder
+	for i, l := range b.Lines {
+		renderLine(&buf, l)
+		if i < len(b.Lines)-1 {
+			_ = buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
 }
 
 // Line returns a pointer to the line at the given y position.
