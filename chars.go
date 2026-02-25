@@ -2,7 +2,6 @@ package uv
 
 import (
 	"bytes"
-	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -145,9 +144,8 @@ type Wrapper struct {
 	Breakpoints []string
 
 	// PreserveSpaces controls whether trailing whitespace is kept on wrapped
-	// lines. A whitespace cell is an empty cell with no attributes (see
-	// [isWhitespace]) or a NBSP cell with no attributes. When false (the
-	// default), trailing whitespace is trimmed from each wrapped line.
+	// lines. A whitespace cell is an empty or NBSP cell with no attributes.
+	// When false, trailing whitespace is trimmed from each wrapped line.
 	PreserveSpaces bool
 }
 
@@ -165,150 +163,175 @@ func NewWrapper(breakpoints ...string) *Wrapper {
 // It attempts to break lines at the specified breakpoints, but will fall back
 // to hard breaking if a single grapheme exceeds the width.
 func (lw *Wrapper) Wrap(lines []Line, width int) []Line {
+	if len(lines) == 0 {
+		return nil
+	}
+
 	if width <= 0 {
 		return lines
 	}
 
 	var result []Line
-
 	for _, line := range lines {
-		wrapped := wrapLine(line, width, lw.Breakpoints)
+		wrapped := lw.wrapLine(line, width)
 		result = append(result, wrapped...)
 	}
-
-	if !lw.PreserveSpaces {
-		for i := range result {
-			result[i] = trimTrailingWhitespace(result[i])
-		}
-	}
-
 	return result
 }
 
-// wrapLine wraps a single line to the given width.
-func wrapLine(line Line, width int, extraBreakpoints []string) []Line {
-	if len(line) == 0 {
-		return []Line{{}}
+// isBreakpoint returns true if the cell is a space, dash, or one of the
+// configured breakpoints.
+func (lw *Wrapper) isBreakpoint(cell Cell) bool {
+	if cell.Content == " " || cell.Content == NBSP || cell.Content == "-" {
+		return true
 	}
+	for _, bp := range lw.Breakpoints {
+		if cell.Content == bp {
+			return true
+		}
+	}
+	return false
+}
 
-	// Check if line fits without wrapping
+// wrapLine wraps a single line to the given width.
+func (lw *Wrapper) wrapLine(line Line, width int) []Line {
 	if len(line) <= width {
+		if !lw.PreserveSpaces {
+			line = trimTrailingWhitespace(line)
+		}
 		return []Line{line}
 	}
 
 	var result []Line
-	var currentLine Line
+	pos := 0
+	n := len(line)
 
-	i := 0
-	for i < len(line) {
-		// Find the next word (sequence of cells until a breakpoint)
-		wordStart := i
-		wordEnd := i
-
-		// Consume the word (non-breakpoint characters)
-		for wordEnd < len(line) && !isBreakpoint(line[wordEnd], extraBreakpoints) {
-			wordEnd++
+	for pos < n {
+		end := pos + width
+		if end >= n {
+			cur := line[pos:n]
+			if !lw.PreserveSpaces {
+				cur = trimTrailingWhitespace(cur)
+			}
+			result = append(result, cur)
+			break
 		}
 
-		// Include trailing non-whitespace breakpoints in the word
-		// (dashes and extra breakpoints stay with the word)
-		for wordEnd < len(line) && isBreakpoint(line[wordEnd], extraBreakpoints) && !isWhitespace(line[wordEnd]) {
-			wordEnd++
-		}
-
-		word := line[wordStart:wordEnd]
-
-		// Check if word fits on current line
-		if len(currentLine)+len(word) <= width {
-			// Word fits, add it
-			currentLine = append(currentLine, word...)
-			i = wordEnd
-		} else if len(currentLine) == 0 {
-			// Word doesn't fit and line is empty - hard wrap
-			currentLine, i = hardWrapWord(word, width, currentLine, wordStart)
-			result, currentLine = flushIfNeeded(result, currentLine, width)
-		} else {
-			// Word doesn't fit - start new line
-			result = append(result, currentLine)
-			currentLine = nil
-			// Don't advance i - retry the word on the new line
-		}
-
-		// Handle trailing whitespace after the word
-		for i < len(line) && isWhitespace(line[i]) {
-			ws := line[i]
-			if len(currentLine)+1 <= width {
-				currentLine = append(currentLine, ws)
-				i++
+		// Check if the cell at `end` (the overflow position) is a
+		// whitespace breakpoint. If so, everything before it fits exactly.
+		if isWhitespace(line[end]) && lw.isBreakpoint(line[end]) {
+			cur := line[pos:end]
+			if !lw.PreserveSpaces {
+				cur = trimTrailingWhitespace(cur)
+			}
+			result = append(result, cur)
+			pos = end
+			// Consume the whitespace run after the break.
+			if !lw.PreserveSpaces {
+				pos = lw.skipWhitespace(line, pos, n, width, &result)
 			} else {
-				// Whitespace doesn't fit - start new line
-				// Skip the whitespace that caused the break
-				i++
-				if i < len(line) {
-					result = append(result, currentLine)
-					currentLine = nil
+				pos++
+			}
+			continue
+		}
+
+		// Scan backwards from end-1 for a breakpoint within this chunk.
+		breakAt := -1
+		for i := end - 1; i > pos; i-- {
+			cell := line[i]
+			if cell.Width == 0 {
+				continue
+			}
+			if lw.isBreakpoint(cell) {
+				if isWhitespace(cell) {
+					breakAt = i
+				} else {
+					breakAt = i + 1
 				}
 				break
 			}
 		}
-	}
 
-	// Add the last line
-	if len(currentLine) > 0 || len(result) == 0 {
-		result = append(result, currentLine)
+		if breakAt > pos {
+			if breakAt < n && isWhitespace(line[breakAt]) {
+				if lw.PreserveSpaces {
+					cur := line[pos : breakAt+1]
+					result = append(result, cur)
+					pos = breakAt + 1
+				} else {
+					cur := trimTrailingWhitespace(line[pos:breakAt])
+					result = append(result, cur)
+					pos = breakAt
+					pos = lw.skipWhitespace(line, pos, n, width, &result)
+				}
+			} else {
+				cur := line[pos:breakAt]
+				if !lw.PreserveSpaces {
+					cur = trimTrailingWhitespace(cur)
+				}
+				result = append(result, cur)
+				pos = breakAt
+			}
+		} else {
+			// Hard wrap: no breakpoint found, cut at width boundary.
+			// If the cell at `end` is a wide-char placeholder, back up
+			// so we don't split a wide character.
+			cut := end
+			for cut > pos && line[cut].Width == 0 && line[cut].Content == "" {
+				cut--
+			}
+			if cut == pos {
+				cut = end
+			}
+			cur := line[pos:cut]
+			if !lw.PreserveSpaces {
+				cur = trimTrailingWhitespace(cur)
+			}
+			result = append(result, cur)
+			pos = cut
+		}
 	}
 
 	return result
 }
 
-// hardWrapWord breaks a word that's too long to fit on a single line.
-func hardWrapWord(word Line, width int, currentLine Line, startIdx int) (Line, int) {
-	consumed := 0
-	for _, cell := range word {
-		// Empty cell (part of wide char) - include with previous
-		if cell.Width == 0 {
-			currentLine = append(currentLine, cell)
-			consumed++
-			continue
-		}
-
-		// Check if this cell (plus its placeholder cells) would fit
-		cellWidth := cell.Width
-		if len(currentLine)+cellWidth > width {
-			// Cell doesn't fit
-			if len(currentLine) == 0 && cellWidth > width {
-				// Single cell wider than width - include it anyway
-				currentLine = append(currentLine, cell)
-				consumed++
-				// Include placeholder cells
-				for j := consumed; j < len(word) && word[j].Width == 0; j++ {
-					currentLine = append(currentLine, word[j])
-					consumed++
+// skipWhitespace advances pos past whitespace cells. When PreserveSpaces is
+// true, it wraps the whitespace into width-sized lines. When false, it emits
+// an empty line for every `width` consecutive whitespace cells consumed, then
+// skips the rest.
+func (lw *Wrapper) skipWhitespace(line Line, pos, n, width int, result *[]Line) int {
+	if lw.PreserveSpaces {
+		for pos < n && isWhitespace(line[pos]) {
+			end := pos + width
+			if end > n {
+				end = n
+			}
+			// Check if the remaining content is all whitespace.
+			allWs := true
+			for j := pos; j < end && j < n; j++ {
+				if !isWhitespace(line[j]) {
+					allWs = false
+					break
 				}
 			}
-			break
+			if !allWs {
+				break
+			}
+			*result = append(*result, line[pos:end])
+			pos = end
 		}
-
-		currentLine = append(currentLine, cell)
-		consumed++
+		return pos
 	}
-
-	return currentLine, startIdx + consumed
-}
-
-// flushIfNeeded checks if current line is at capacity and needs flushing.
-func flushIfNeeded(result []Line, currentLine Line, width int) ([]Line, Line) {
-	if len(currentLine) >= width {
-		result = append(result, currentLine)
-		return result, nil
+	start := pos
+	for pos < n && isWhitespace(line[pos]) {
+		pos++
 	}
-	return result, currentLine
-}
-
-// isBreakpoint returns true if the cell is a breakpoint character.
-func isBreakpoint(cell Cell, extraBreakpoints []string) bool {
-	return isWhitespace(cell) || cell.Content == "-" ||
-		slices.Contains(extraBreakpoints, cell.Content)
+	consumed := pos - start
+	// Emit an empty line for every full width of whitespace consumed.
+	for i := width; i <= consumed; i += width {
+		*result = append(*result, Line{})
+	}
+	return pos
 }
 
 var nbspCell = Cell{

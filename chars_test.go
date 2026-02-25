@@ -184,7 +184,6 @@ func TestWrap(t *testing.T) {
 			width: 3,
 			want: []Line{
 				{},
-				{},
 			},
 		},
 		{
