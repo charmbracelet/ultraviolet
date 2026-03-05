@@ -77,6 +77,9 @@ type LineData struct {
 	FirstCell, LastCell int
 	// Old index used for scrolling
 	oldIndex int //nolint:unused
+	// Wrap indicates this line is soft-wrapped (continues on next line due to
+	// terminal width, not an explicit newline). Used for reflow on resize.
+	Wrap bool
 }
 
 // tFlag is a bitmask of terminal flags.

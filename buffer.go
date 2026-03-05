@@ -647,6 +647,10 @@ func TrimSpace(s string) string {
 type RenderBuffer struct {
 	*Buffer
 	Touched []*LineData
+	// Wrapped tracks which lines are soft-wrapped (continue on next line due
+	// to terminal width). This is used for reflow on resize. A true value at
+	// index i means line i continues on line i+1.
+	Wrapped []bool
 }
 
 // NewRenderBuffer creates a new [RenderBuffer] with the given width and height.
@@ -654,6 +658,7 @@ func NewRenderBuffer(width, height int) *RenderBuffer {
 	return &RenderBuffer{
 		Buffer:  NewBuffer(width, height),
 		Touched: make([]*LineData, height),
+		Wrapped: make([]bool, height),
 	}
 }
 
@@ -733,6 +738,16 @@ func (b *RenderBuffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
 		b.TouchLine(area.Min.X, i-n, area.Max.X-area.Min.X)
 	}
+	// Shift wrapped state down within the area
+	if y >= 0 && y < len(b.Wrapped) {
+		for i := min(area.Max.Y-1, len(b.Wrapped)-1); i >= y+n; i-- {
+			b.Wrapped[i] = b.Wrapped[i-n]
+		}
+		// Clear the newly inserted lines' wrap state
+		for i := y; i < y+n && i < len(b.Wrapped); i++ {
+			b.Wrapped[i] = false
+		}
+	}
 }
 
 // DeleteLine deletes n lines at the given line position, with the given
@@ -752,6 +767,16 @@ func (b *RenderBuffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 	for i := area.Min.Y; i < area.Max.Y; i++ {
 		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
 		b.TouchLine(area.Min.X, i+n, area.Max.X-area.Min.X)
+	}
+	// Shift wrapped state up within the area
+	if y >= 0 && y < len(b.Wrapped) {
+		for i := y; i < area.Max.Y-n && i+n < len(b.Wrapped); i++ {
+			b.Wrapped[i] = b.Wrapped[i+n]
+		}
+		// Clear the newly created lines at the bottom
+		for i := max(y, area.Max.Y-n); i < area.Max.Y && i < len(b.Wrapped); i++ {
+			b.Wrapped[i] = false
+		}
 	}
 }
 
@@ -792,4 +817,40 @@ func (b *RenderBuffer) DeleteCellArea(x, y, n int, c *Cell, area Rectangle) {
 		n = remainingCells
 	}
 	b.TouchLine(x, y, n)
+}
+
+// Resize resizes the buffer to the given width and height.
+// This also resizes the Touched and Wrapped slices.
+func (b *RenderBuffer) Resize(width, height int) {
+	b.Buffer.Resize(width, height)
+
+	// Resize Touched slice
+	if height > len(b.Touched) {
+		b.Touched = append(b.Touched, make([]*LineData, height-len(b.Touched))...)
+	} else if height < len(b.Touched) {
+		b.Touched = b.Touched[:height]
+	}
+
+	// Resize Wrapped slice
+	if height > len(b.Wrapped) {
+		b.Wrapped = append(b.Wrapped, make([]bool, height-len(b.Wrapped))...)
+	} else if height < len(b.Wrapped) {
+		b.Wrapped = b.Wrapped[:height]
+	}
+}
+
+// SetWrapped sets the wrapped state for the given line.
+// A wrapped line continues on the next line due to terminal width.
+func (b *RenderBuffer) SetWrapped(y int, wrapped bool) {
+	if y >= 0 && y < len(b.Wrapped) {
+		b.Wrapped[y] = wrapped
+	}
+}
+
+// IsWrapped returns whether the given line is wrapped.
+func (b *RenderBuffer) IsWrapped(y int) bool {
+	if y >= 0 && y < len(b.Wrapped) {
+		return b.Wrapped[y]
+	}
+	return false
 }
