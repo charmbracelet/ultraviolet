@@ -165,6 +165,7 @@ func NewTerminalRenderer(w io.Writer, env []string) (s *TerminalRenderer) {
 	s.buf = new(bytes.Buffer)
 	s.term = Environ(env).Getenv("TERM")
 	s.caps = xtermCaps(s.term)
+	applyDisableCaps(env, &s.caps, &s.flags)
 	s.cur = cursor{Cell: EmptyCell, Position: Pos(-1, -1)} // start at -1 to force a move
 	s.saved = s.cur
 	s.scrollHeight = 0
