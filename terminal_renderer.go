@@ -5,6 +5,7 @@ import (
 	"errors"
 	"hash/maphash"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/colorprofile"
@@ -1584,6 +1585,9 @@ func xtermCaps(termtype string) (v capabilities) {
 			v &^= capHPA
 			v &^= capCHT
 			v &^= capREP
+			if isJediTerm() {
+				v &^= capCBT
+			}
 		}
 	case "alacritty":
 		v = allCaps
@@ -1598,4 +1602,29 @@ func xtermCaps(termtype string) (v capabilities) {
 	}
 
 	return v
+}
+
+// isJediTerm returns true when running inside JetBrains' JediTerm terminal
+// emulator (GoLand, IntelliJ, etc.). JediTerm mishandles CBT escape
+// sequences that ultraviolet emits under normal TERM values.
+//
+// Detection layers (checked in order):
+//  1. TERMINAL_EMULATOR == "JetBrains-JediTerm" — all platforms, Terminal tool window
+//  2. __CFBundleIdentifier starts with "com.jetbrains." — macOS, "Emulate terminal" Run/Debug
+//  3. XPC_SERVICE_NAME contains "com.jetbrains." — macOS, "Emulate terminal" Run/Debug
+//  4. TOOLBOX_VERSION is non-empty — all platforms, all contexts (JetBrains Toolbox installs only)
+func isJediTerm() bool {
+	if os.Getenv("TERMINAL_EMULATOR") == "JetBrains-JediTerm" {
+		return true
+	}
+	if strings.HasPrefix(os.Getenv("__CFBundleIdentifier"), "com.jetbrains.") {
+		return true
+	}
+	if strings.Contains(os.Getenv("XPC_SERVICE_NAME"), "com.jetbrains.") {
+		return true
+	}
+	if os.Getenv("TOOLBOX_VERSION") != "" {
+		return true
+	}
+	return false
 }
