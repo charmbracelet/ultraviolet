@@ -450,6 +450,18 @@ func (s *TerminalRenderer) move(newbuf *RenderBuffer, x, y int) {
 	s.moveCursor(newbuf, x, y, true) // Overwrite cells if possible
 }
 
+// lineHasWideChars reports whether the line contains any wide (multi-column)
+// characters within the range [start, end].
+func lineHasWideChars(line Line, start, end int) bool {
+	for i := start; i <= end && i < len(line); i++ {
+		c := line.At(i)
+		if c != nil && c.Width > 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // cellEqual returns whether the two cells are equal. A nil cell is considered
 // a [EmptyCell].
 func cellEqual(a, b *Cell) bool {
@@ -789,6 +801,16 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
 
+	// When wide characters are present, many column-based optimizations
+	// (ICH, DCH, ECH, EL1, REP, and the putRange same-cell skip) can
+	// break rendering by operating on individual columns rather than full
+	// character cells. Use a simple redraw path instead.
+	if lineHasWideChars(newLine, 0, newbuf.Width()-1) ||
+		lineHasWideChars(oldLine, 0, newbuf.Width()-1) {
+		s.transformLineWide(newbuf, y, oldLine, newLine)
+		return
+	}
+
 	// Find the first changed cell in the line
 	blank := newLine.At(0)
 
@@ -971,6 +993,77 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	}
 
 	// Update the old line with the new line
+	if firstCell < len(oldLine) && firstCell < len(newLine) {
+		copy(oldLine[firstCell:], newLine[firstCell:])
+	} else {
+		copy(oldLine, newLine)
+	}
+}
+
+// transformLineWide is the wide-character-safe path for transformLine. It
+// bypasses all column-shifting optimizations (ICH, DCH, ECH, EL1, REP) that
+// can corrupt multi-column characters, and instead directly emits every
+// changed cell.
+func (s *TerminalRenderer) transformLineWide(newbuf *RenderBuffer, y int, oldLine, newLine Line) {
+	w := newbuf.Width()
+
+	// Find the first differing cell. If it lands on a zero-width
+	// placeholder, back up to the actual wide character so we re-emit it
+	// completely.
+	firstCell := 0
+	for firstCell < w && cellEqual(oldLine.At(firstCell), newLine.At(firstCell)) {
+		firstCell++
+	}
+	if firstCell >= w {
+		return
+	}
+	for firstCell > 0 {
+		c := newLine.At(firstCell)
+		if c != nil && c.IsZero() {
+			firstCell--
+		} else {
+			break
+		}
+	}
+
+	// Find the last differing cell. If it landed on a wide char, extend
+	// to include its placeholder.
+	lastCell := w - 1
+	for lastCell > firstCell && cellEqual(oldLine.At(lastCell), newLine.At(lastCell)) {
+		lastCell--
+	}
+	if lastCell < w-1 {
+		c := newLine.At(lastCell)
+		if c != nil && c.Width > 1 {
+			lastCell += c.Width - 1
+			if lastCell >= w {
+				lastCell = w - 1
+			}
+		}
+	}
+
+	// Move to the first changed position and emit all cells through the
+	// last changed position.
+	s.move(newbuf, firstCell, y)
+	for i := firstCell; i <= lastCell; i++ {
+		s.putCell(newbuf, newLine.At(i))
+	}
+
+	// Clear any residual content after lastCell if the old line extended
+	// further (e.g. content was deleted or shortened).
+	blank := &Cell{Content: " ", Width: 1}
+	needClear := false
+	for j := lastCell + 1; j < w; j++ {
+		if !cellEqual(oldLine.At(j), newLine.At(j)) {
+			needClear = true
+			break
+		}
+	}
+	if needClear {
+		s.clearToEnd(newbuf, blank, true)
+	}
+
+	// Update curbuf to match newbuf.
 	if firstCell < len(oldLine) && firstCell < len(newLine) {
 		copy(oldLine[firstCell:], newLine[firstCell:])
 	} else {
@@ -1399,7 +1492,17 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 			}
 
 			// If we have no attribute and style changes, overwrite is cheaper.
+
+			// Disable overwrite for lines containing wide characters:
+			// the loop emits spaces for zero-width placeholders, which
+			// destroys the preceding wide character on the terminal.
 			var ovw string
+			if overwrite && ty >= 0 && newbuf != nil {
+				line := newbuf.Line(ty)
+				if lineHasWideChars(line, 0, len(line)-1) {
+					overwrite = false
+				}
+			}
 			if overwrite && ty >= 0 {
 				for i := 0; i < n; i++ {
 					cell := newbuf.CellAt(fx+i, ty)
