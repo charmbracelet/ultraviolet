@@ -22,6 +22,6 @@ require (
 )
 
 require (
-	github.com/lucasb-eyer/go-colorful v1.3.0
+	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 )
