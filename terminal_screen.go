@@ -85,6 +85,31 @@ func (s *TerminalScreen) CellAt(x, y int) *Cell {
 // SetCell sets the cell at the specified x and y coordinates.
 func (s *TerminalScreen) SetCell(x, y int, cell *Cell) {
 	s.win.SetCell(x, y, cell)
+	s.rbuf.SetCell(x, y, cell)
+}
+
+// Fill fills the terminal screen with the given cell.
+func (s *TerminalScreen) Fill(cell *Cell) {
+	s.win.Fill(cell)
+	s.rbuf.Fill(cell)
+}
+
+// FillArea fills the terminal screen area with the given cell.
+func (s *TerminalScreen) FillArea(cell *Cell, area Rectangle) {
+	s.win.FillArea(cell, area)
+	s.rbuf.FillArea(cell, area)
+}
+
+// Clear clears the terminal screen.
+func (s *TerminalScreen) Clear() {
+	s.win.Clear()
+	s.rbuf.Clear()
+}
+
+// ClearArea clears the given area of the terminal screen.
+func (s *TerminalScreen) ClearArea(area Rectangle) {
+	s.win.ClearArea(area)
+	s.rbuf.ClearArea(area)
 }
 
 // Bounds returns the bounds of the terminal screen as a rectangle.
@@ -128,7 +153,7 @@ func (s *TerminalScreen) Resize(width, height int) error {
 // [TerminalScreen.Flush].
 func (s *TerminalScreen) Display(d Drawable) error {
 	if d != nil {
-		s.win.Clear()
+		s.Clear()
 		d.Draw(s, s.win.Bounds())
 	}
 	if err := s.Render(); err != nil {
@@ -143,21 +168,6 @@ func (s *TerminalScreen) Display(d Drawable) error {
 // The changes can be committed to the underlying writer by calling the
 // [TerminalScreen.Flush] method.
 func (s *TerminalScreen) Render() error {
-	for y := 0; y < s.win.Height(); y++ {
-		for x := 0; x < s.win.Width(); {
-			cell := s.win.CellAt(x, y)
-			if cell == nil || cell.IsZero() {
-				x++
-				continue
-			}
-			s.rbuf.SetCell(x, y, cell)
-			width := cell.Width
-			if width <= 0 {
-				width = 1
-			}
-			x += width
-		}
-	}
 	s.rend.Render(s.rbuf)
 	return s.rend.Flush()
 }

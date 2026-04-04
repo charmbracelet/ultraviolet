@@ -687,6 +687,12 @@ func (b *RenderBuffer) Touch(x, y int) {
 	b.TouchLine(x, y, 0)
 }
 
+func (b *RenderBuffer) touchArea(area Rectangle) {
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		b.TouchLine(area.Min.X, y, area.Max.X-area.Min.X)
+	}
+}
+
 // TouchedLines returns the number of touched lines in the buffer.
 func (b *RenderBuffer) TouchedLines() int {
 	if b.Touched == nil {
@@ -712,6 +718,28 @@ func (b *RenderBuffer) SetCell(x, y int, c *Cell) {
 		b.TouchLine(x, y, width)
 	}
 	b.Buffer.SetCell(x, y, c)
+}
+
+// Fill fills the entire render buffer with the given cell and marks it dirty.
+func (b *RenderBuffer) Fill(c *Cell) {
+	b.FillArea(c, b.Bounds())
+}
+
+// FillArea fills the given area and marks it dirty.
+func (b *RenderBuffer) FillArea(c *Cell, area Rectangle) {
+	b.Buffer.FillArea(c, area)
+	b.touchArea(area)
+}
+
+// Clear clears the entire render buffer and marks it dirty.
+func (b *RenderBuffer) Clear() {
+	b.ClearArea(b.Bounds())
+}
+
+// ClearArea clears the given area and marks it dirty.
+func (b *RenderBuffer) ClearArea(area Rectangle) {
+	b.Buffer.ClearArea(area)
+	b.touchArea(area)
 }
 
 // InsertLine inserts n lines at the given line position, with the given

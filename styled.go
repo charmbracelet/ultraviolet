@@ -48,17 +48,36 @@ func (s *StyledString) Lines(m ansi.Method) []Line {
 // Draw renders the styled string to the given buffer at the
 // specified area.
 func (s *StyledString) Draw(buf Screen, area Rectangle) {
-	// Clear the area before drawing.
-	for y := area.Min.Y; y < area.Max.Y; y++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			buf.SetCell(x, y, nil)
-		}
-	}
+	clearScreenArea(buf, area)
 	str := s.Text
 	// We need to normalize newlines "\n" to "\r\n" to emulate a raw terminal
 	// output.
-	str = strings.ReplaceAll(str, "\r\n", "\n")
+	if strings.Contains(str, "\r\n") {
+		str = strings.ReplaceAll(str, "\r\n", "\n")
+	}
 	printString(buf, buf.WidthMethod(), area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
+}
+
+func clearScreenArea(scr Screen, area Rectangle) {
+	if c, ok := scr.(interface {
+		ClearArea(area Rectangle)
+	}); ok {
+		c.ClearArea(area)
+		return
+	}
+
+	if f, ok := scr.(interface {
+		FillArea(cell *Cell, area Rectangle)
+	}); ok {
+		f.FillArea(nil, area)
+		return
+	}
+
+	for y := area.Min.Y; y < area.Max.Y; y++ {
+		for x := area.Min.X; x < area.Max.X; x++ {
+			scr.SetCell(x, y, nil)
+		}
+	}
 }
 
 // Height returns the number of lines in the styled string. This is the number
@@ -109,8 +128,10 @@ func printString[T []byte | string](
 	defer ansi.PutParser(p)
 
 	var tailc Cell
+	tailWidth := 0
 	if truncate && len(tail) > 0 {
 		tailc = *NewCell(m, tail)
+		tailWidth = tailc.Width
 	}
 
 	decoder := ansi.DecodeSequenceWc[T]
@@ -118,9 +139,16 @@ func printString[T []byte | string](
 		decoder = ansi.DecodeSequence[T]
 	}
 
+	var setCell func(x, y int, c *Cell)
 	if s == nil {
 		lines = []Line{}
+	} else {
+		setCell = screenCellSetter(s)
 	}
+
+	minX, minY := bounds.Min.X, bounds.Min.Y
+	maxX, maxY := bounds.Max.X, bounds.Max.Y
+	truncateX := maxX - tailWidth
 
 	var cell Cell
 	var style Style
@@ -144,24 +172,23 @@ func printString[T []byte | string](
 				x += width
 			} else {
 				// Drawing to screen: handle wrapping, truncation, and bounds
-				if !truncate && x+cell.Width > bounds.Max.X && y+1 < bounds.Max.Y {
+				if !truncate && x+cell.Width > maxX && y+1 < maxY {
 					// Wrap the string to the width of the window
-					x = bounds.Min.X
+					x = minX
 					y++
 				}
 
-				pos := Pos(x, y)
-				if pos.In(bounds) {
-					if truncate && tailc.Width > 0 && x+cell.Width > bounds.Max.X-tailc.Width {
+				if x >= minX && x < maxX && y >= minY && y < maxY {
+					if truncate && tailWidth > 0 && x+cell.Width > truncateX {
 						// Truncate the string and append the tail if any.
 						cell = tailc
 						cell.Style = style
 						cell.Link = link
-						s.SetCell(x, y, &cell)
-						x += tailc.Width
+						setCell(x, y, &cell)
+						x += tailWidth
 					} else {
 						// Print the cell to the screen
-						s.SetCell(x, y, &cell)
+						setCell(x, y, &cell)
 						x += width
 					}
 				}
@@ -193,7 +220,7 @@ func printString[T []byte | string](
 				if s == nil {
 					x = 0
 				} else {
-					x = bounds.Min.X
+					x = minX
 				}
 			default:
 				cell.Content += string(seq)
@@ -204,7 +231,7 @@ func printString[T []byte | string](
 		state = newState
 		str = str[n:]
 
-		if y >= bounds.Max.Y {
+		if s != nil && y >= maxY {
 			// We've reached the bottom of the bounds, stop processing further
 			// lines.
 			break
@@ -213,10 +240,28 @@ func printString[T []byte | string](
 
 	// Make sure to set the last cell if it's not empty.
 	if !cell.IsZero() && s != nil {
-		s.SetCell(x, y, &cell)
+		setCell(x, y, &cell)
 	}
 
 	return lines
+}
+
+func screenCellSetter(scr Screen) func(x, y int, c *Cell) {
+	switch s := scr.(type) {
+	case *TerminalScreen:
+		return func(x, y int, c *Cell) {
+			s.win.SetCell(x, y, c)
+			s.rbuf.Buffer.SetCell(x, y, c)
+		}
+	case ScreenBuffer:
+		return s.RenderBuffer.Buffer.SetCell
+	case *ScreenBuffer:
+		return s.RenderBuffer.Buffer.SetCell
+	case *Window:
+		return s.Buffer.SetCell
+	default:
+		return scr.SetCell
+	}
 }
 
 // ReadStyle reads a Select Graphic Rendition (SGR) escape sequences from a
