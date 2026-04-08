@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 )
 
-func TestSimpleRendererOutput(t *testing.T) {
+func TestFullscreenRendererOutput(t *testing.T) {
 	const w, h = 5, 3
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{
@@ -42,7 +42,7 @@ func TestSimpleRendererOutput(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	expected := "\x1b[H\x1b[2JX\nX\nX"
+	expected := "\x1b[H\x1b[2JX\x1b[2;2HX\x1b[3;3HX"
 	if buf.String() != expected {
 		t.Errorf("expected output:\n%q\nbut got:\n%q", expected, buf.String())
 	}
@@ -1080,9 +1080,9 @@ func TestRendererPhantomCursor(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[1;5HX\r\n\x1b[5GX\r\n\x1b[5G\x1b[?7lX\x1b[?7h"
+	expected := "\x1b[1;5HX\r\x1b[2;5HX\r\x1b[3;5H\x1b[?7lX\x1b[?7h"
 	if output != expected {
-		t.Errorf("expected no output for phantom cursor case, got: %q", output)
+		t.Errorf("expected output:\n%q\nbut got:\n%q", expected, output)
 	}
 }
 
