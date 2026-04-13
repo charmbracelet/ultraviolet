@@ -50,6 +50,10 @@ type Options struct {
 	//
 	// This is disabled by default.
 	UseTerminfoKeys bool
+
+	// Logger is an optional logger for tracing terminal I/O operations.
+	// If nil, no logging is performed.
+	Logger Logger
 }
 
 // DefaultOptions returns the default [Terminal] options.
@@ -63,16 +67,15 @@ func DefaultOptions() *Options {
 
 // Terminal represents an interactive terminal application.
 type Terminal struct {
-	con    Console
-	opts   *Options
-	scr    *TerminalScreen
-	pr     pollReader
-	buf    []byte
-	evc    chan Event
-	errg   errgroup.Group
-	winch  chan os.Signal
-	donec  chan struct{}
-	logger Logger
+	con   Console
+	opts  *Options
+	scr   *TerminalScreen
+	pr    pollReader
+	buf   []byte
+	evc   chan Event
+	errg  errgroup.Group
+	winch chan os.Signal
+	donec chan struct{}
 }
 
 // DefaultTerminal creates a new [Terminal] instance using the default standard
@@ -123,13 +126,10 @@ func NewTerminal(con Console, opts *Options) *Terminal {
 	// These channels never close during the terminal's lifetime.
 	t.evc = make(chan Event)
 	t.winch = make(chan os.Signal, 1) // buffered to avoid missing signals
+	if opts.Logger != nil {
+		t.scr.rend.SetLogger(opts.Logger)
+	}
 	return t
-}
-
-// SetLogger sets the terminal's logger for tracing I/O operations.
-func (t *Terminal) SetLogger(logger Logger) {
-	t.logger = logger
-	t.scr.rend.SetLogger(logger)
 }
 
 // Screen returns the terminal's screen.
@@ -155,8 +155,8 @@ func (t *Terminal) Start() error {
 	if evs.lookup {
 		evs.table = buildKeysTable(t.opts.LegacyKeyEncoding, t.con.Getenv("TERM"), t.opts.UseTerminfoKeys)
 	}
-	if t.logger != nil {
-		evs.setLogger(t.logger)
+	if t.opts.Logger != nil {
+		evs.setLogger(t.opts.Logger)
 	}
 	bufc := make(chan []byte)
 	t.donec = make(chan struct{})
