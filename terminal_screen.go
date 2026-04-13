@@ -117,6 +117,14 @@ func (s *TerminalScreen) Height() int {
 	return s.win.Height()
 }
 
+// StringWidth returns the cell width of the given string using the terminal
+// screen's width method. This accounts for the configured [WidthMethod]
+// (e.g. wcwidth vs grapheme width) so callers don't need to import ansi
+// directly.
+func (s *TerminalScreen) StringWidth(str string) int {
+	return s.win.WidthMethod().StringWidth(str)
+}
+
 // WidthMethod returns the width method used by the terminal screen.
 func (s *TerminalScreen) WidthMethod() WidthMethod {
 	return s.win.WidthMethod()
