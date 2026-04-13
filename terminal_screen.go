@@ -44,7 +44,7 @@ var _ Screen = (*TerminalScreen)(nil)
 func NewTerminalScreen(w io.Writer, env Environ) *TerminalScreen {
 	s := &TerminalScreen{}
 	s.buf = &bytes.Buffer{}
-	s.win = NewScreen(0, 0)
+	s.win = NewWindow(0, 0, nil)
 	s.w = w
 	s.profile = colorprofile.Detect(w, env)
 	s.rend = NewTerminalRenderer(s.buf, env)
