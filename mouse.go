@@ -27,10 +27,13 @@ type MouseEncoding uint8
 // terminal's escape sequences. The encoding is only meaningful when mouse
 // tracking is enabled via [MouseMode].
 const (
-	MouseEncodingLegacy   MouseEncoding = iota // Legacy X10-compatible encoding. Coordinates limited to 223.
-	MouseEncodingSGR                           // SGR encoding (DEC mode 1006). No coordinate limit, distinguishes press/release.
-	MouseEncodingUrxvt                         // urxvt encoding (DEC mode 1015). No coordinate limit.
-	MouseEncodingSGRPixel                      // SGR-pixel encoding (DEC mode 1016). Reports pixel coordinates.
+	MouseEncodingLegacy MouseEncoding = iota // Legacy X10-compatible encoding. Coordinates limited to 223.
+	MouseEncodingSGR                         // SGR encoding (DEC mode 1006). No coordinate limit, distinguishes press/release.
+
+	// TODO: support these additional encodings in the future.
+	// MouseEncodingUTF8                          // UTF-8 encoding (DEC mode 1005). Coordinates limited to 223.
+	// MouseEncodingUrxvt                         // urxvt encoding (DEC mode 1015). No coordinate limit.
+	// MouseEncodingSGRPixel                      // SGR-pixel encoding (DEC mode 1016). Reports pixel coordinates.
 )
 
 // MouseButton represents the button that was pressed during a mouse message.
