@@ -67,8 +67,7 @@ type EventHandler func(win *uv.Window, ev uv.Event) bool
 func NewApp(width, height int) *App {
 	a := new(App)
 	a.active = rootID
-	a.scr = uv.NewScreen(width, height)
-	a.scr.SetWidthMethod(ansi.GraphemeWidth)
+	a.scr = uv.NewWindow(width, height, ansi.GraphemeWidth)
 	root := &AppWindow{
 		id:  rootID,
 		win: a.scr.NewWindow(0, 0, width, height),
