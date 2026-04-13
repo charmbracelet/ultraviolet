@@ -29,6 +29,7 @@ type TerminalScreen struct {
 	keyboardEnhancements *KeyboardEnhancements
 	bracketedPaste       bool
 	mouseMode            MouseMode
+	mouseEncoding        MouseEncoding
 	cursor               *Cursor // initial state is cursor hidden
 	backgroundColor      color.Color
 	foregroundColor      color.Color
@@ -470,8 +471,8 @@ func (s *TerminalScreen) SynchronizedUpdates() bool {
 	return s.syncUpdates
 }
 
-// SetMouseMode sets the mouse mode for the terminal, allowing applications to
-// receive mouse events.
+// SetMouseMode sets the mouse tracking mode for the terminal, allowing
+// applications to receive mouse events.
 //
 // The changes can be committed to the underlying writer by calling the
 // [TerminalScreen.Flush] method.
@@ -480,9 +481,25 @@ func (s *TerminalScreen) SetMouseMode(mode MouseMode) {
 	s.mouseMode = mode
 }
 
-// MouseMode returns the current mouse mode of the terminal.
+// MouseMode returns the current mouse tracking mode of the terminal.
 func (s *TerminalScreen) MouseMode() MouseMode {
 	return s.mouseMode
+}
+
+// SetMouseEncoding sets the mouse encoding for the terminal.
+// The encoding determines how mouse coordinates and buttons are reported.
+// This is only meaningful when mouse tracking is enabled via [TerminalScreen.SetMouseMode].
+//
+// The changes can be committed to the underlying writer by calling the
+// [TerminalScreen.Flush] method.
+func (s *TerminalScreen) SetMouseEncoding(enc MouseEncoding) {
+	EncodeMouseEncoding(s.buf, enc)
+	s.mouseEncoding = enc
+}
+
+// MouseEncoding returns the current mouse encoding of the terminal.
+func (s *TerminalScreen) MouseEncoding() MouseEncoding {
+	return s.mouseEncoding
 }
 
 // SetWindowTitle sets the title of the terminal window.
@@ -556,6 +573,9 @@ func (s *TerminalScreen) Reset() {
 	if s.mouseMode != MouseModeNone {
 		EncodeMouseMode(&sb, MouseModeNone)
 	}
+	if s.mouseEncoding != MouseEncodingLegacy {
+		EncodeMouseEncoding(&sb, MouseEncodingLegacy)
+	}
 
 	if s.cursor == nil || !s.cursor.Hidden {
 		sb.WriteString(ansi.ShowCursor)
@@ -621,6 +641,9 @@ func (s *TerminalScreen) Restore() {
 	}
 	if s.mouseMode != MouseModeNone {
 		EncodeMouseMode(&sb, s.mouseMode)
+	}
+	if s.mouseEncoding != MouseEncodingLegacy {
+		EncodeMouseEncoding(&sb, s.mouseEncoding)
 	}
 	if s.cursor != nil {
 		if s.cursor.Shape != CursorBlock || !s.cursor.Blink {
