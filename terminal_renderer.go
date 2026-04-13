@@ -5,8 +5,6 @@ import (
 	"errors"
 	"hash/maphash"
 	"io"
-	"log"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/colorprofile"
