@@ -153,6 +153,25 @@ type KeyboardEnhancements struct {
 	// [KeyPressEvent] with the [Key.IsRepeat] field set indicating that this
 	// is a it's part of a key repeat sequence.
 	ReportEventTypes bool
+
+	// ReportAlternateKeys requests the terminal to report alternate key values
+	// in addition to the main ones.
+	// Note that only key events represented as escape codes will affected by
+	// this enhancement.
+	ReportAlternateKeys bool
+
+	// ReportAllKeysAsEscapeCodes requests the terminal to report all key
+	// events, including plain text keys, as escape codes.
+	// When this is enabled, text won't be sent as plain text but instead as
+	// escape codes that encode the key value and modifiers.
+	ReportAllKeysAsEscapeCodes bool
+
+	// ReportAssociatedText requests the terminal to report the text associated
+	// with key events.
+	// Note that this is an enhancement to
+	// [KeyboardEnhancements.ReportAllKeysAsEscapeCodes] and only has an effect
+	// if that is enabled.
+	ReportAssociatedText bool
 }
 
 // NewKeyboardEnhancements returns a new [KeyboardEnhancements] with the given
@@ -181,6 +200,15 @@ func (ke KeyboardEnhancements) Flags() int {
 	}
 	if ke.ReportEventTypes {
 		bits |= ansi.KittyReportEventTypes
+	}
+	if ke.ReportAlternateKeys {
+		bits |= ansi.KittyReportAlternateKeys
+	}
+	if ke.ReportAllKeysAsEscapeCodes {
+		bits |= ansi.KittyReportAllKeysAsEscapeCodes
+	}
+	if ke.ReportAssociatedText {
+		bits |= ansi.KittyReportAssociatedKeys
 	}
 
 	return bits
