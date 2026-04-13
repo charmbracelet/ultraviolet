@@ -336,8 +336,6 @@ func main() {
 
 	defer t.Stop()
 
-	t.SetLogger(log.Default())
-
 	physicalWidth := scr.Bounds().Dx()
 
 	if physicalWidth > 0 {

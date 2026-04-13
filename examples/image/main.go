@@ -335,9 +335,7 @@ LOOP:
 				imgOffsetX = winSize.Width/2 - imgCellW/2
 				imgOffsetY = winSize.Height/2 - imgCellH/2
 				log.Printf("image cell size: %d x %d", imgCellW, imgCellH)
-				if err := scr.Resize(ev.Width, ev.Height); err != nil {
-					log.Fatalf("failed to resize program: %v", err)
-				}
+				scr.Resize(ev.Width, ev.Height)
 
 				displayImg()
 			case uv.KeyPressEvent:

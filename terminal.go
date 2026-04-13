@@ -289,9 +289,7 @@ func (t *Terminal) Start() error {
 	})
 
 	// Restore any previous screen state.
-	if err := t.scr.Restore(); err != nil {
-		return fmt.Errorf("failed to restore terminal screen: %w", err)
-	}
+	t.scr.Restore()
 	if err := t.scr.Flush(); err != nil {
 		return fmt.Errorf("failed to flush terminal screen: %w", err)
 	}
@@ -328,11 +326,7 @@ func (t *Terminal) Stop() error {
 		_ = t.pr.Close()
 		t.pr = nil
 	}
-	if err := t.scr.Reset(); err != nil {
-		_ = t.scr.Flush()
-		_ = t.con.Restore()
-		return fmt.Errorf("failed to reset terminal screen: %w", err)
-	}
+	t.scr.Reset()
 	if err := t.scr.Flush(); err != nil {
 		_ = t.con.Restore()
 		return fmt.Errorf("failed to flush terminal screen: %w", err)
