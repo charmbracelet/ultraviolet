@@ -72,7 +72,7 @@ func TestInlineRendererOutput(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	expected := "\rHello, World!\r\n\n"
+	expected := "\rHello, World!"
 	if buf.String() != expected {
 		t.Errorf("expected output:\n%q\nbut got:\n%q", expected, buf.String())
 	}
@@ -1190,16 +1190,16 @@ func TestRendererUpdates(t *testing.T) {
 				"\x1b[1mA",
 			},
 			expected: []string{
-				"\rA\r\n\n",
-				"\x1b[2A\x1b[1mA\x1b[m",
+				"\rA",
+				"\r\x1b[1mA\x1b[m",
 			},
 		},
 		{
 			name:   "style and link change",
 			frames: []string{"A", "\x1b[31m\x1b]8;;https://example.com\x1b\\A\x1b]8;;\x1b\\"}, // red + link
 			expected: []string{
-				"\rA\r\n\n",
-				"\x1b[2A\x1b[31m\x1b]8;;https://example.com\aA\x1b[m\x1b]8;;\a",
+				"\rA",
+				"\r\x1b[31m\x1b]8;;https://example.com\aA\x1b[m\x1b]8;;\a",
 			},
 		},
 		{
@@ -1212,7 +1212,7 @@ func TestRendererUpdates(t *testing.T) {
 				" \x1b[38;2;255;128;0mABC\n DEF", // orange
 			},
 			expected: []string{
-				"\r \x1b[38;5;208mABC\x1b[m\r\n\x1b[38;5;208m DEF\x1b[m\r\n",
+				"\r \x1b[38;5;208mABC\x1b[m\r\n\x1b[38;5;208m DEF\x1b[m",
 				"",
 				"",
 			},

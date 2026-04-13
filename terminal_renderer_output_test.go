@@ -17,7 +17,7 @@ func TestRendererOutput(t *testing.T) {
 		{
 			name:     "scroll to bottom in inline mode",
 			input:    []string{"ABC", "XXX"},
-			expected: []string{"\rABC\r\n\n\n\n", "\x1b[4AXXX"},
+			expected: []string{"\rABC", "\rXXX"},
 			relative: true,
 		},
 		{
@@ -102,8 +102,8 @@ func TestRendererOutput(t *testing.T) {
 				"\nABCE      ",
 			},
 			expected: []string{
-				"\x1b[2;1HABCEFGHIJK\r\n\n\n",
-				"\x1b[2;5H\x1b[K",
+				"\x1b[2;1HABCEFGHIJK",
+				"\r\x1b[5G\x1b[K",
 			},
 		},
 	}
