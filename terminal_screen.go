@@ -36,6 +36,7 @@ type TerminalScreen struct {
 	progressBar          *ProgressBar
 	windowTitle          string
 	syncUpdates          bool // mode 2026
+	resetTabs            bool // DECST8C - reset terminal tabs on start
 }
 
 var _ Screen = (*TerminalScreen)(nil)
@@ -65,12 +66,15 @@ func NewTerminalScreen(w io.Writer, env Environ) *TerminalScreen {
 	f, ok := w.(term.File)
 	if ok {
 		state, err := term.GetState(f.Fd())
-		if err == nil {
+		if err == nil || isWindows { // Windows supports tabs and backspace by default, so we can ignore errors here.
 			useTabs, useBspace := optimizeMovements(state)
 			if useTabs {
 				s.rend.SetTabStops(0) // the width will be set after calling [TerminalScreen.Resize]
+			} else {
+				s.rend.SetTabStops(-1)
 			}
 			s.rend.SetBackspace(useBspace)
+			s.resetTabs = useTabs
 		}
 	}
 	// XXX: Do we still need map nl to crlf handling in the renderer?
@@ -627,6 +631,9 @@ func (s *TerminalScreen) Reset() {
 func (s *TerminalScreen) Restore() {
 	var sb strings.Builder
 
+	if s.resetTabs {
+		sb.WriteString(ansi.SetTabEvery8Columns)
+	}
 	if s.altScreen {
 		sb.WriteString(ansi.SetModeAltScreenSaveCursor)
 	}
