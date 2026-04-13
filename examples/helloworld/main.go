@@ -5,7 +5,6 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
-	"github.com/charmbracelet/x/ansi"
 )
 
 func main() {
@@ -35,8 +34,8 @@ func run(t *uv.Terminal) error {
 		"Press any key to exit.",
 	}
 	viewWidths := []int{
-		ansi.StringWidth(view[0]),
-		ansi.StringWidth(view[1]),
+		scr.StringWidth(view[0]),
+		scr.StringWidth(view[1]),
 	}
 
 	display := func() {
