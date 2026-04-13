@@ -60,13 +60,15 @@ func render(sc uv.Screen, area uv.Rectangle) {
 
 	layout.Vertical(layout.Len(7), layout.Min(0)).Split(area).Assign(&textArea, &area)
 
-	lines := uv.Lines(`Horizontal Layout Example. Press q to quit
+	lines := `Horizontal Layout Example. Press q to quit
 Each line has 2 constraints, plus Min(0) to fill the remaining space.
 E.g. the second line of the Len/Min box is [Len(2), Min(2), Min(0)]
-Note: constraint labels that don't fit are truncated`, sc.WidthMethod())
-	wp := &uv.Wrapper{}
-	wrapped := wp.Wrap(lines, textArea.Dx())
-	uv.DrawLines(sc, textArea, wrapped...)
+Note: constraint labels that don't fit are truncated`
+	screen.NewContext(sc).DrawStringWrapped(lines, textArea.Min.X, textArea.Min.Y)
+	// lines := uv.Lines()
+	// wp := &uv.Wrapper{}
+	// wrapped := wp.Wrap(lines, textArea.Dx())
+	// uv.DrawLines(sc, textArea, wrapped...)
 
 	rows := layout.Vertical(
 		layout.Len(9),
