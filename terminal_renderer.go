@@ -1303,12 +1303,6 @@ func notLocal(cols, fx, fy, tx, ty int) bool {
 		(abs(ty-fy)+abs(tx-fx) > longDist)
 }
 
-func init() {
-	f, _ := os.OpenFile("tea_debug.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.SetOutput(f)
-}
-
 // relativeCursorMove returns the relative cursor movement sequence using one or two
 // of the following sequences [ansi.CUU], [ansi.CUD], [ansi.CUF], [ansi.CUB],
 // [ansi.VPA], [ansi.HPA].
