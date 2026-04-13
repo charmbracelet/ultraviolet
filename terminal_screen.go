@@ -92,6 +92,26 @@ func (s *TerminalScreen) Bounds() Rectangle {
 	return s.win.Bounds()
 }
 
+// Width returns the width of the terminal screen.
+//
+// Note that this is not the actual width of the terminal window, but rather
+// the width of the screen we're managing. The actual width of the terminal
+// window can be obtained using [Terminal.GetSize] or by reading the "COLUMNS"
+// environment variable.
+func (s *TerminalScreen) Width() int {
+	return s.win.Width()
+}
+
+// Height returns the height of the terminal screen.
+//
+// Note that this is not the actual height of the terminal window, but rather
+// the height of the screen we're managing. The actual height of the terminal
+// window can be obtained using [Terminal.GetSize] or by reading the "LINES"
+// environment variable.
+func (s *TerminalScreen) Height() int {
+	return s.win.Height()
+}
+
 // WidthMethod returns the width method used by the terminal screen.
 func (s *TerminalScreen) WidthMethod() WidthMethod {
 	return s.win.WidthMethod()

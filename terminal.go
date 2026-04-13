@@ -132,6 +132,30 @@ func NewTerminal(con Console, opts *Options) *Terminal {
 	return t
 }
 
+// GetSize returns the current size of the terminal in characters and pixels.
+func (t *Terminal) GetSize() (width, height int, err error) {
+	w, h, err := t.con.GetSize()
+	if err != nil {
+		return 0, 0, fmt.Errorf("getting terminal size: %w", err)
+	}
+	return int(w), int(h), nil
+}
+
+// GetWinsize returns the current size of the terminal as a [Winsize] struct.
+// This includes both character dimensions (columns and rows) and pixel
+// dimensions (xpixel and ypixel).
+//
+// Note that this only returns the pixel dimensions on Unix-like systems that
+// support the TIOCGWINSZ ioctl. On other platforms, the pixel dimensions may
+// be zero or not available.
+func (t *Terminal) GetWinsize() (*Winsize, error) {
+	ws, err := t.con.GetWinsize()
+	if err != nil {
+		return nil, fmt.Errorf("getting terminal winsize: %w", err)
+	}
+	return ws, nil
+}
+
 // Screen returns the terminal's screen.
 func (t *Terminal) Screen() *TerminalScreen {
 	return t.scr
