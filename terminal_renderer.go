@@ -1216,7 +1216,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		}
 	}
 
-	if !s.flags.Contains(tFullscreen) {
+	if !s.flags.Contains(tFullscreen) && (curWidth != newWidth || curHeight != newHeight) {
 		s.move(newbuf, 0, newHeight-1)
 	}
 
