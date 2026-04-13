@@ -3,6 +3,7 @@ package uv
 import (
 	"bytes"
 	"image/color"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -179,6 +180,40 @@ func printString[T []byte | string](
 			case ansi.HasOscPrefix(seq) && p.Command() == 8:
 				// Hyperlinks
 				ReadLink(p.Data(), &link)
+			case ansi.HasOscPrefix(seq) && p.Command() == 66:
+				// Kitty text-sizing protocol. See:
+				// https://sw.kovidgoyal.net/kitty/text-sizing-protocol/
+				//
+				// We forward the entire escape verbatim through a single
+				// wide cell so the terminal can render the scaled glyph,
+				// while reserving the right number of cells for layout.
+				w := readTextSizingWidth(p.Data())
+				if w < 1 {
+					w = 1
+				}
+				if w > 4 {
+					w = 4
+				}
+				tsCell := Cell{
+					Content: string(seq),
+					Width:   w,
+					Style:   style,
+					Link:    link,
+				}
+				if s == nil {
+					if y >= len(lines) {
+						lines = append(lines, Line{})
+					}
+					lines[y] = append(lines[y], tsCell)
+					x += w
+				} else {
+					if pos := Pos(x, y); pos.In(bounds) {
+						if !truncate || x+w <= bounds.Max.X {
+							s.SetCell(x, y, &tsCell)
+							x += w
+						}
+					}
+				}
 			case ansi.Equal(seq, T("\n")):
 				if s == nil {
 					// When building lines, we need to ensure empty lines are represented.
@@ -324,6 +359,57 @@ func ReadStyle(params ansi.Params, pen *Style) {
 			pen.Bg = ansi.BrightBlack + ansi.BasicColor(param-100) //nolint:gosec
 		}
 	}
+}
+
+// readTextSizingWidth parses the metadata section of a kitty OSC 66
+// text-sizing payload and returns the number of terminal cells the rendered
+// glyph occupies horizontally.
+//
+// The data buffer holds the bytes between the OSC introducer and the string
+// terminator, including the leading "66" command identifier:
+//
+//	66;<key=value[:key=value...]>;<text>
+//
+// Recognised metadata keys mirror the kitty docs:
+//
+//	s=<n>  scale factor; multiplies both the horizontal and vertical extent.
+//	w=<n>  explicit cell width override.
+//	h=<n>  explicit cell height (parsed but ignored: only horizontal layout
+//	       matters at the cell-buffer level).
+//
+// When neither w nor s is supplied the width defaults to 1 cell, matching
+// the natural width of a single grapheme. Multi-grapheme text payloads are
+// not yet width-measured here; callers passing wider text should set w=
+// explicitly until that work lands.
+func readTextSizingWidth(data []byte) int {
+	parts := bytes.SplitN(data, []byte{';'}, 3)
+	if len(parts) < 2 {
+		return 1
+	}
+	meta := parts[1]
+	scale := 1
+	explicit := 0
+	for _, kv := range bytes.Split(meta, []byte{':'}) {
+		eq := bytes.IndexByte(kv, '=')
+		if eq < 1 {
+			continue
+		}
+		key := string(kv[:eq])
+		val, err := strconv.Atoi(string(kv[eq+1:]))
+		if err != nil || val < 1 {
+			continue
+		}
+		switch key {
+		case "s":
+			scale = val
+		case "w":
+			explicit = val
+		}
+	}
+	if explicit > 0 {
+		return explicit
+	}
+	return scale
 }
 
 // ReadLink reads a hyperlink escape sequence from a data buffer into link.
