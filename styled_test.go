@@ -2,6 +2,7 @@ package uv
 
 import (
 	"image/color"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -428,6 +429,87 @@ func TestStyledStringEmptyLines(t *testing.T) {
 				t.Errorf("expected cell (%d, %d) %#v, got %#v", x, y, expected.CellAt(x, y), &cell)
 			}
 		}
+	}
+}
+
+// TestStyledStringKittyTextSizing exercises the kitty OSC 66 path added to
+// printString. The protocol embeds the rendered glyph inside the OSC payload
+// (https://sw.kovidgoyal.net/kitty/text-sizing-protocol/), so the round-trip
+// has to (a) preserve the full escape verbatim in the cell content and
+// (b) reserve the correct number of cells based on the metadata.
+func TestStyledStringKittyTextSizing(t *testing.T) {
+	cases := []struct {
+		name      string
+		input     string
+		atX       int
+		wantWidth int
+		wantBytes string
+	}{
+		{
+			name:      "scale 2",
+			input:     "\x1b]66;s=2;X\x1b\\",
+			atX:       0,
+			wantWidth: 2,
+			wantBytes: "\x1b]66;s=2;X\x1b\\",
+		},
+		{
+			name:      "explicit width",
+			input:     "\x1b]66;w=3;X\x1b\\",
+			atX:       0,
+			wantWidth: 3,
+			wantBytes: "\x1b]66;w=3;X\x1b\\",
+		},
+		{
+			name:      "explicit width wins over scale",
+			input:     "\x1b]66;w=4:s=2;X\x1b\\",
+			atX:       0,
+			wantWidth: 4,
+			wantBytes: "\x1b]66;w=4:s=2;X\x1b\\",
+		},
+		{
+			name:      "no metadata defaults to 1",
+			input:     "\x1b]66;;X\x1b\\",
+			atX:       0,
+			wantWidth: 1,
+			wantBytes: "\x1b]66;;X\x1b\\",
+		},
+		{
+			name:      "follows preceding char",
+			input:     "A\x1b]66;s=2;X\x1b\\",
+			atX:       1,
+			wantWidth: 2,
+			wantBytes: "\x1b]66;s=2;X\x1b\\",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scr := NewScreenBuffer(8, 1)
+			NewStyledString(tc.input).Draw(scr, scr.Bounds())
+			got := scr.CellAt(tc.atX, 0)
+			if got == nil {
+				t.Fatalf("no cell at (%d, 0)", tc.atX)
+			}
+			if got.Width != tc.wantWidth {
+				t.Errorf("width: want %d, got %d", tc.wantWidth, got.Width)
+			}
+			if got.Content != tc.wantBytes {
+				t.Errorf("content:\n  want %q\n  got  %q", tc.wantBytes, got.Content)
+			}
+		})
+	}
+}
+
+// TestStyledStringKittyTextSizingRoundTrip verifies the Cell makes it all
+// the way through the renderer, so a downstream terminal would actually see
+// the OSC bytes that drive the scaling.
+func TestStyledStringKittyTextSizingRoundTrip(t *testing.T) {
+	const osc = "\x1b]66;s=2;X\x1b\\"
+	scr := NewScreenBuffer(4, 1)
+	NewStyledString(osc).Draw(scr, scr.Bounds())
+	out := scr.Render()
+	if !strings.Contains(out, osc) {
+		t.Fatalf("OSC 66 escape not found in render output:\n  want substring %q\n  got           %q", osc, out)
 	}
 }
 
