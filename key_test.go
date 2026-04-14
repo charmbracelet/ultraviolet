@@ -197,10 +197,10 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1b[2;1$y\x1b[$y\x1b[2$y\x1b[2;$y"),
 			[]Event{
-				ModeReportEvent{Mode: ansi.KeyboardActionMode, Value: ansi.ModeSet},
+				ModeReportEvent{Mode: ansi.ModeKeyboardAction, Value: ansi.ModeSet},
 				UnknownCsiEvent("\x1b[$y"),
 				UnknownCsiEvent("\x1b[2$y"),
-				ModeReportEvent{Mode: ansi.KeyboardActionMode, Value: ansi.ModeNotRecognized},
+				ModeReportEvent{Mode: ansi.ModeKeyboardAction, Value: ansi.ModeNotRecognized},
 			},
 		},
 
@@ -220,7 +220,7 @@ func TestParseSequence(t *testing.T) {
 			[]Event{
 				UnknownCsiEvent("\x1b[?$y"),
 				UnknownCsiEvent("\x1b[?1049$y"),
-				ModeReportEvent{Mode: ansi.AltScreenSaveCursorMode, Value: ansi.ModeNotRecognized},
+				ModeReportEvent{Mode: ansi.ModeAltScreenSaveCursor, Value: ansi.ModeNotRecognized},
 			},
 		},
 
@@ -285,7 +285,7 @@ func TestParseSequence(t *testing.T) {
 			[]byte("\x1b\x1b[?2004;1$y"),
 			[]Event{
 				KeyPressEvent{Code: KeyEscape},
-				ModeReportEvent{Mode: ansi.BracketedPasteMode, Value: ansi.ModeSet},
+				ModeReportEvent{Mode: ansi.ModeBracketedPaste, Value: ansi.ModeSet},
 			},
 		},
 
@@ -440,7 +440,7 @@ func TestParseSequence(t *testing.T) {
 		// Invalid CSI sequence.
 		seqTest{
 			[]byte("\x1b[?2004;1$y"),
-			[]Event{ModeReportEvent{Mode: ansi.BracketedPasteMode, Value: ansi.ModeSet}},
+			[]Event{ModeReportEvent{Mode: ansi.ModeBracketedPaste, Value: ansi.ModeSet}},
 		},
 
 		// Invalid CSI sequence.

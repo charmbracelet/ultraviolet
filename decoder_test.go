@@ -145,11 +145,7 @@ func TestLegacyKeyEncodingMethods(t *testing.T) {
 				if uint32(result)&tt.flag == 0 {
 					t.Errorf("expected flag %x to be set, got %x", tt.flag, uint32(result))
 				}
-			} else {
-				// Testing false - specific flag should be cleared
-				// We can't check the exact value since we don't know which flag is being cleared
-				// Just verify the method runs without panic
-			}
+			} // else: Testing false - specific flag should be cleared. We can't check the exact value since we don't know which flag is being cleared. Just verify the method runs without panic.
 		})
 	}
 }
