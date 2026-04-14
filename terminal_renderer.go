@@ -860,8 +860,41 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 		return
 	}
 
+	// Pick the slow per-cell path when EL would visibly damage cell
+	// content. Two reasons can trigger it:
+	//
+	//   1. The line's "blank" template (last cell) isn't clearable via
+	//      EL — the original check.
+	//   2. ANY cell on the new or old line is non-clearable, e.g. a
+	//      kitty text-sizing multicell anchor or its CUF spill cell.
+	//      EL right can fire from several branches below and reach a
+	//      multicell sitting in the middle of the line, erasing it.
+	//      The trailing-blank-only check is not enough on its own.
+	//
+	// Without the per-cell scan, the only safe way for downstream code
+	// to use multicells was to fill every row with non-clearable cells
+	// (nbsp) so the trailing-cell guard tripped — which forced the
+	// slow path on every row and made multicell-heavy frames
+	// significantly slower than they need to be. The scan is O(width)
+	// per line and runs once per frame; in practice it's dominated by
+	// the SGR emission it lets us short-circuit on rows that don't
+	// need protection.
 	blank = newLine.At(newbuf.Width() - 1)
-	if blank != nil && !canClearWith(blank) {
+	slowPath := blank != nil && !canClearWith(blank)
+	if !slowPath {
+		w := newbuf.Width()
+		for x := 0; x < w; x++ {
+			if c := newLine.At(x); c != nil && !canClearWith(c) {
+				slowPath = true
+				break
+			}
+			if c := oldLine.At(x); c != nil && !canClearWith(c) {
+				slowPath = true
+				break
+			}
+		}
+	}
+	if slowPath {
 		// Find the last differing cell
 		nLastCell = newbuf.Width() - 1
 		for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), oldLine.At(nLastCell)) {
