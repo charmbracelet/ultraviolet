@@ -97,6 +97,64 @@ func (s *StyledString) Bounds() Rectangle {
 	return Rect(0, 0, w, h)
 }
 
+// multicellRect describes a single-row span of cells that have been claimed
+// by a previously-emitted scaled multicell glyph in this printString call.
+// Subsequent printable writes that intersect any rect are skipped so the
+// glyph's spill rows are not overwritten and erased per the kitty
+// text-sizing protocol.
+type multicellRect struct{ x, y, w int }
+
+// hasStringPrefix reports whether b begins with any of the five
+// string-state introducers (OSC, DCS, APC, SOS, PM) in either the 7-bit
+// (ESC + X) or 8-bit (single C1 byte) form. All five share the same
+// terminator semantics.
+func hasStringPrefix[T []byte | string](b T) bool {
+	return ansi.HasOscPrefix(b) ||
+		ansi.HasDcsPrefix(b) ||
+		ansi.HasApcPrefix(b) ||
+		ansi.HasSosPrefix(b) ||
+		ansi.HasPmPrefix(b)
+}
+
+// findStringEnd scans src from offset `start` for a proper string-state
+// terminator, BEL (0x07) or 7-bit ST (ESC 0x1B followed by 0x5C), and
+// returns the index *after* the terminator, or `start` if the sequence
+// is abandoned by a bare ESC.
+//
+// Critically, it does *not* treat bare 8-bit ST (0x9C) as a terminator.
+// Of every byte the ansi decoder's StringState recognises as "end of
+// string" (BEL, CAN, SUB, ESC, and ST), only 0x9C falls in the UTF-8
+// continuation-byte range (0x80-0xBF). Nerd-Font icons like U+E738
+// (encoded as 0xEE 0x9C 0xB8) therefore carry a byte the decoder
+// misinterprets as ST, truncating the payload mid-UTF-8. The workaround
+// is to treat 0x9C as data for payloads we know to be UTF-8 and rely on
+// the unambiguous 7-bit terminators (BEL, ESC+\) instead.
+func findStringEnd[T []byte | string](src T, start int) int {
+	for i := start; i < len(src); i++ {
+		switch src[i] {
+		case 0x07: // BEL
+			return i + 1
+		case 0x1b: // ESC
+			if i+1 < len(src) && src[i+1] == 0x5c {
+				return i + 2
+			}
+			// Bare ESC inside a string-state sequence; the ansi
+			// decoder aborts here, so do the same.
+			return i
+		}
+	}
+	return start
+}
+
+func multicellOwned(rects []multicellRect, x, y int) bool {
+	for _, r := range rects {
+		if r.y == y && x >= r.x && x < r.x+r.w {
+			return true
+		}
+	}
+	return false
+}
+
 // printString draws a string starting at the given position. If s is nil, it
 // will build and return a slice of [Line]s instead (unwrapped, ignoring bounds).
 func printString[T []byte | string](
@@ -106,6 +164,7 @@ func printString[T []byte | string](
 	bounds Rectangle, str T,
 	truncate bool, tail string,
 ) (lines []Line) {
+	var multicells []multicellRect
 	p := ansi.GetParser()
 	defer ansi.PutParser(p)
 
@@ -129,6 +188,35 @@ func printString[T []byte | string](
 	var state byte
 	for len(str) > 0 {
 		seq, width, n, newState := decoder(str, state, p)
+
+		// Workaround for a shared-ansi-decoder bug affecting every
+		// string-state sequence (OSC, DCS, APC, SOS, PM): the decoder
+		// treats bare C1 ST (byte 0x9C) as a terminator, but 0x9C is
+		// also a valid UTF-8 continuation byte (the whole 0x80-0xBF
+		// range is). Nerd-Font icons like U+E738 (0xEE 0x9C 0xB8)
+		// carry 0x9C as a middle byte, so an OSC 66 text-sizing
+		// payload gets sliced mid-UTF-8; downstream terminals then see
+		// malformed bytes and render the tail (SGRs, the next OSC,
+		// etc.) as literal text.
+		//
+		// Of the decoder's five recognised terminators, BEL (0x07),
+		// CAN (0x18), SUB (0x1A), ESC (0x1B), ST (0x9C), only 0x9C
+		// overlaps with UTF-8 continuation bytes; the other four live
+		// in 7-bit ASCII, which UTF-8 reserves for single-byte chars.
+		//
+		// When the decoder returns a string-state sequence that ended
+		// on bare 0x9C and there's more input available, rescan from
+		// that point for the unambiguous 7-bit terminator (BEL or
+		// ESC+\) and extend the sequence. We don't re-run the parser
+		// over the extended bytes: p.Command() and the metadata
+		// portion of p.Data() were already resolved from bytes before
+		// the UTF-8 payload began.
+		if n > 0 && n < len(str) && hasStringPrefix(seq) && seq[len(seq)-1] == 0x9C {
+			if ext := findStringEnd(str, n); ext > n {
+				seq = str[:ext]
+				n = ext
+			}
+		}
 		switch width {
 		case 1, 2, 3, 4: // wide cells can go up to 4 cells wide
 			cell.Width = width
@@ -153,14 +241,20 @@ func printString[T []byte | string](
 
 				pos := Pos(x, y)
 				if pos.In(bounds) {
-					if truncate && tailc.Width > 0 && x+cell.Width > bounds.Max.X-tailc.Width {
+					switch {
+					case multicellOwned(multicells, x, y):
+						// Cell is owned by an earlier scaled multicell glyph
+						// from this same string; writing here would erase it
+						// per the kitty text-sizing rules. Step over.
+						x += width
+					case truncate && tailc.Width > 0 && x+cell.Width > bounds.Max.X-tailc.Width:
 						// Truncate the string and append the tail if any.
 						cell = tailc
 						cell.Style = style
 						cell.Link = link
 						s.SetCell(x, y, &cell)
 						x += tailc.Width
-					} else {
+					default:
 						// Print the cell to the screen
 						s.SetCell(x, y, &cell)
 						x += width
@@ -180,6 +274,52 @@ func printString[T []byte | string](
 			case ansi.HasOscPrefix(seq) && p.Command() == 8:
 				// Hyperlinks
 				ReadLink(p.Data(), &link)
+			case ansi.HasCsiPrefix(seq) && p.Command() == 'C':
+				// CUF (cursor forward). Treat the escape as a width-N
+				// placeholder cell that preserves the literal bytes so
+				// they make it back out to the terminal verbatim. This
+				// matches what we emit for the spill rows of a kitty
+				// scaled glyph (see the OSC 66 case below); without
+				// this round-trip handling, the canvas's CUF placeholders
+				// would be silently dropped during re-parse and the cells
+				// after them would shift left into the multicell's spill,
+				// erasing the glyph.
+				n := 1
+				if v, _, ok := p.Params().Param(0, 1); ok && v > 0 {
+					n = v
+				}
+				if n > 4 {
+					n = 4
+				}
+				cufCell := Cell{
+					Content: string(seq),
+					Width:   n,
+					Style:   style,
+				}
+				if s == nil {
+					if y >= len(lines) {
+						lines = append(lines, Line{})
+					}
+					lines[y] = append(lines[y], cufCell)
+					x += n
+				} else {
+					// If this position is already claimed by an OSC 66's
+					// spill tracking from the same string, the cell is
+					// already correctly seeded, so skip the re-write to
+					// avoid a second SetCell (with a different style
+					// captured later in parsing) and a duplicate
+					// multicell rect. We still advance x so the rest of
+					// the line lines up.
+					if !multicellOwned(multicells, x, y) {
+						if pos := Pos(x, y); pos.In(bounds) {
+							if !truncate || x+n <= bounds.Max.X {
+								s.SetCell(x, y, &cufCell)
+							}
+						}
+						multicells = append(multicells, multicellRect{x: x, y: y, w: n})
+					}
+					x += n
+				}
 			case ansi.HasOscPrefix(seq) && p.Command() == 66:
 				// Kitty text-sizing protocol. See:
 				// https://sw.kovidgoyal.net/kitty/text-sizing-protocol/
@@ -187,12 +327,25 @@ func printString[T []byte | string](
 				// We forward the entire escape verbatim through a single
 				// wide cell so the terminal can render the scaled glyph,
 				// while reserving the right number of cells for layout.
-				w := readTextSizingWidth(p.Data())
+				//
+				// When the glyph also spans multiple rows (s>1 or h>1),
+				// we additionally seed CUF "cursor forward" placeholder
+				// cells in the spill rows. The kitty docs explicitly
+				// recommend moving the cursor past a multicell when
+				// writing the row below it; without this, any subsequent
+				// write into the spill cells erases the entire glyph.
+				w, h := readTextSizingDims(p.Data())
 				if w < 1 {
 					w = 1
 				}
+				if h < 1 {
+					h = 1
+				}
 				if w > 4 {
 					w = 4
+				}
+				if h > 4 {
+					h = 4
 				}
 				tsCell := Cell{
 					Content: string(seq),
@@ -207,11 +360,39 @@ func printString[T []byte | string](
 					lines[y] = append(lines[y], tsCell)
 					x += w
 				} else {
+					placed := false
 					if pos := Pos(x, y); pos.In(bounds) {
 						if !truncate || x+w <= bounds.Max.X {
 							s.SetCell(x, y, &tsCell)
-							x += w
+							placed = true
 						}
+					}
+					if placed && h > 1 {
+						// Skip cells deliberately carry NO style. When rendered
+						// back out they become `CUF(w)` with a preceding style
+						// reset, so no fg/bg/bold changes land at a position
+						// that is a multicell extension in the terminal. Some
+						// kitty builds mis-render SGR bytes emitted
+						// inside/adjacent to a multicell extension as literal
+						// text; keeping the span around the CUF stylistically
+						// neutral avoids that whole class of parser state
+						// confusion. The visible result is identical because
+						// CUF doesn't paint cells.
+						skip := Cell{
+							Content: ansi.CursorForward(w),
+							Width:   w,
+						}
+						for dy := 1; dy < h; dy++ {
+							ny := y + dy
+							if pos := Pos(x, ny); !pos.In(bounds) {
+								break
+							}
+							s.SetCell(x, ny, &skip)
+							multicells = append(multicells, multicellRect{x: x, y: ny, w: w})
+						}
+					}
+					if placed {
+						x += w
 					}
 				}
 			case ansi.Equal(seq, T("\n")):
@@ -361,9 +542,9 @@ func ReadStyle(params ansi.Params, pen *Style) {
 	}
 }
 
-// readTextSizingWidth parses the metadata section of a kitty OSC 66
-// text-sizing payload and returns the number of terminal cells the rendered
-// glyph occupies horizontally.
+// readTextSizingDims parses the metadata section of a kitty OSC 66
+// text-sizing payload and returns the cell dimensions (width, height) the
+// rendered glyph occupies.
 //
 // The data buffer holds the bytes between the OSC introducer and the string
 // terminator, including the leading "66" command identifier:
@@ -374,21 +555,20 @@ func ReadStyle(params ansi.Params, pen *Style) {
 //
 //	s=<n>  scale factor; multiplies both the horizontal and vertical extent.
 //	w=<n>  explicit cell width override.
-//	h=<n>  explicit cell height (parsed but ignored: only horizontal layout
-//	       matters at the cell-buffer level).
+//	h=<n>  explicit cell height override.
 //
-// When neither w nor s is supplied the width defaults to 1 cell, matching
-// the natural width of a single grapheme. Multi-grapheme text payloads are
-// not yet width-measured here; callers passing wider text should set w=
-// explicitly until that work lands.
-func readTextSizingWidth(data []byte) int {
+// When neither w nor s is supplied the width defaults to 1; the same applies
+// to height. Multi-grapheme text payloads are not yet width-measured here;
+// callers passing wider text should set w= explicitly until that work lands.
+func readTextSizingDims(data []byte) (int, int) {
 	parts := bytes.SplitN(data, []byte{';'}, 3)
 	if len(parts) < 2 {
-		return 1
+		return 1, 1
 	}
 	meta := parts[1]
 	scale := 1
-	explicit := 0
+	explicitW := 0
+	explicitH := 0
 	for _, kv := range bytes.Split(meta, []byte{':'}) {
 		eq := bytes.IndexByte(kv, '=')
 		if eq < 1 {
@@ -403,13 +583,20 @@ func readTextSizingWidth(data []byte) int {
 		case "s":
 			scale = val
 		case "w":
-			explicit = val
+			explicitW = val
+		case "h":
+			explicitH = val
 		}
 	}
-	if explicit > 0 {
-		return explicit
+	w := explicitW
+	if w == 0 {
+		w = scale
 	}
-	return scale
+	h := explicitH
+	if h == 0 {
+		h = scale
+	}
+	return w, h
 }
 
 // ReadLink reads a hyperlink escape sequence from a data buffer into link.

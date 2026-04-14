@@ -1,6 +1,7 @@
 package uv
 
 import (
+	"bytes"
 	"image/color"
 	"strings"
 	"testing"
@@ -480,6 +481,26 @@ func TestStyledStringKittyTextSizing(t *testing.T) {
 			wantWidth: 2,
 			wantBytes: "\x1b]66;s=2;X\x1b\\",
 		},
+		{
+			// Callers that emit OSC 66 followed directly by an SGR are
+			// advised to use BEL as the terminator instead of ST, because
+			// ST is ESC+\\ and the trailing ESC can get concatenated with
+			// the following ESC[... into a single ambiguous blob for some
+			// terminal parsers. The cell buffer must still recognise and
+			// forward a BEL-terminated OSC 66 unchanged.
+			name:      "BEL terminator",
+			input:     "\x1b]66;s=2;X\x07",
+			atX:       0,
+			wantWidth: 2,
+			wantBytes: "\x1b]66;s=2;X\x07",
+		},
+		{
+			name:      "BEL terminator followed by SGR",
+			input:     "\x1b]66;s=2;X\x07\x1b[31m",
+			atX:       0,
+			wantWidth: 2,
+			wantBytes: "\x1b]66;s=2;X\x07",
+		},
 	}
 
 	for _, tc := range cases {
@@ -510,6 +531,124 @@ func TestStyledStringKittyTextSizingRoundTrip(t *testing.T) {
 	out := scr.Render()
 	if !strings.Contains(out, osc) {
 		t.Fatalf("OSC 66 escape not found in render output:\n  want substring %q\n  got           %q", osc, out)
+	}
+}
+
+// TestStyledStringKittyTextSizingMultiRow asserts that a scaled glyph also
+// reserves CUF placeholder cells in the rows it spills into, and that a
+// trailing space in the input does not overwrite those placeholders.
+func TestStyledStringKittyTextSizingMultiRow(t *testing.T) {
+	// Layout: "Xose<NL>spaces" - the X is the OSC 66 anchor at scale 2;
+	// the spaces line below should be partially short-circuited where
+	// the spill cells sit.
+	const osc = "\x1b]66;s=2;X\x1b\\"
+	// Pad the icon line to fill 4 cells so the spill is aligned with
+	// known columns; spacer line is 4 spaces.
+	input := osc + "\n    "
+
+	scr := NewScreenBuffer(4, 2)
+	NewStyledString(input).Draw(scr, scr.Bounds())
+
+	anchor := scr.CellAt(0, 0)
+	if anchor == nil || anchor.Width != 2 || anchor.Content != osc {
+		t.Fatalf("anchor cell wrong: %#v", anchor)
+	}
+
+	spill := scr.CellAt(0, 1)
+	if spill == nil {
+		t.Fatal("spill cell not set; expected CUF placeholder")
+	}
+	if spill.Width != 2 {
+		t.Errorf("spill cell width: want 2, got %d", spill.Width)
+	}
+	wantCUF := "\x1b[2C"
+	if spill.Content != wantCUF {
+		t.Errorf("spill cell content: want %q, got %q", wantCUF, spill.Content)
+	}
+
+	// The spaces written to (0, 1) and (1, 1) should NOT have overwritten
+	// the placeholder. (2, 1) and (3, 1) should be regular space cells.
+	if got := scr.CellAt(2, 1); got == nil || got.Content != " " {
+		t.Errorf("(2, 1) want space, got %#v", got)
+	}
+	if got := scr.CellAt(3, 1); got == nil || got.Content != " " {
+		t.Errorf("(3, 1) want space, got %#v", got)
+	}
+
+	// The spill CUF cell must carry *no* style. Emitting an SGR change
+	// adjacent to a multicell extension is what some kitty builds
+	// mis-render as literal SGR text ("[38;2;...m"). A zero style means
+	// renderLine emits at most a plain ResetStyle around the CUF.
+	if !spill.Style.IsZero() {
+		t.Errorf("spill cell style must be zero; got %#v", spill.Style)
+	}
+}
+
+// TestStyledStringKittyTextSizingUTF8Continuation covers OSC 66 payloads
+// whose UTF-8 text contains byte 0x9C (C1 ST). Nerd-Font icons like
+// U+E738 (0xEE 0x9C 0xB8) land here; the shared ansi decoder treats the
+// middle 0x9C as a C1 String Terminator and truncates the OSC payload
+// mid-UTF-8, which causes kitty to see malformed bytes and render the
+// tail of the emission as literal text. The fix in printString must
+// recognise the pattern and rescan for the real BEL/ESC+\ terminator.
+func TestStyledStringKittyTextSizingUTF8Continuation(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "BEL terminator, 0x9C continuation byte",
+			input: "\x1b]66;s=2;\ue738\x07",
+		},
+		{
+			name:  "ST terminator, 0x9C continuation byte",
+			input: "\x1b]66;s=2;\ue738\x1b\\",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scr := NewScreenBuffer(4, 1)
+			NewStyledString(tc.input).Draw(scr, scr.Bounds())
+			cell := scr.CellAt(0, 0)
+			if cell == nil {
+				t.Fatal("no cell at (0, 0)")
+			}
+			if cell.Width != 2 {
+				t.Errorf("width: want 2, got %d", cell.Width)
+			}
+			if cell.Content != tc.input {
+				t.Errorf("content truncated mid-UTF-8:\n  want %q\n  got  %q", tc.input, cell.Content)
+			}
+		})
+	}
+}
+
+// TestTerminalRendererForwardsKittyOSC66 mirrors the path bubbletea uses:
+// View.Content goes into a styled string, the styled string draws into the
+// cell buffer, and TerminalRenderer.Render flushes that buffer to the
+// terminal. We assert the OSC bytes show up in the bytes the renderer
+// would have written to the terminal.
+func TestTerminalRendererForwardsKittyOSC66(t *testing.T) {
+	const osc = "\x1b]66;s=2;X\x1b\\"
+
+	// Two frames: empty first, then content. The renderer diffs against
+	// the previous frame, so emitting on the very first paint requires a
+	// non-empty frame after an initialised state.
+	cellbuf := NewScreenBuffer(4, 1)
+	NewStyledString(osc).Draw(cellbuf, cellbuf.Bounds())
+
+	var out bytes.Buffer
+	tr := NewTerminalRenderer(&out, nil)
+	tr.Resize(4, 1)
+	tr.Render(cellbuf.RenderBuffer)
+	if err := tr.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, osc) {
+		t.Fatalf("TerminalRenderer dropped OSC 66\n  want substring %q\n  got           %q", osc, got)
 	}
 }
 

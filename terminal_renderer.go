@@ -502,6 +502,21 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 		s.atPhantom = false
 	}
 
+	// Cursor-movement-only cells (the CUF placeholders seeded for the
+	// spill rows of a kitty text-sizing multicell) paint nothing visible.
+	// Skipping updatePen keeps SGR bytes from landing on cells that are
+	// multicell extensions in the terminal; kitty reacts to SGR at an
+	// extension cell by rendering subsequent escape sequences as literal
+	// text. Forward the content verbatim and just bump the cursor.
+	if cell != nil && isCursorMoveCell(cell) {
+		_, _ = s.buf.WriteString(cell.Content)
+		s.cur.X += cell.Width
+		if s.cur.X >= newbuf.Width() {
+			s.atPhantom = true
+		}
+		return
+	}
+
 	s.updatePen(cell)
 	cellWidth := 1
 	if cell == nil {

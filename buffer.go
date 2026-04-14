@@ -9,6 +9,26 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// isCursorMoveCell reports whether the cell's content is a pure CSI cursor
+// movement sequence (CUF, CUB, CUU, CUD, CHA, VPA, CUP, etc.): bytes whose
+// sole effect on the terminal is relocating the cursor. Such cells never
+// paint anything visible, so any SGR or hyperlink state set before them is
+// wasted output and, crucially, those rendition bytes land at columns we
+// may be deliberately trying to leave untouched (kitty multicell extension
+// cells).
+func isCursorMoveCell(c *Cell) bool {
+	s := c.Content
+	if len(s) < 3 || s[0] != 0x1b || s[1] != '[' {
+		return false
+	}
+	switch s[len(s)-1] {
+	// Cursor movement final bytes from the ECMA-48 / xterm CSI set.
+	case 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'a', 'd', 'e', '`':
+		return true
+	}
+	return false
+}
+
 // Position represents a position in a coordinate system.
 type Position = image.Point
 
@@ -163,6 +183,17 @@ func renderLine(buf io.StringWriter, l Line) {
 		if pending.Len() > 0 {
 			_, _ = buf.WriteString(pending.String())
 			pending.Reset()
+		}
+
+		// Cursor-movement cells (CUF placeholders we seed for the spill
+		// rows of a kitty text-sizing multicell) paint nothing. Emitting
+		// SGR/link state changes around them lands rendition bytes
+		// exactly at cell positions that are multicell extensions; kitty
+		// reacts to that by rendering later escapes as literal text.
+		// Forward the content verbatim without touching the pen.
+		if isCursorMoveCell(&c) {
+			_, _ = buf.WriteString(c.String())
+			continue
 		}
 
 		if c.Style.IsZero() && !pen.IsZero() {
