@@ -1412,8 +1412,6 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 					if cell != nil && cell.Width > 0 {
 						ovw += cell.String()
 						i += cell.Width - 1
-					} else {
-						ovw += " "
 					}
 				}
 			}
