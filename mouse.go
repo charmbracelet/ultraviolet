@@ -76,7 +76,8 @@ const (
 // messages.
 //
 // The X and Y coordinates are zero-based, with (0,0) being the upper left
-// corner of the terminal.
+// corner of the terminal. When using [MouseEncodingSGRPixel] (DEC mode 1016),
+// X and Y are in pixel coordinates; otherwise they are in cell coordinates.
 //
 //	// Catch all mouse events
 //	switch Event := Event.(type) {
