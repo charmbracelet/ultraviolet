@@ -29,7 +29,6 @@ func main() {
 
 	scr := t.Screen()
 	scr.EnterAltScreen()
-	// scr.ShowCursor()
 
 	var keypress string
 	var cellWidth, cellHeight int
