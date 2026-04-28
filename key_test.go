@@ -1841,6 +1841,72 @@ func TestParseSGRMouseEvent(t *testing.T) {
 	}
 }
 
+func TestMousePixelToCell(t *testing.T) {
+	tt := []struct {
+		name     string
+		mouse    Mouse
+		ws       *Winsize
+		expected Mouse
+	}{
+		{
+			name:     "standard 80x24 terminal",
+			mouse:    Mouse{X: 480, Y: 312, Button: MouseLeft},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 560, Ypixel: 312},
+			expected: Mouse{X: 68, Y: 24, Button: MouseLeft},
+		},
+		{
+			name:     "top-left pixel",
+			mouse:    Mouse{X: 0, Y: 0, Button: MouseLeft},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 560, Ypixel: 312},
+			expected: Mouse{X: 0, Y: 0, Button: MouseLeft},
+		},
+		{
+			name:     "bottom-right pixel",
+			mouse:    Mouse{X: 559, Y: 311, Button: MouseRight},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 560, Ypixel: 312},
+			expected: Mouse{X: 79, Y: 23, Button: MouseRight},
+		},
+		{
+			name:     "exact cell boundary pixel",
+			mouse:    Mouse{X: 6, Y: 12, Button: MouseLeft},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 480, Ypixel: 288},
+			expected: Mouse{X: 1, Y: 1, Button: MouseLeft},
+		},
+		{
+			name:     "preserves modifiers",
+			mouse:    Mouse{X: 240, Y: 156, Button: MouseMiddle, Mod: ModAlt},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 560, Ypixel: 312},
+			expected: Mouse{X: 34, Y: 12, Button: MouseMiddle, Mod: ModAlt},
+		},
+		{
+			name:     "zero pixel dimensions returns zero cell",
+			mouse:    Mouse{X: 480, Y: 312, Button: MouseLeft},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 0, Ypixel: 0},
+			expected: Mouse{X: 0, Y: 0, Button: MouseLeft},
+		},
+		{
+			name:     "pixel position larger than window",
+			mouse:    Mouse{X: 1200, Y: 800, Button: MouseLeft},
+			ws:       &Winsize{Row: 24, Col: 80, Xpixel: 560, Ypixel: 312},
+			expected: Mouse{X: 171, Y: 61, Button: MouseLeft},
+		},
+	}
+
+	for i := range tt {
+		tc := tt[i]
+
+		t.Run(tc.name, func(t *testing.T) {
+			actual := MousePixelToCell(tc.mouse, tc.ws)
+			if tc.expected != actual {
+				t.Fatalf("expected %#v but got %#v",
+					tc.expected,
+					actual,
+				)
+			}
+		})
+	}
+}
+
 // TestMatchStrings tests the MatchStrings method
 func TestMatchStrings(t *testing.T) {
 	tests := []struct {
