@@ -3,6 +3,7 @@ package uv
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"hash/maphash"
 	"io"
 	"strings"
@@ -869,16 +870,41 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	// Find last non-blank cell in the old line.
 	// We always use the newbuf width to detect new cell changes.
 	oLastCell = newbuf.Width() - 1
-	for oLastCell > firstCell && cellEqual(oldLine.At(oLastCell), blank) {
+	for oLastCell > firstCell && (cellEqual(oldLine.At(oLastCell), blank) || (oldLine.At(oLastCell) != nil && oldLine.At(oLastCell).IsZero())) {
 		oLastCell--
+	}
+	// If the last non-blank old cell is a wide cell, extend oLastCell to cover
+	// all its trailing columns so downstream range calculations erase them all.
+	// Save the anchor cell before extending to detect escape-sequence cells.
+	oLastAnchor := oldLine.At(oLastCell)
+	if oLastAnchor != nil && oLastAnchor.Width > 1 {
+		oLastCell = min(oLastCell+oLastAnchor.Width-1, newbuf.Width()-1)
 	}
 
 	// Find last non-blank cell in the new line.
 	// We always use the newbuf width to detect new cell changes.
 	nLastCell = newbuf.Width() - 1
-	for nLastCell > firstCell && cellEqual(newLine.At(nLastCell), blank) {
+	for nLastCell > firstCell && (cellEqual(newLine.At(nLastCell), blank) || (newLine.At(nLastCell) != nil && newLine.At(nLastCell).IsZero())) {
 		nLastCell--
 	}
+	// If the last non-blank new cell is a wide cell, extend nLastCell to cover
+	// all its trailing columns.
+	// Save the anchor cell before extending to detect escape-sequence cells.
+	nLastAnchor := newLine.At(nLastCell)
+	if nLastAnchor != nil && nLastAnchor.Width > 1 {
+		nLastCell = min(nLastCell+nLastAnchor.Width-1, newbuf.Width()-1)
+	}
+
+	// If either anchor cell contains an escape sequence, ICH/DCH must not be
+	// used — they would shift image pixels on screen rather than erasing them.
+	cellIsEscSeq := func(c *Cell) bool {
+		if c == nil || len(c.Content) == 0 {
+			return false
+		}
+		b := c.Content[0]
+		return b == '\x1b' || (b >= '\x80' && b <= '\x9f')
+	}
+	hasEscapeAnchor := cellIsEscSeq(oLastAnchor) || cellIsEscSeq(nLastAnchor)
 
 	if nLastCell == firstCell && s.el0Cost() < oLastCell-nLastCell { //nolint:nestif
 		s.move(newbuf, firstCell, y)
@@ -923,21 +949,23 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 
 		if oLastCell < nLastCell {
 			m := max(nLastNonBlank, oLastNonBlank)
-			if n != 0 {
-				for n > 0 {
-					wide := newLine.At(n + 1)
-					if wide == nil || !wide.IsZero() {
-						break
+			if !hasEscapeAnchor {
+				if n != 0 {
+					for n > 0 {
+						wide := newLine.At(n + 1)
+						if wide == nil || !wide.IsZero() {
+							break
+						}
+						n--
+						oLastCell--
 					}
-					n--
-					oLastCell--
-				}
-			} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
-				next := newLine.At(n + 1)
-				for next != nil && next.IsZero() {
-					n++
-					oLastCell++
-					next = newLine.At(n + 1)
+				} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
+					next := newLine.At(n + 1)
+					for next != nil && next.IsZero() {
+						n++
+						oLastCell++
+						next = newLine.At(n + 1)
+					}
 				}
 			}
 
@@ -947,7 +975,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 			// Investigate and fix.
 			s.move(newbuf, n+1, y)
 			ichCost := 3 + nLastCell - oLastCell
-			if s.caps.Contains(capICH) && (nLastCell < nLastNonBlank || ichCost > (m-n)) {
+			if hasEscapeAnchor || !s.caps.Contains(capICH) || (nLastCell < nLastNonBlank || ichCost > (m-n)) {
 				s.putRange(newbuf, oldLine, newLine, y, n+1, m)
 			} else {
 				s.insertCells(newbuf, newLine[n+1:], nLastCell-oLastCell)
@@ -955,8 +983,8 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 		} else if oLastCell > nLastCell {
 			s.move(newbuf, n+1, y)
 			dchCost := 3 + oLastCell - nLastCell
-			if dchCost > len(ansi.EraseLineRight)+nLastNonBlank-(n+1) {
-				if s.putRange(newbuf, oldLine, newLine, y, n+1, nLastNonBlank) {
+			if hasEscapeAnchor || dchCost > len(ansi.EraseLineRight)+nLastNonBlank-(n+1) {
+				if hasEscapeAnchor || s.putRange(newbuf, oldLine, newLine, y, n+1, nLastNonBlank) {
 					s.move(newbuf, nLastNonBlank+1, y)
 				}
 				s.clearToEnd(newbuf, blank, false)
@@ -1096,6 +1124,64 @@ func (s *TerminalRenderer) logf(format string, args ...any) {
 	s.logger.Printf(format, args...)
 }
 
+// logBuffer logs the contents of a RenderBuffer as an ASCII table to s.logger.
+// Each cell is printed as: content (%%q), width, and zero flag.
+func (s *TerminalRenderer) logBuffer(label string, buf *RenderBuffer) {
+	if s.logger == nil || buf == nil {
+		return
+	}
+
+	var b strings.Builder
+	w, h := buf.Width(), buf.Height()
+
+	// Header
+	fmt.Fprintf(&b, "%s (%dx%d):\n", label, w, h)
+
+	// Column index header row
+	b.WriteString("     ") // row label padding
+	for x := 0; x < w; x++ {
+		fmt.Fprintf(&b, " %-12d", x)
+	}
+	b.WriteByte('\n')
+
+	// Separator
+	b.WriteString("    +")
+	for x := 0; x < w; x++ {
+		b.WriteString("-------------+")
+	}
+	b.WriteByte('\n')
+
+	for y := 0; y < h; y++ {
+		fmt.Fprintf(&b, " %2d |", y)
+		for x := 0; x < w; x++ {
+			cell := buf.CellAt(x, y)
+			var content string
+			var width int
+			var zero string
+			if cell == nil {
+				content = "nil"
+			} else {
+				content = fmt.Sprintf("%q", cell.Content)
+				width = cell.Width
+				if cell.IsZero() {
+					zero = "Z"
+				}
+			}
+			fmt.Fprintf(&b, " %-7s w%-2d %-1s|", content, width, zero)
+		}
+		b.WriteByte('\n')
+
+		// Row separator
+		b.WriteString("    +")
+		for x := 0; x < w; x++ {
+			b.WriteString("-------------+")
+		}
+		b.WriteByte('\n')
+	}
+
+	s.logger.Printf("%s", b.String())
+}
+
 // Buffered returns the number of bytes buffered for the next flush.
 func (s *TerminalRenderer) Buffered() int {
 	return s.buf.Len()
@@ -1135,6 +1221,9 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		// Initialize the current buffer
 		s.curbuf = NewRenderBuffer(newbuf.Width(), newbuf.Height())
 	}
+
+	s.logBuffer("old (curbuf)", s.curbuf)
+	s.logBuffer("new (newbuf)", newbuf)
 
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
 	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
