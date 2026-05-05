@@ -148,6 +148,11 @@ func printString[T []byte | string](
 					// Wrap the string to the width of the window
 					x = bounds.Min.X
 					y++
+
+					// Mark the new line as a soft-wrap continuation.
+					if ws, ok := s.(interface{ SetWrapped(int, bool) }); ok {
+						ws.SetWrapped(y, true)
+					}
 				}
 
 				pos := Pos(x, y)

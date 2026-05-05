@@ -242,6 +242,11 @@ func (ls Lines) Render() string {
 type Buffer struct {
 	// Lines is a slice of lines that make up the cells of the buffer.
 	Lines []Line
+
+	// Wrapped tracks whether each line is a soft-wrap continuation of the
+	// previous line. When true, the line was created by word-wrapping
+	// rather than a hard newline.
+	Wrapped []bool
 }
 
 var _ Drawable = (*Buffer)(nil)
@@ -251,6 +256,7 @@ var _ Drawable = (*Buffer)(nil)
 func NewBuffer(width int, height int) *Buffer {
 	b := new(Buffer)
 	b.Lines = make([]Line, height)
+	b.Wrapped = make([]bool, height)
 	for i := range b.Lines {
 		b.Lines[i] = make(Line, width)
 		for j := range b.Lines[i] {
@@ -279,6 +285,24 @@ func (b *Buffer) Line(y int) Line {
 		return nil
 	}
 	return b.Lines[y]
+}
+
+// IsWrapped reports whether the line at position y is a soft-wrap
+// continuation of the previous line.
+func (b *Buffer) IsWrapped(y int) bool {
+	if y < 0 || y >= len(b.Wrapped) {
+		return false
+	}
+	return b.Wrapped[y]
+}
+
+// SetWrapped marks or unmarks the line at position y as a soft-wrap
+// continuation.
+func (b *Buffer) SetWrapped(y int, v bool) {
+	if y < 0 || y >= len(b.Wrapped) {
+		return
+	}
+	b.Wrapped[y] = v
 }
 
 // CellAt returns the cell at the given position. It returns nil if the
@@ -349,8 +373,12 @@ func (b *Buffer) Resize(width int, height int) {
 			}
 			b.Lines = append(b.Lines, line)
 		}
+		for range height - len(b.Wrapped) {
+			b.Wrapped = append(b.Wrapped, false)
+		}
 	} else if height < len(b.Lines) {
 		b.Lines = b.Lines[:height]
+		b.Wrapped = b.Wrapped[:height]
 	}
 }
 
