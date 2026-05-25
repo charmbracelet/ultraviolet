@@ -841,18 +841,31 @@ func (p *EventDecoder) parseOsc(b []byte) (int, Event) {
 	case 12:
 		return i, CursorColorEvent{ansi.XParseColor(data)}
 	case 52:
-		parts := strings.Split(data, ";")
-		if len(parts) != 2 || len(parts[0]) < 1 {
+		// Split data into at most 2 parts to separate the selection code from the payload.
+		// Splitting only on the first semicolon ensures that any extra semicolons do not corrupt the split.
+		parts := strings.SplitN(data, ";", 2)
+		if len(parts) != 2 {
 			return i, ClipboardEvent{}
+		}
+
+		// The selection code (parts[0]) can be empty (e.g. system selection default).
+		// We avoid returning an empty ClipboardEvent and instead fall back to the default/empty Selection.
+		var sel ClipboardSelection
+		if len(parts[0]) > 0 {
+			sel = ClipboardSelection(parts[0][0]) //nolint:unconvert
 		}
 
 		b64 := parts[1]
 		bts, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			return i, ClipboardEvent{Content: parts[1]}
+			// If base64 decoding fails, we still want to report the ClipboardEvent with
+			// the parsed selection but with empty content, rather than returning raw invalid base64.
+			return i, ClipboardEvent{
+				Selection: sel,
+				Content:   "",
+			}
 		}
 
-		sel := ClipboardSelection(parts[0][0]) //nolint:unconvert
 		return i, ClipboardEvent{Selection: sel, Content: string(bts)}
 	}
 
