@@ -13,7 +13,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.44.0
+	golang.org/x/sys v0.45.0
 )
 
 require github.com/clipperhouse/displaywidth v0.11.0 // indirect
