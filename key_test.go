@@ -616,6 +616,14 @@ func TestParseSequence(t *testing.T) {
 			[]Event{KeyPressEvent{Mod: ModShift | ModMeta, Code: KeyEnd}},
 		},
 		seqTest{
+			[]byte("\x1b[6;6:2~"),
+			[]Event{KeyPressEvent{Mod: ModShift | ModCtrl, Code: KeyPgDown, IsRepeat: true}},
+		},
+		seqTest{
+			[]byte("\x1b[6;6:3~"),
+			[]Event{KeyReleaseEvent{Mod: ModShift | ModCtrl, Code: KeyPgDown}},
+		},
+		seqTest{
 			[]byte("\x1b[27;4u"),
 			[]Event{KeyPressEvent{Mod: ModShift | ModAlt, Code: KeyEscape}},
 		},
