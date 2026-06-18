@@ -487,7 +487,7 @@ func (s *TerminalRenderer) wrapCursor() {
 }
 
 func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
-	if cell != nil && cell.IsZero() {
+	if cell != nil && cell.Width == 0 {
 		// XXX: Zero width cells are special and should not be written to the
 		// screen no matter what other attributes they have.
 		// Zero width cells are used for wide characters that are split into
@@ -514,6 +514,14 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 	s.cur.X += cellWidth
 	if s.cur.X >= newbuf.Width() {
 		s.atPhantom = true
+	}
+
+	// For wide characters (width > 1), explicitly position the cursor to
+	// ensure we're in sync with terminals that may measure character width
+	// differently (e.g., iTerm2 uses wcwidth which measures some emojis as
+	// width 1 instead of 2).
+	if cellWidth > 1 && !s.atPhantom {
+		_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
 	}
 }
 
@@ -578,8 +586,13 @@ func canClearWith(c *Cell) bool {
 	// NOTE: This assumes that the terminal supports bce terminfo capability
 	// which all xterm-compatible terminals and terminals that use xterm*
 	// terminal types do.
+	// We also need to check for foreground and background colors because
+	// EraseLineRight uses the current pen color, not the cell's color, and
+	// clearing cells with colors would lose the color information.
 	return c.Style.Underline == UnderlineNone &&
 		c.Style.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
+		c.Style.Fg == nil &&
+		c.Style.Bg == nil &&
 		c.Link.IsZero()
 }
 
