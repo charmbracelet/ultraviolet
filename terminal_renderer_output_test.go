@@ -2,6 +2,7 @@ package uv
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -143,6 +144,43 @@ func TestRendererOutput(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRendererWideCellReanchor(t *testing.T) {
+	render := func(grapheme bool) string {
+		var buf bytes.Buffer
+		s := NewTerminalRenderer(&buf, []string{
+			"TERM=xterm-256color",
+			"COLORTERM=truecolor",
+		})
+		s.SetFullscreen(true)
+		s.SetGraphemeWidth(grapheme)
+		s.SaveCursor()
+		s.Erase()
+
+		scr := NewScreenBuffer(10, 1)
+		buf.Reset()
+		NewStyledString("世界").Draw(scr, scr.Bounds())
+		s.Render(scr.RenderBuffer)
+		if err := s.Flush(); err != nil {
+			t.Fatalf("Flush failed: %v", err)
+		}
+		return buf.String()
+	}
+
+	out := render(false)
+	reanchors := strings.Count(out, "\x1b[5G")
+	if reanchors != 1 {
+		t.Errorf("non-grapheme line with wide cells: want 1 re-anchor, got %d in %q", reanchors, out)
+	}
+	if perCell := strings.Count(out, "\x1b[3G"); perCell != 0 {
+		t.Errorf("adjacent wide cells emitted a per-cell CHA: %q", out)
+	}
+
+	gout := render(true)
+	if n := strings.Count(gout, "\x1b[5G"); n != 0 {
+		t.Errorf("grapheme-mode line should not re-anchor, got %d in %q", n, gout)
 	}
 }
 
