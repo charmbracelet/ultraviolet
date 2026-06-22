@@ -469,12 +469,37 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
-	// Move existing lines down within the bounds
-	for i := area.Max.Y - 1; i >= y+n; i-- {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving lines down.
-			b.Lines[i][x] = b.Lines[i-n][x]
+	// Full-width fast path: rotate the line slice headers instead of
+	// copying cells. Scrolling is the hottest path a terminal
+	// emulator drives (every newline at the bottom of the screen),
+	// and the cell-by-cell shift made it O(rows*cols) cell copies per
+	// scroll — profiled at ~80% of total CPU during bulk output in a
+	// real emulator. Rotating reuses the displaced lines' storage for
+	// the cleared lines: O(rows) pointer moves + O(n*cols) clears.
+	if area.Min.X == 0 && area.Max.X >= b.Width() && len(b.Lines) > 0 && area.Max.X >= len(b.Lines[0]) {
+		displaced := make([]Line, n)
+		copy(displaced, b.Lines[area.Max.Y-n:area.Max.Y])
+		copy(b.Lines[y+n:area.Max.Y], b.Lines[y:area.Max.Y-n])
+		fill := EmptyCell
+		if c != nil {
+			fill = *c
 		}
+		for i := 0; i < n; i++ {
+			line := displaced[i]
+			b.Lines[y+i] = line
+			// Whole-line clear: direct fill — Set's per-cell wide-cell
+			// repair has nothing to repair when every cell is replaced.
+			for x := range line {
+				line[x] = fill
+			}
+		}
+		return
+	}
+
+	// Move existing lines down within the bounds. copy() per row —
+	// cells in a row are contiguous, no need to assign one by one.
+	for i := area.Max.Y - 1; i >= y+n; i-- {
+		copy(b.Lines[i][area.Min.X:area.Max.X], b.Lines[i-n][area.Min.X:area.Max.X])
 	}
 
 	// Clear the newly inserted lines within bounds
@@ -500,13 +525,32 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
-	// Shift cells up within the bounds
-	for dst := y; dst < area.Max.Y-n; dst++ {
-		src := dst + n
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving cells up.
-			b.Lines[dst][x] = b.Lines[src][x]
+	// Full-width fast path: rotate line slice headers — see
+	// InsertLineArea. This is the screen-scroll path (newline at the
+	// bottom of the scroll region), the hottest operation a terminal
+	// emulator performs during bulk output.
+	if area.Min.X == 0 && area.Max.X >= b.Width() && len(b.Lines) > 0 && area.Max.X >= len(b.Lines[0]) {
+		displaced := make([]Line, n)
+		copy(displaced, b.Lines[y:y+n])
+		copy(b.Lines[y:area.Max.Y-n], b.Lines[y+n:area.Max.Y])
+		fill := EmptyCell
+		if c != nil {
+			fill = *c
 		}
+		for i := 0; i < n; i++ {
+			line := displaced[i]
+			b.Lines[area.Max.Y-n+i] = line
+			// Whole-line clear: direct fill (see InsertLineArea).
+			for x := range line {
+				line[x] = fill
+			}
+		}
+		return
+	}
+
+	// Shift cells up within the bounds. copy() per row — contiguous.
+	for dst := y; dst < area.Max.Y-n; dst++ {
+		copy(b.Lines[dst][area.Min.X:area.Max.X], b.Lines[dst+n][area.Min.X:area.Max.X])
 	}
 
 	// Fill the bottom n lines with blank cells
