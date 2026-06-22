@@ -90,14 +90,8 @@ func (l Line) Set(x int, c *Cell) {
 
 	if cw > 1 {
 		// Mark wide cells with zero-width placeholder cells.
-		// These placeholders inherit the style from the wide cell
-		// to ensure proper rendering (e.g., background colors).
 		for j := 1; j < cw && x+j < lineWidth; j++ {
-			l[x+j] = Cell{
-				Width: 0,
-				Style: c.Style,
-				Link:  c.Link,
-			}
+			l[x+j] = Cell{}
 		}
 	}
 }
