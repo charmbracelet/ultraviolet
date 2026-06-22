@@ -144,6 +144,7 @@ type TerminalRenderer struct {
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
+	lineHadWide      bool         // whether the line currently being transformed contained a wide cell
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -542,12 +543,8 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 		s.atPhantom = true
 	}
 
-	// For wide characters (width > 1), explicitly position the cursor to
-	// ensure we're in sync with terminals that may measure character width
-	// differently (e.g., iTerm2 uses wcwidth which measures some emojis as
-	// width 1 instead of 2).
-	if cellWidth > 1 && !s.atPhantom {
-		_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
+	if cellWidth > 1 {
+		s.lineHadWide = true
 	}
 }
 
@@ -819,6 +816,9 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
 
+	s.lineHadWide = false
+	defer s.reanchorWideLine(newbuf)
+
 	// Find the first changed cell in the line
 	blank := newLine.At(0)
 
@@ -1007,6 +1007,22 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	} else {
 		copy(oldLine, newLine)
 	}
+}
+
+// reanchorWideLine re-anchors the cursor with a single absolute horizontal
+// move after a line that contained a wide cell. This is a best-effort fallback
+// that bounds cursor desync to one line on terminals whose width model
+// disagrees with ours. When the terminal negotiated Unicode grapheme width
+// (mode 2027) the models agree, so no re-anchor is needed.
+func (s *TerminalRenderer) reanchorWideLine(newbuf *RenderBuffer) {
+	if !s.lineHadWide || s.flags.Contains(tGraphemeWidth) {
+		return
+	}
+	s.lineHadWide = false
+	if s.atPhantom || s.cur.X < 0 || s.cur.X >= newbuf.Width() {
+		return
+	}
+	_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
 }
 
 // deleteCells deletes the count cells at the current cursor position and moves
