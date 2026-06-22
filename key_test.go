@@ -163,7 +163,7 @@ func TestParseSequence(t *testing.T) {
 			[]byte("\x1b]52\x1b\\\x1b]52;c;!\x1b\\\x1b]52;c;aGk=\x1b\\"),
 			[]Event{
 				ClipboardEvent{},
-				ClipboardEvent{Content: "!"},
+				ClipboardEvent{Selection: 'c'},
 				ClipboardEvent{Content: "hi", Selection: 'c'},
 			},
 		},
