@@ -88,6 +88,9 @@ const (
 	tFullscreen
 	tMapNewline
 	tScrollOptim
+	// tGraphemeWidth indicates the terminal measures cell width using Unicode
+	// grapheme clustering (DEC mode 2027 / Unicode core).
+	tGraphemeWidth
 )
 
 // Set sets the given flags.
@@ -136,6 +139,7 @@ type TerminalRenderer struct {
 	oldnum           []int        // old indices from previous hash
 	cur, saved       cursor       // the current and saved cursors
 	flags            tFlag        // terminal writer flags.
+	method           ansi.Method  // the width method used to measure cell width
 	term             string       // the terminal type
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
@@ -199,6 +203,28 @@ func (s *TerminalRenderer) SetMapNewline(v bool) {
 		s.flags.Set(tMapNewline)
 	} else {
 		s.flags.Reset(tMapNewline)
+	}
+}
+
+// SetWidthMethod sets the width method the renderer uses to measure the
+// display width of strings. This should match the width method configured on
+// the screen so that the renderer doesn't disagree with the cell widths it is
+// asked to draw.
+func (s *TerminalRenderer) SetWidthMethod(method ansi.Method) {
+	s.method = method
+}
+
+// SetGraphemeWidth sets whether the terminal measures cell width using Unicode
+// grapheme clustering (DEC mode 2027 / Unicode core). When enabled, the
+// renderer measures string width using [ansi.GraphemeWidth]; otherwise it
+// falls back to [ansi.WcWidth].
+func (s *TerminalRenderer) SetGraphemeWidth(v bool) {
+	if v {
+		s.flags.Set(tGraphemeWidth)
+		s.method = ansi.GraphemeWidth
+	} else {
+		s.flags.Reset(tGraphemeWidth)
+		s.method = ansi.WcWidth
 	}
 }
 
@@ -331,7 +357,7 @@ func (s *TerminalRenderer) PrependString(newbuf *RenderBuffer, str string) {
 	lines := strings.Split(str, "\n")
 	offset := 0
 	for _, line := range lines {
-		lineWidth := ansi.StringWidth(line)
+		lineWidth := s.method.StringWidth(line)
 		if w > 0 && lineWidth > w {
 			offset += (lineWidth / w)
 		}
