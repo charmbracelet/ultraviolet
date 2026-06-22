@@ -1,12 +1,14 @@
-package uv
+package uv_test
 
 import (
 	"testing"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 func TestBorderConstructors(t *testing.T) {
 	t.Run("NormalBorder", func(t *testing.T) {
-		b := NormalBorder()
+		b := uv.NormalBorder()
 		if b.Top.Content != "─" || b.Bottom.Content != "─" || b.Left.Content != "│" || b.Right.Content != "│" {
 			t.Fatalf("unexpected sides for NormalBorder")
 		}
@@ -16,7 +18,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("RoundedBorder", func(t *testing.T) {
-		b := RoundedBorder()
+		b := uv.RoundedBorder()
 		if b.Top.Content != "─" || b.Bottom.Content != "─" || b.Left.Content != "│" || b.Right.Content != "│" {
 			t.Fatalf("unexpected sides for RoundedBorder")
 		}
@@ -26,7 +28,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("BlockBorder", func(t *testing.T) {
-		b := BlockBorder()
+		b := uv.BlockBorder()
 		if b.Top.Content != "█" || b.Bottom.Content != "█" || b.Left.Content != "█" || b.Right.Content != "█" {
 			t.Fatalf("unexpected sides for BlockBorder")
 		}
@@ -36,7 +38,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("OuterHalfBlockBorder", func(t *testing.T) {
-		b := OuterHalfBlockBorder()
+		b := uv.OuterHalfBlockBorder()
 		if b.Top.Content != "▀" || b.Bottom.Content != "▄" || b.Left.Content != "▌" || b.Right.Content != "▐" {
 			t.Fatalf("unexpected sides for OuterHalfBlockBorder")
 		}
@@ -46,7 +48,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("InnerHalfBlockBorder", func(t *testing.T) {
-		b := InnerHalfBlockBorder()
+		b := uv.InnerHalfBlockBorder()
 		if b.Top.Content != "▄" || b.Bottom.Content != "▀" || b.Left.Content != "▐" || b.Right.Content != "▌" {
 			t.Fatalf("unexpected sides for InnerHalfBlockBorder")
 		}
@@ -56,7 +58,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("ThickBorder", func(t *testing.T) {
-		b := ThickBorder()
+		b := uv.ThickBorder()
 		if b.Top.Content != "━" || b.Bottom.Content != "━" || b.Left.Content != "┃" || b.Right.Content != "┃" {
 			t.Fatalf("unexpected sides for ThickBorder")
 		}
@@ -66,7 +68,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("DoubleBorder", func(t *testing.T) {
-		b := DoubleBorder()
+		b := uv.DoubleBorder()
 		if b.Top.Content != "═" || b.Bottom.Content != "═" || b.Left.Content != "║" || b.Right.Content != "║" {
 			t.Fatalf("unexpected sides for DoubleBorder")
 		}
@@ -76,7 +78,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("HiddenBorder", func(t *testing.T) {
-		b := HiddenBorder()
+		b := uv.HiddenBorder()
 		if b.Top.Content != " " || b.Bottom.Content != " " || b.Left.Content != " " || b.Right.Content != " " {
 			t.Fatalf("unexpected sides for HiddenBorder")
 		}
@@ -86,7 +88,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("MarkdownBorder", func(t *testing.T) {
-		b := MarkdownBorder()
+		b := uv.MarkdownBorder()
 		if b.Left.Content != "|" || b.Right.Content != "|" {
 			t.Fatalf("unexpected sides for MarkdownBorder left/right")
 		}
@@ -99,7 +101,7 @@ func TestBorderConstructors(t *testing.T) {
 	})
 
 	t.Run("ASCIIBorder", func(t *testing.T) {
-		b := ASCIIBorder()
+		b := uv.ASCIIBorder()
 		if b.Top.Content != "-" || b.Bottom.Content != "-" || b.Left.Content != "|" || b.Right.Content != "|" {
 			t.Fatalf("unexpected sides for ASCIIBorder")
 		}
@@ -110,9 +112,9 @@ func TestBorderConstructors(t *testing.T) {
 }
 
 func TestBorderStyleAndLink(t *testing.T) {
-	base := NormalBorder()
-	style := Style{Attrs: AttrBold}
-	link := NewLink("https://example.com", "id=1")
+	base := uv.NormalBorder()
+	style := uv.Style{Attrs: uv.AttrBold}
+	link := uv.NewLink("https://example.com", "id=1")
 
 	b := base.Style(style).Link(link)
 
@@ -135,9 +137,9 @@ func TestBorderStyleAndLink(t *testing.T) {
 }
 
 func TestBorderDrawNormal(t *testing.T) {
-	dst := NewScreenBuffer(20, 10)
-	area := Rect(1, 1, 6, 4)
-	b := NormalBorder()
+	dst := uv.NewScreenBuffer(20, 10)
+	area := uv.Rect(1, 1, 6, 4)
+	b := uv.NormalBorder()
 	b.Draw(&dst, area)
 
 	if c := dst.CellAt(1, 1); c == nil || c.Content != "┌" {
@@ -180,11 +182,11 @@ func TestBorderDrawNormal(t *testing.T) {
 }
 
 func TestBorderDrawHiddenStyleLink(t *testing.T) {
-	dst := NewScreenBuffer(10, 6)
-	area := Rect(2, 2, 5, 3)
-	style := Style{Attrs: AttrBold}
-	link := NewLink("https://example.com")
-	b := HiddenBorder().Style(style).Link(link)
+	dst := uv.NewScreenBuffer(10, 6)
+	area := uv.Rect(2, 2, 5, 3)
+	style := uv.Style{Attrs: uv.AttrBold}
+	link := uv.NewLink("https://example.com")
+	b := uv.HiddenBorder().Style(style).Link(link)
 	b.Draw(&dst, area)
 
 	checkPos := []struct{ x, y int }{
@@ -213,21 +215,54 @@ func TestBorderDrawHiddenStyleLink(t *testing.T) {
 }
 
 func TestBorderDrawSmallAreas(t *testing.T) {
-	dst := NewScreenBuffer(3, 3)
-	b := NormalBorder()
+	dst := uv.NewScreenBuffer(3, 3)
+	b := uv.NormalBorder()
 
-	area1 := Rect(0, 0, 1, 1)
+	area1 := uv.Rect(0, 0, 1, 1)
 	b.Draw(&dst, area1)
 	if c := dst.CellAt(0, 0); c == nil || c.Content != "┌" {
 		t.Fatalf("expected single-cell area to use top-left corner")
 	}
 
-	area2 := Rect(0, 1, 1, 2)
+	area2 := uv.Rect(0, 1, 1, 2)
 	b.Draw(&dst, area2)
 	if c := dst.CellAt(0, 1); c == nil || c.Content != "┌" {
 		t.Fatalf("expected top-left at 0,1")
 	}
 	if c := dst.CellAt(0, 2); c == nil || c.Content != "└" {
 		t.Fatalf("expected bottom-left at 0,2")
+	}
+}
+
+func TestBorderDrawEmptyLayout(t *testing.T) {
+	// We test that the layout of the Screen is not affected by a Border with a
+	// Side cell that has empty Content. Such cells should simply be skipped
+	// over instead of written to the Screen with an empty string (which causes
+	// the layout in the supplied bounding box to be improperly adjusted.
+	dst := uv.NewScreenBuffer(5, 5)
+	x := &uv.Cell{Content: "X"}
+	dst.Fill(x)
+	b := uv.Border{}
+	b.Top.Content = "B"
+
+	area := uv.Rect(0, 0, 5, 5)
+	b.Draw(&dst, area)
+
+	// The top left cell should be an X, not a B, because we did not set the
+	// border's TopLeft content and therefore, calling Draw() should not
+	// overwrite that cell's content.
+	if c := dst.CellAt(0, 0); c == nil || c.Content != "X" {
+		t.Fatalf("expected top-left corner to remain an X")
+	}
+	// Same for bottom-right corner...
+	if c := dst.CellAt(4, 4); c == nil || c.Content != "X" {
+		t.Fatalf("expected bottom-right corner to remain an X")
+	}
+	// But we *do* expect the top cells exclusive of the corners to contain the
+	// Top Side's content of B.
+	for x := 1; x < 4; x++ {
+		if c := dst.CellAt(0, 4); c == nil || c.Content != "X" {
+			t.Fatalf("expected top cell at row 0, column %d to be a B", x)
+		}
 	}
 }
