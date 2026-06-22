@@ -1326,6 +1326,92 @@ func TestRendererEnterExitAltScreen(t *testing.T) {
 	}
 }
 
+func TestIsJediTerm(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want bool
+	}{
+		{
+			name: "detected via TERMINAL_EMULATOR",
+			env:  map[string]string{"TERMINAL_EMULATOR": "JetBrains-JediTerm"},
+			want: true,
+		},
+		{
+			name: "detected via __CFBundleIdentifier",
+			env:  map[string]string{"__CFBundleIdentifier": "com.jetbrains.goland"},
+			want: true,
+		},
+		{
+			name: "detected via XPC_SERVICE_NAME",
+			env:  map[string]string{"XPC_SERVICE_NAME": "application.com.jetbrains.goland.12345"},
+			want: true,
+		},
+		{
+			name: "not detected when env is empty",
+			env:  map[string]string{},
+			want: false,
+		},
+		{
+			name: "detected via TOOLBOX_VERSION",
+			env:  map[string]string{"TOOLBOX_VERSION": "2.6.2.40984"},
+			want: true,
+		},
+		{
+			name: "not detected for other terminals",
+			env:  map[string]string{"TERMINAL_EMULATOR": "iTerm2"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear relevant env vars (t.Setenv handles save/restore)
+			keys := []string{"TERMINAL_EMULATOR", "__CFBundleIdentifier", "XPC_SERVICE_NAME", "TOOLBOX_VERSION"}
+			for _, k := range keys {
+				t.Setenv(k, "")
+			}
+			// Set test env vars
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			if got := isJediTerm(); got != tt.want {
+				t.Errorf("isJediTerm() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestXtermCapsJediTermDisablesCBT(t *testing.T) {
+	// Save and clear env
+	keys := []string{"TERMINAL_EMULATOR", "__CFBundleIdentifier", "XPC_SERVICE_NAME", "TOOLBOX_VERSION"}
+	for _, k := range keys {
+		t.Setenv(k, "")
+	}
+
+	// Without JediTerm, xterm-256color should have CBT
+	caps := xtermCaps("xterm-256color")
+	if !caps.Contains(capCBT) {
+		t.Error("xterm-256color should have capCBT when not in JediTerm")
+	}
+
+	// With JediTerm, xterm-256color should NOT have CBT
+	t.Setenv("TERMINAL_EMULATOR", "JetBrains-JediTerm")
+	caps = xtermCaps("xterm-256color")
+	if caps.Contains(capCBT) {
+		t.Error("xterm-256color should NOT have capCBT when in JediTerm")
+	}
+
+	// Other caps should still be present (VPA, CHA, etc.)
+	if !caps.Contains(capVPA) {
+		t.Error("xterm-256color in JediTerm should still have capVPA")
+	}
+	if !caps.Contains(capCHA) {
+		t.Error("xterm-256color in JediTerm should still have capCHA")
+	}
+}
+
 // Helper type for testing logger
 type testLogger struct {
 	buf *bytes.Buffer
