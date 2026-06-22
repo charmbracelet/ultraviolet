@@ -529,7 +529,7 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 func (s *TerminalRenderer) putCellLR(newbuf *RenderBuffer, cell *Cell) {
 	// Optimize for the lower right corner cell.
 	curX := s.cur.X
-	if cell == nil || !cell.IsZero() {
+	if !cell.isWidePlaceholder() {
 		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
 		s.putAttrCell(newbuf, cell)
 		// Writing to lower-right corner cell should not wrap.
@@ -586,13 +586,8 @@ func canClearWith(c *Cell) bool {
 	// NOTE: This assumes that the terminal supports bce terminfo capability
 	// which all xterm-compatible terminals and terminals that use xterm*
 	// terminal types do.
-	// We also need to check for foreground and background colors because
-	// EraseLineRight uses the current pen color, not the cell's color, and
-	// clearing cells with colors would lose the color information.
 	return c.Style.Underline == UnderlineNone &&
 		c.Style.Attrs&^(AttrBold|AttrFaint|AttrItalic|AttrBlink|AttrRapidBlink) == 0 &&
-		c.Style.Fg == nil &&
-		c.Style.Bg == nil &&
 		c.Link.IsZero()
 }
 
@@ -691,7 +686,7 @@ func (s *TerminalRenderer) putRange(newbuf *RenderBuffer, oldLine, newLine Line,
 		var j, same int
 		for j, same = start, 0; j <= end; j++ {
 			oldCell, newCell := oldLine.At(j), newLine.At(j)
-			if same == 0 && oldCell != nil && oldCell.IsZero() && newCell.IsZero() {
+			if same == 0 && oldCell.isWidePlaceholder() && newCell.isWidePlaceholder() {
 				continue
 			}
 			if cellEqual(oldCell, newCell) {
@@ -939,7 +934,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 			if n != 0 {
 				for n > 0 {
 					wide := newLine.At(n + 1)
-					if wide == nil || !wide.IsZero() {
+					if !wide.isWidePlaceholder() {
 						break
 					}
 					n--
@@ -947,7 +942,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 				}
 			} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
 				next := newLine.At(n + 1)
-				for next != nil && next.IsZero() {
+				for next.isWidePlaceholder() {
 					n++
 					oLastCell++
 					next = newLine.At(n + 1)
