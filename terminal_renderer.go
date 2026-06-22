@@ -515,6 +515,10 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 	if s.cur.X >= newbuf.Width() {
 		s.atPhantom = true
 	}
+
+	if cell != nil && len(cell.Content) > 1 && !s.atPhantom {
+		_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
+	}
 }
 
 // putCellLR draws a cell at the lower right corner of the screen.
