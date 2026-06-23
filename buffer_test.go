@@ -656,6 +656,48 @@ func TestLineRenderLine(t *testing.T) {
 	}
 }
 
+func TestRenderLinePreservesTrailingSpaces(t *testing.T) {
+	// renderLine should preserve trailing empty cells as spaces.
+	// A line of width 10 with "Hi" at positions 0-1 and empty cells at 2-9
+	// should render all 10 visible characters: "Hi" followed by 8 spaces.
+	l := NewLine(10)
+	l[0] = Cell{Content: "H", Width: 1}
+	l[1] = Cell{Content: "i", Width: 1}
+	// Positions 2-9 remain EmptyCell (space, width 1, no style)
+
+	output := l.Render()
+
+	// Strip any ANSI sequences to count visible characters.
+	visible := ansi.Strip(output)
+	if len(visible) != 10 {
+		t.Errorf("Render() produced %d visible chars, want 10; output=%q visible=%q",
+			len(visible), output, visible)
+	}
+}
+
+func TestRenderLinePreservesStyledTrailingSpaces(t *testing.T) {
+	// When trailing cells have explicit styling (e.g. background color),
+	// renderLine must emit them with their ANSI attributes, not drop them.
+	l := NewLine(5)
+	l[0] = Cell{Content: "A", Width: 1}
+	// Positions 1-4: spaces with a red background.
+	for i := 1; i < 5; i++ {
+		l[i] = Cell{Content: " ", Width: 1, Style: Style{Bg: ansi.Red}}
+	}
+
+	output := l.Render()
+
+	visible := ansi.Strip(output)
+	if len(visible) != 5 {
+		t.Errorf("Render() produced %d visible chars, want 5; output=%q visible=%q",
+			len(visible), output, visible)
+	}
+	// The output must contain a background color sequence for the trailing spaces.
+	if !strings.Contains(output, "41") { // SGR 41 = red background
+		t.Errorf("Render() missing red background SGR for trailing styled spaces; output=%q", output)
+	}
+}
+
 func BenchmarkBufferSetCell(b *testing.B) {
 	buf := NewBuffer(80, 24)
 	cell := &Cell{Content: "A", Width: 1}
