@@ -140,6 +140,7 @@ type TerminalRenderer struct {
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
+	skipScrollOptim  bool         // set by HardScroll to skip scrollOptimize on the next Render call
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -1177,12 +1178,13 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		// misbehaves and moves the cursor outside of the scrolling region. For
 		// now, we disable the optimizations completely on Windows.
 		// See https://github.com/microsoft/terminal/issues/19016
-		if s.flags.Contains(tScrollOptim) && s.flags.Contains(tFullscreen) {
+		if s.flags.Contains(tScrollOptim) && s.flags.Contains(tFullscreen) && !s.skipScrollOptim {
 			// Optimize scrolling for the alternate screen buffer.
 			// TODO: Should we optimize for inline mode as well? If so, we need
 			// to know the actual cursor position to use [ansi.DECSTBM].
 			s.scrollOptimize(newbuf)
 		}
+		s.skipScrollOptim = false
 
 		var changedLines int
 		var i int
