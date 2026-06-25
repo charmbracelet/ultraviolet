@@ -241,3 +241,21 @@ func (s *TerminalRenderer) scrollIdl(newbuf *RenderBuffer, n, del, ins int, blan
 
 	return true
 }
+
+// HardScroll scrolls lines [top, bot] by n positions using terminal scroll
+// region sequences, then shifts curbuf to match. Positive n = content moves
+// up (new lines appear at bottom). Returns true if the terminal accepted the
+// scroll. Caller must ensure cellbuf is already shifted to match.
+//
+// When HardScroll succeeds, scrollOptimize is skipped on the next Render call
+// because the scroll has already been handled.
+func (s *TerminalRenderer) HardScroll(newbuf *RenderBuffer, n, top, bot int) bool {
+	if s.curbuf == nil || !s.flags.Contains(tFullscreen) {
+		return false
+	}
+	ok := s.scrolln(newbuf, n, top, bot, newbuf.Height()-1)
+	if ok {
+		s.skipScrollOptim = true
+	}
+	return ok
+}

@@ -61,6 +61,21 @@ func (s *StyledString) Draw(buf Screen, area Rectangle) {
 	printString(buf, buf.WidthMethod(), area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
 }
 
+// DrawOver renders the styled string to the given buffer at the specified area
+// WITHOUT clearing the area first. Cells that haven't changed (as determined
+// by SetCell's equality check) will not be marked as touched, enabling
+// incremental rendering.
+//
+// Use DrawOver instead of Draw when the buffer already contains a previous
+// frame's content and you want to minimise touched-line tracking for the
+// terminal renderer's diff algorithm. The caller is responsible for clearing
+// any trailing cells that the new content does not reach.
+func (s *StyledString) DrawOver(buf Screen, area Rectangle) {
+	str := s.Text
+	str = strings.ReplaceAll(str, "\r\n", "\n")
+	printString(buf, buf.WidthMethod(), area.Min.X, area.Min.Y, area, str, !s.Wrap, s.Tail)
+}
+
 // Height returns the number of lines in the styled string. This is the number
 // of lines that the styled string will occupy when rendered to the screen.
 func (s *StyledString) Height() int {
