@@ -143,12 +143,12 @@ Note: constraint labels that don't fit are truncated`
 		{
 			"Ratio",
 			[]layout.Constraint{
-				layout.Ratio{0, 4},
-				layout.Ratio{1, 4},
-				layout.Ratio{2, 4},
-				layout.Ratio{3, 4},
-				layout.Ratio{4, 4},
-				layout.Ratio{6, 4},
+				layout.Ratio{Num: 0, Den: 4},
+				layout.Ratio{Num: 1, Den: 4},
+				layout.Ratio{Num: 2, Den: 4},
+				layout.Ratio{Num: 3, Den: 4},
+				layout.Ratio{Num: 4, Den: 4},
+				layout.Ratio{Num: 6, Den: 4},
 			},
 		},
 	}

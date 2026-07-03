@@ -383,35 +383,33 @@ func (a *App) Run(input uv.File, output uv.File, environ []string) error {
 	scr.SetMouseMode(uv.MouseModeDrag)
 
 	for !a.quit {
-		select {
-		case ev := <-term.Events():
-			log.Printf("event: %#v", ev)
+		ev := <-term.Events()
+		log.Printf("event: %#v", ev)
 
-			switch ev := ev.(type) {
-			case uv.WindowSizeEvent:
-				// We need to update our terminal size and root window size.
-				scr.Resize(ev.Width, ev.Height)
-				a.root.Resize(ev.Width, ev.Height)
-			}
+		switch ev := ev.(type) {
+		case uv.WindowSizeEvent:
+			// We need to update our terminal size and root window size.
+			scr.Resize(ev.Width, ev.Height)
+			a.root.Resize(ev.Width, ev.Height)
+		}
 
-			focusedID := a.ActiveID()
-			if len(focusedID) == 0 {
-				// Ignore events if no window is focused.
-				continue
-			}
+		focusedID := a.ActiveID()
+		if len(focusedID) == 0 {
+			// Ignore events if no window is focused.
+			continue
+		}
 
-			for !a.HandleEvent(focusedID, ev) {
-				if parentID := a.ParentID(focusedID); parentID != "" {
-					log.Printf("event not handled by %q, passing to parent %q", focusedID, parentID)
-					focusedID = parentID
-				} else {
-					break
-				}
+		for !a.HandleEvent(focusedID, ev) {
+			if parentID := a.ParentID(focusedID); parentID != "" {
+				log.Printf("event not handled by %q, passing to parent %q", focusedID, parentID)
+				focusedID = parentID
+			} else {
+				break
 			}
+		}
 
-			if err := scr.Display(a); err != nil {
-				return fmt.Errorf("failed to display terminal: %w", err)
-			}
+		if err := scr.Display(a); err != nil {
+			return fmt.Errorf("failed to display terminal: %w", err)
 		}
 	}
 

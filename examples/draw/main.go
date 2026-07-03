@@ -26,9 +26,9 @@ func main() {
 	defer t.Stop()
 
 	modes := []ansi.Mode{
-		ansi.ButtonEventMouseMode,
-		ansi.SgrExtMouseMode,
-		ansi.FocusEventMode,
+		ansi.ModeMouseButtonEvent,
+		ansi.ModeMouseExtSgr,
+		ansi.ModeFocusEvent,
 	}
 
 	scr.WriteString(ansi.SetMode(modes...))

@@ -13,7 +13,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	_ "image/jpeg" // Register JPEG format
 
@@ -295,17 +294,19 @@ func main() {
 					})
 				}
 			}
-
 		}
 
 		scr.Render() //nolint:errcheck
 		scr.Flush()
 	}
 
+	// Window operation 14 requests the window size in pixels.
+	const requestWindowSizeWinOp = 14
+
 	// Query image encoding support.
-	scr.WriteString(ansi.RequestPrimaryDeviceAttributes)        // Query Sixel support.
-	scr.WriteString(ansi.RequestNameVersion)                    // Query terminal version and name.
-	scr.WriteString(ansi.WindowOp(ansi.RequestWindowSizeWinOp)) // Request window size.
+	scr.WriteString(ansi.RequestPrimaryDeviceAttributes)   // Query Sixel support.
+	scr.WriteString(ansi.RequestNameVersion)               // Query terminal version and name.
+	scr.WriteString(ansi.WindowOp(requestWindowSizeWinOp)) // Request window size.
 	// Query Kitty Graphics support using random id=31.
 	scr.WriteString(ansi.KittyGraphics([]byte("AAAA"), "i=31", "s=1", "v=1", "a=q", "t=d", "f=24"))
 
@@ -391,9 +392,6 @@ LOOP:
 			}
 		}
 	}
-
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	// Disable mouse support.
 	scr.WriteString(ansi.ResetMode(
