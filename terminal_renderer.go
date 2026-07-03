@@ -6,6 +6,7 @@ import (
 	"hash/maphash"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -556,9 +557,16 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 		s.atPhantom = true
 	}
 
-	if cellWidth > 1 && !s.flags.Contains(tGraphemeWidth) {
+	if cell != nil && !s.flags.Contains(tGraphemeWidth) && cellMayDrift(cell) {
 		s.wideDrift = true
 	}
+}
+
+// cellMayDrift reports whether drawing the cell may desync the terminal's
+// cursor column from ours on terminals without mode 2027: legacy width tables
+// measure wide glyphs and multi-rune clusters (VS16/ZWJ sequences) differently.
+func cellMayDrift(cell *Cell) bool {
+	return cell.Width > 1 || utf8.RuneCountInString(cell.Content) > 1
 }
 
 // reanchor emits an absolute horizontal move when the terminal's cursor
@@ -1465,8 +1473,8 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 					cell := newbuf.CellAt(fx+i, ty)
 					if cell != nil && cell.Width > 0 {
 						i += cell.Width - 1
-						if cell.Width > 1 && !s.flags.Contains(tGraphemeWidth) {
-							// Overwriting wide glyphs drifts the cursor on
+						if !s.flags.Contains(tGraphemeWidth) && cellMayDrift(cell) {
+							// Overwriting these cells drifts the cursor on
 							// terminals without mode 2027.
 							overwrite = false
 							break

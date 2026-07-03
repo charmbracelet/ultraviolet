@@ -215,6 +215,34 @@ func TestRendererNarrowAfterWideReanchor(t *testing.T) {
 	}
 }
 
+func TestRendererNarrowClusterReanchor(t *testing.T) {
+	// Under wcwidth, a VS16+ZWJ cluster like "⛓️‍💥" is a single-rune-wide
+	// (width 1) cell holding several runes. Terminals without mode 2027 may
+	// advance the cursor further than one column for it, so the next cell
+	// still needs a re-anchor.
+	var buf bytes.Buffer
+	s := NewTerminalRenderer(&buf, []string{
+		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+	})
+	s.SetFullscreen(true)
+	s.SetGraphemeWidth(false)
+	s.SaveCursor()
+	s.Erase()
+
+	scr := NewScreenBuffer(10, 1)
+	NewStyledString("⛓️‍💥|ab").Draw(scr, scr.Bounds())
+	s.Render(scr.RenderBuffer)
+	if err := s.Flush(); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "\x1b[2G|") {
+		t.Errorf("cell after a multi-rune narrow cluster should be re-anchored: %q", out)
+	}
+}
+
 var loremIpsum = []string{
 	"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus at ornare risus, quis lacinia magna. Suspendisse egestas purus risus, id rutrum diam porta non. Duis luctus tempus dictum. Maecenas luctus metus vitae nulla consectetur egestas. Curabitur faucibus nunc vel eros semper scelerisque. Proin dictum aliquam lacus dignissim fringilla. Praesent ut quam id dui aliquam vehicula in vitae orci. Fusce imperdiet aliquam quam. Nullam euismod magna tincidunt nisl ullamcorper, dignissim rutrum arcu rutrum. Nulla ac fringilla velit. Duis non pellentesque erat.",
 	"In egestas ex et sem vulputate, congue bibendum diam ultrices. Nam auctor dictum enim, in rutrum nulla vestibulum sit amet. Vestibulum vel velit ac sem pellentesque accumsan. Vivamus pharetra mi non arcu tristique gravida. Interdum et malesuada fames ac ante ipsum primis in faucibus. Sed molestie lectus nunc, sit amet rhoncus orci laoreet vel. Nulla eget mattis massa. Nunc porta eros sollicitudin lorem dapibus luctus. Vestibulum ut turpis ut nibh tincidunt feugiat. Integer eget augue nunc. Morbi vitae ultrices neque. Nulla et convallis libero. Cras nec faucibus odio. Maecenas lacinia sed odio sit amet ultrices.",
