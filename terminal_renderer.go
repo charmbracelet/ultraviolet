@@ -859,6 +859,12 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	// Bound any residual drift from a trailing wide glyph to this line.
 	defer s.reanchor()
 
+	if !s.flags.Contains(tGraphemeWidth) &&
+		(lineMayDrift(oldLine, newbuf.Width()) || lineMayDrift(newLine, newbuf.Width())) {
+		s.redrawDriftLine(newbuf, oldLine, newLine, y)
+		return
+	}
+
 	// Find the first changed cell in the line
 	blank := newLine.At(0)
 
@@ -1047,6 +1053,48 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	} else {
 		copy(oldLine, newLine)
 	}
+}
+
+// lineMayDrift reports whether the line contains cells that may desync the
+// terminal's cursor column on terminals without mode 2027.
+func lineMayDrift(line Line, width int) bool {
+	for x := 0; x < width; x++ {
+		if c := line.At(x); c != nil && cellMayDrift(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// redrawDriftLine erases and redraws a changed line wholly. Around
+// drift-prone glyphs, cell-level diffing cannot be trusted: the terminal may
+// have drawn them wider or narrower than we modeled, so the real screen
+// content around them differs from curbuf. Erasing first also wipes any
+// residue such glyphs left behind.
+func (s *TerminalRenderer) redrawDriftLine(newbuf *RenderBuffer, oldLine, newLine Line, y int) {
+	width := newbuf.Width()
+
+	firstCell := 0
+	for firstCell < width && cellEqual(oldLine.At(firstCell), newLine.At(firstCell)) {
+		firstCell++
+	}
+	if firstCell >= width {
+		return // nothing changed
+	}
+
+	s.move(newbuf, 0, y)
+
+	last := width - 1
+	if blank := newLine.At(last); canClearWith(blank) {
+		s.updatePen(blank)
+		_, _ = s.buf.WriteString(ansi.EraseLineRight)
+		for last > 0 && cellEqual(newLine.At(last), blank) {
+			last--
+		}
+	}
+	s.emitRange(newbuf, newLine, last+1)
+
+	copy(oldLine, newLine)
 }
 
 // deleteCells deletes the count cells at the current cursor position and moves
