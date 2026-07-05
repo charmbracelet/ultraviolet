@@ -316,6 +316,19 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		i++
 	}
 
+	// Linux console function keys F1-F5 are historically sent as
+	// ESC [ [ A through ESC [ [ E. The second '[' is not a valid CSI
+	// parameter, intermediate, or prefix byte, so no other sequence uses
+	// this form. Handle it explicitly before the normal CSI parsing.
+	if i < len(b) && b[i] == '[' {
+		if i+1 < len(b) {
+			if c := b[i+1]; c >= 'A' && c <= 'E' {
+				return i + 2, KeyPressEvent{Code: KeyF1 + rune(c-'A')}
+			}
+		}
+		return i + 1, UnknownCsiEvent(b[:i+1])
+	}
+
 	// Initial CSI byte
 	if i < len(b) && b[i] >= '<' && b[i] <= '?' {
 		cmd |= ansi.Cmd(b[i]) << parser.PrefixShift
