@@ -1378,9 +1378,23 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 				yseq = cud
 			}
 			if !s.flags.Contains(tFullscreen) || n < len(yseq) { // n is the cost of using newline characters
-				yseq = strings.Repeat("\n", n)
-				if s.flags.Contains(tMapNewline) {
+				if s.flags.Contains(tRelativeCursor) {
+					// When tracking the cursor position relatively (i.e. not
+					// fullscreen), any horizontal move computed below relies
+					// on our own bookkeeping of the cursor's column. We can't
+					// depend on the terminal mapping LF to CRLF for us here:
+					// programs using this renderer run the terminal in raw
+					// mode, which disables that OS-level translation. Emit an
+					// explicit carriage return with every line feed so the
+					// column really does reset to 0, matching the
+					// full-redraw code paths (e.g. [StyledString.Draw]).
+					yseq = strings.Repeat("\r\n", n)
 					fx = 0
+				} else {
+					yseq = strings.Repeat("\n", n)
+					if s.flags.Contains(tMapNewline) {
+						fx = 0
+					}
 				}
 			}
 		} else if ty < fy {
