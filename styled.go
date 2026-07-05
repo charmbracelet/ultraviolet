@@ -180,13 +180,13 @@ func printString[T []byte | string](
 				// Hyperlinks
 				ReadLink(p.Data(), &link)
 			case ansi.Equal(seq, T("\n")):
+				y++
 				if s == nil {
 					// When building lines, we need to ensure empty lines are represented.
 					if y >= len(lines) {
 						lines = append(lines, Line{})
 					}
 				}
-				y++
 				// Always treat a NL as CR-LF similar to Termios ONLCR.
 				fallthrough
 			case ansi.Equal(seq, T("\r")):
@@ -204,7 +204,7 @@ func printString[T []byte | string](
 		state = newState
 		str = str[n:]
 
-		if y >= bounds.Max.Y {
+		if s != nil && y >= bounds.Max.Y {
 			// We've reached the bottom of the bounds, stop processing further
 			// lines.
 			break
