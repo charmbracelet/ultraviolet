@@ -2,6 +2,7 @@ package uv
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -181,6 +182,74 @@ func TestRendererWideCellReanchor(t *testing.T) {
 	gout := render(true)
 	if n := strings.Count(gout, "\x1b[5G"); n != 0 {
 		t.Errorf("grapheme-mode line should not re-anchor, got %d in %q", n, gout)
+	}
+}
+
+// TestRendererDeleteBeforeWideCell verifies that deleting a narrow cell that
+// precedes a wide cell does not split the wide cell.
+//
+// When the tail of a line is shorter than before, transformLine takes the DCH
+// (delete character) branch. The last reprinted cell may be a wide character
+// whose zero-width continuation occupies the next column. Without guarding for
+// that continuation, the renderer moves the cursor back onto it (ESC[D) and
+// issues DCH there, deleting the right half of the wide cell and corrupting the
+// glyph. In grapheme-width mode (mode 2027) there is no reanchor fallback, so
+// the corruption is permanent.
+//
+// The wide cell may sit anywhere on the line, so the cases interleave wide and
+// narrow cells: leading, medial (between two wide cells), and within multiple
+// wide runs, not just a trailing CJK run. Each case removes one narrow cell
+// that immediately precedes a wide cell, forcing the DCH branch to reprint the
+// wide cell as its last cell.
+func TestRendererDeleteBeforeWideCell(t *testing.T) {
+	cases := []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{"trailing wide run", "engli世界", "engl世界"},
+		{"delete leading narrow before wide", "a世b界c", "世b界c"},
+		{"delete medial narrow between wides", "a世b界c", "a世界c"},
+		{"wide neighbors on both sides", "世a界b世", "世界b世"},
+		{"multiple wide runs, leading delete", "x世y界z国", "世y界z国"},
+		{"multiple wide runs, medial delete", "x世y界z国", "x世界z国"},
+	}
+
+	render := func(grapheme bool, before, after string) string {
+		var buf bytes.Buffer
+		s := NewTerminalRenderer(&buf, []string{
+			"TERM=xterm-256color",
+			"COLORTERM=truecolor",
+		})
+		s.SetFullscreen(true)
+		s.SetGraphemeWidth(grapheme)
+		s.SaveCursor()
+		s.Erase()
+
+		scr := NewScreenBuffer(12, 1)
+		for _, in := range []string{before, after} {
+			buf.Reset()
+			NewStyledString(in).Draw(scr, scr.Bounds())
+			s.Render(scr.RenderBuffer)
+			if err := s.Flush(); err != nil {
+				t.Fatalf("Flush failed: %v", err)
+			}
+		}
+		// Only the last frame (the delete) is asserted on.
+		return buf.String()
+	}
+
+	for _, grapheme := range []bool{false, true} {
+		for _, c := range cases {
+			t.Run(fmt.Sprintf("%s/grapheme=%v", c.name, grapheme), func(t *testing.T) {
+				out := render(grapheme, c.before, c.after)
+				// A cursor-back (ESC[D) immediately before DCH (ESC[P) means the
+				// delete landed on the wide continuation cell, splitting the glyph.
+				if strings.Contains(out, "\x1b[D\x1b[P") {
+					t.Errorf("DCH split the wide cell (spurious ESC[D before ESC[P): %q", out)
+				}
+			})
+		}
 	}
 }
 
