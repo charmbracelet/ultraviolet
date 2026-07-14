@@ -110,6 +110,13 @@ func (s *TerminalRenderer) scrolln(newbuf *RenderBuffer, n, top, bot, maxY int) 
 
 	s.scrollBuffer(s.curbuf, n, top, bot, blank)
 
+	// The physical screen (and curbuf) changed under every row of the
+	// scrolled region, so each row must be re-diffed even if its newbuf
+	// content is untouched this frame: the render loop skips lines by
+	// newbuf.Touched, and a line whose content did not change since the
+	// last frame would otherwise keep showing the scrolled-in content.
+	s.touchLine(newbuf, top, bot-top+1, true)
+
 	// shift hash values too, they can be reused
 	s.scrollOldhash(n, top, bot)
 
