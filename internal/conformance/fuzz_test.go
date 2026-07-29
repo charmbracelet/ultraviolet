@@ -14,6 +14,12 @@ type runner struct {
 	rend *uv.TerminalRenderer
 	term oracle
 	buf  uv.ScreenBuffer
+
+	// w and h track the live dimensions, which an OpResize changes. The buffer,
+	// the draw rectangle, and the screen readback all follow them so a line
+	// drawn after a resize is valid for the current screen, not the starting
+	// one.
+	w, h int
 }
 
 // newRunner wires a renderer to a fresh emulator sized for the program. The
@@ -37,6 +43,8 @@ func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int
 		rend: rend,
 		term: term,
 		buf:  uv.NewScreenBuffer(p.Width, p.Height),
+		w:    p.Width,
+		h:    p.Height,
 	}
 }
 
@@ -55,7 +63,7 @@ func (r *runner) step(t *testing.T, op conformance.Op) {
 
 	switch op.Kind {
 	case conformance.OpDrawLine:
-		uv.NewStyledString(op.Text).Draw(r.buf, uv.Rect(0, op.Y, r.prog.Width, 1))
+		uv.NewStyledString(op.Text).Draw(r.buf, uv.Rect(0, op.Y, r.w, 1))
 	case conformance.OpClear:
 		r.buf.Clear()
 	case conformance.OpRender:
@@ -67,6 +75,15 @@ func (r *runner) step(t *testing.T, op conformance.Op) {
 	case conformance.OpMoveTo:
 		r.rend.MoveTo(op.N, 0)
 		r.flush(t)
+	case conformance.OpResize:
+		// Resize the buffer, the emulator, and the renderer's tab stops in
+		// lockstep, the way a real SIGWINCH handler would. The renderer's model
+		// of the previous frame keeps its old dimensions, which is exactly the
+		// stale-geometry case under test.
+		r.w, r.h = op.W, op.H
+		r.buf.Resize(op.W, op.H)
+		r.term.Resize(op.W, op.H)
+		r.rend.Resize(op.W, op.H)
 	}
 }
 
@@ -74,7 +91,7 @@ func (r *runner) step(t *testing.T, op conformance.Op) {
 func (r *runner) screen(t *testing.T) []string {
 	t.Helper()
 
-	rows := make([]string, r.prog.Height)
+	rows := make([]string, r.h)
 	for y := range rows {
 		rows[y] = r.term.Row(t, y)
 	}
@@ -114,10 +131,12 @@ func runFullRepaint(t *testing.T, p conformance.Program, mk func(*testing.T, int
 
 	// Replay only the operations that shape the buffer. Skipping the renders is
 	// what makes this a reference: the buffer ends up identical, but the
-	// renderer never sees an intermediate frame and so cannot drift.
+	// renderer never sees an intermediate frame and so cannot drift. Resizes are
+	// replayed too, so the final buffer has the same dimensions as the
+	// incremental run.
 	for _, op := range p.Ops {
 		switch op.Kind {
-		case conformance.OpDrawLine, conformance.OpClear:
+		case conformance.OpDrawLine, conformance.OpClear, conformance.OpResize:
 			r.step(t, op)
 		}
 	}
@@ -303,11 +322,18 @@ func FuzzRedrawResyncs(f *testing.F) {
 // filled is exactly that kind of consistent wrongness. A first paint and a full
 // repaint agree perfectly while both drop a glyph.
 //
-// So this target asserts something absolute instead. Every drift-prone cluster
-// the program drew must appear on the row it was drawn to, as many times as it
-// was drawn. It deliberately says nothing about columns, because the emulators
-// legitimately disagree about those, but "the glyph reached the screen at all"
-// is a floor that holds under every width model.
+// So this target asserts something absolute instead. The most recently drawn
+// line must appear on its row, with every drift-prone cluster it contained
+// present the right number of times. It deliberately says nothing about
+// columns, because the emulators legitimately disagree about those, but "the
+// glyph reached the screen at all" is a floor that holds under every width
+// model.
+//
+// Only the last draw is checked, not every draw. A resize can clip rows drawn
+// earlier or shrink the screen below them, and whether clipped content should
+// reappear is emulator-defined, so asserting on it would be noise. The last
+// draw is always made at the current width and within the current height, so it
+// is always fully visible and always fair to check.
 func FuzzScreenShowsContent(f *testing.F) {
 	addSeeds(f)
 
@@ -317,18 +343,18 @@ func FuzzScreenShowsContent(f *testing.F) {
 			return
 		}
 
-		// Only the last draw to each row is visible; anything earlier was
-		// overwritten and says nothing about the final screen.
-		expected := map[int]string{}
+		// Track the last line drawn. A Clear invalidates it, since nothing is
+		// drawn after a clear unless a later DrawLine says so.
+		lastY, lastText := -1, ""
 		for _, op := range p.Ops {
 			switch op.Kind {
 			case conformance.OpDrawLine:
-				expected[op.Y] = op.Text
+				lastY, lastText = op.Y, op.Text
 			case conformance.OpClear:
-				expected = map[int]string{}
+				lastY, lastText = -1, ""
 			}
 		}
-		if len(expected) == 0 {
+		if lastY < 0 {
 			return
 		}
 
@@ -339,23 +365,30 @@ func FuzzScreenShowsContent(f *testing.F) {
 			}
 			r.rend.Render(r.buf.RenderBuffer)
 			r.flush(t)
+
+			// A resize after the last draw can shrink the screen below that
+			// row, in which case it is off-screen and there is nothing to
+			// assert.
+			if lastY >= r.h {
+				r.close()
+				continue
+			}
+
 			screen := r.screen(t)
 			r.close()
 
-			for y, drawn := range expected {
-				for _, cluster := range conformance.DriftClusters() {
-					want := strings.Count(drawn, cluster)
-					if want == 0 {
-						continue
-					}
-					if got := strings.Count(screen[y], cluster); got != want {
-						t.Errorf("%s: row %d shows %q %d times but %d were drawn\n"+
-							"  screen %q\n"+
-							"  drawn  %q\n"+
-							"program:\n%s",
-							o.name, y, cluster, got, want, screen[y], drawn, p)
-						return
-					}
+			for _, cluster := range conformance.DriftClusters() {
+				want := strings.Count(lastText, cluster)
+				if want == 0 {
+					continue
+				}
+				if got := strings.Count(screen[lastY], cluster); got != want {
+					t.Errorf("%s: row %d shows %q %d times but %d were drawn\n"+
+						"  screen %q\n"+
+						"  drawn  %q\n"+
+						"program:\n%s",
+						o.name, lastY, cluster, got, want, screen[lastY], lastText, p)
+					return
 				}
 			}
 		}

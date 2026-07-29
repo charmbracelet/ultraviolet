@@ -63,22 +63,36 @@ func TestDecodeProgramTotal(t *testing.T) {
 		if p.Width < 1 || p.Height < 1 {
 			t.Fatalf("DecodeProgram(%x) gave a nonsensical size of %dx%d", in, p.Width, p.Height)
 		}
+
+		// The live dimensions, which an OpResize changes. Draw and move bounds
+		// are checked against these, mirroring how the decoder computes them.
+		curW, curH := p.Width, p.Height
 		for i, op := range p.Ops {
 			switch op.Kind {
 			case conformance.OpDrawLine:
-				if op.Y < 0 || op.Y >= p.Height {
-					t.Fatalf("DecodeProgram(%x) op %d draws to row %d, outside a %d-row screen",
-						in, i, op.Y, p.Height)
+				if op.Y < 0 || op.Y >= curH {
+					t.Fatalf("DecodeProgram(%x) op %d draws to row %d, outside the current %d-row screen",
+						in, i, op.Y, curH)
 				}
-				if w := ansi.StringWidth(op.Text); w >= p.Width {
-					t.Fatalf("DecodeProgram(%x) op %d draws %d columns into a %d-column screen, "+
-						"which would wrap and make failures ambiguous", in, i, w, p.Width)
+				if w := ansi.StringWidth(op.Text); w >= curW {
+					t.Fatalf("DecodeProgram(%x) op %d draws %d columns into the current %d-column screen, "+
+						"which would wrap and make failures ambiguous", in, i, w, curW)
 				}
 			case conformance.OpMoveTo:
-				if op.N < 0 || op.N >= p.Width {
-					t.Fatalf("DecodeProgram(%x) op %d moves to column %d, outside a %d-column screen",
-						in, i, op.N, p.Width)
+				if op.N < 0 || op.N >= curW {
+					t.Fatalf("DecodeProgram(%x) op %d moves to column %d, outside the current %d-column screen",
+						in, i, op.N, curW)
 				}
+			case conformance.OpResize:
+				if op.W < conformance.MinResizeW || op.W > conformance.MaxResizeW {
+					t.Fatalf("DecodeProgram(%x) op %d resizes to width %d, outside [%d,%d]",
+						in, i, op.W, conformance.MinResizeW, conformance.MaxResizeW)
+				}
+				if op.H < conformance.MinResizeH || op.H > conformance.MaxResizeH {
+					t.Fatalf("DecodeProgram(%x) op %d resizes to height %d, outside [%d,%d]",
+						in, i, op.H, conformance.MinResizeH, conformance.MaxResizeH)
+				}
+				curW, curH = op.W, op.H
 			}
 		}
 	}

@@ -37,6 +37,9 @@ type oracle interface {
 	// Size reports the emulator's dimensions.
 	Size() (w, h int)
 
+	// Resize changes the emulator's dimensions, mirroring a SIGWINCH.
+	Resize(w, h int)
+
 	// Close releases emulator resources.
 	Close()
 
@@ -71,6 +74,12 @@ func (g *ghosttyOracle) Write(p []byte) (int, error) { return g.term.Write(p) }
 func (g *ghosttyOracle) Size() (int, int)            { return g.w, g.h }
 func (g *ghosttyOracle) Close()                      { g.term.Close() }
 func (g *ghosttyOracle) Name() string                { return "ghostty" }
+
+func (g *ghosttyOracle) Resize(w, h int) {
+	g.w, g.h = w, h
+	// Cell pixel dimensions are irrelevant to these tests, so pass zero.
+	_ = g.term.Resize(uint16(w), uint16(h), 0, 0)
+}
 
 func (g *ghosttyOracle) Row(t *testing.T, y int) string {
 	t.Helper()
@@ -123,6 +132,7 @@ func (v *vtOracle) Write(p []byte) (int, error) { return v.em.Write(p) }
 func (v *vtOracle) Size() (int, int)            { return v.em.Width(), v.em.Height() }
 func (v *vtOracle) Close()                      {}
 func (v *vtOracle) Name() string                { return "vt" }
+func (v *vtOracle) Resize(w, h int)             { v.em.Resize(w, h) }
 
 func (v *vtOracle) Row(t *testing.T, y int) string {
 	t.Helper()

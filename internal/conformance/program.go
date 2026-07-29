@@ -51,6 +51,10 @@ type Op struct {
 
 	// N is a small integer argument, used by operations like OpMoveTo.
 	N int
+
+	// W and H are the new dimensions for an OpResize, already clamped to the
+	// valid range.
+	W, H int
 }
 
 // OpKind enumerates the renderer operations a fuzz program can perform.
@@ -76,7 +80,22 @@ const (
 	// because it is where a wrong column model becomes a wrong write.
 	OpMoveTo
 
+	// OpResize changes the terminal and buffer dimensions to W by H. Resizing
+	// is the biggest geometry change a terminal undergoes, and a renderer that
+	// carries stale geometry across one will paint the wrong thing, so it is
+	// worth fuzzing directly.
+	OpResize
+
 	opKindCount
+)
+
+// Resize bounds. Screens stay small so failures stay readable, but the range
+// is wide enough to shrink below and grow above the starting size, which is
+// where stale-geometry bugs show up. Exported so the decoder's own tests can
+// check that every OpResize lands inside them.
+const (
+	MinResizeW, MaxResizeW = 4, 32
+	MinResizeH, MaxResizeH = 2, 8
 )
 
 // String makes failures readable, since a raw OpKind number tells you nothing
@@ -93,6 +112,8 @@ func (k OpKind) String() string {
 		return "Redraw"
 	case OpMoveTo:
 		return "MoveTo"
+	case OpResize:
+		return "Resize"
 	default:
 		return fmt.Sprintf("OpKind(%d)", uint8(k))
 	}
@@ -133,6 +154,8 @@ func (p Program) String() string {
 			fmt.Fprintf(&b, "  %2d. DrawLine(y=%d, %q)\n", i, op.Y, op.Text)
 		case OpMoveTo:
 			fmt.Fprintf(&b, "  %2d. MoveTo(%d)\n", i, op.N)
+		case OpResize:
+			fmt.Fprintf(&b, "  %2d. Resize(%dx%d)\n", i, op.W, op.H)
 		default:
 			fmt.Fprintf(&b, "  %2d. %s\n", i, op.Kind)
 		}
@@ -262,6 +285,30 @@ func Seeds() [][]byte {
 				byte(OpRender),
 			},
 		)
+
+		// Resize seeds. Resizing is the biggest geometry change a terminal
+		// undergoes, and the interesting failures come from carrying stale
+		// geometry across one, so each seed draws, resizes, and draws again.
+		// The dimensions are encoded relative to the resize bounds: a byte b
+		// maps to minResize + b % (max-min+1).
+		resizeW := func(w int) byte { return byte((w - MinResizeW) % (MaxResizeW - MinResizeW + 1)) }
+		resizeH := func(h int) byte { return byte((h - MinResizeH) % (MaxResizeH - MinResizeH + 1)) }
+		for _, mode := range []byte{0, 1, 2, 3} {
+			seeds = append(seeds, []byte{
+				14, 2, // 20x4
+				mode,
+				byte(OpDrawLine), 0, first, first, last, last, endOfLine,
+				byte(OpRender),
+				// Shrink, then draw a line that only fits the smaller screen.
+				byte(OpResize), resizeW(8), resizeH(3),
+				byte(OpDrawLine), 0, first, 0, endOfLine,
+				byte(OpRender),
+				// Grow back, which is where clipped content can leave residue.
+				byte(OpResize), resizeW(24), resizeH(6),
+				byte(OpDrawLine), 0, last, last, last, endOfLine,
+				byte(OpRender),
+			})
+		}
 	}
 
 	return seeds
@@ -298,6 +345,15 @@ func (d *decoder) intn(n int) (int, bool) {
 	return int(b) % n, true
 }
 
+// intrange returns a value in [lo,hi], or false if the input is exhausted.
+func (d *decoder) intrange(lo, hi int) (int, bool) {
+	v, ok := d.intn(hi - lo + 1)
+	if !ok {
+		return 0, false
+	}
+	return lo + v, true
+}
+
 // DecodeProgram interprets fuzzer bytes as a program.
 //
 // Every byte string maps to some valid program, and the decoder never fails.
@@ -326,6 +382,11 @@ func DecodeProgram(data []byte) Program {
 	// ones.
 	const maxOps = 24
 
+	// The live dimensions, which an OpResize changes. DrawLine and MoveTo
+	// bounds are computed from these so a line drawn after a resize is always
+	// valid for the current screen, not the one the program started with.
+	curW, curH := p.Width, p.Height
+
 	for len(p.Ops) < maxOps {
 		kind, ok := d.intn(int(opKindCount))
 		if !ok {
@@ -335,7 +396,7 @@ func DecodeProgram(data []byte) Program {
 		op := Op{Kind: OpKind(kind)}
 		switch op.Kind {
 		case OpDrawLine:
-			y, ok := d.intn(p.Height)
+			y, ok := d.intn(curH)
 			if !ok {
 				return p
 			}
@@ -359,7 +420,7 @@ func DecodeProgram(data []byte) Program {
 				}
 				g := corpusAlphabet[idx]
 				gw := ansi.StringWidth(g)
-				if used+gw > p.Width-1 {
+				if used+gw > curW-1 {
 					break
 				}
 				sb.WriteString(g)
@@ -368,11 +429,23 @@ func DecodeProgram(data []byte) Program {
 			op.Text = sb.String()
 
 		case OpMoveTo:
-			n, ok := d.intn(p.Width)
+			n, ok := d.intn(curW)
 			if !ok {
 				return p
 			}
 			op.N = n
+
+		case OpResize:
+			nw, ok := d.intrange(MinResizeW, MaxResizeW)
+			if !ok {
+				return p
+			}
+			nh, ok := d.intrange(MinResizeH, MaxResizeH)
+			if !ok {
+				return p
+			}
+			op.W, op.H = nw, nh
+			curW, curH = nw, nh
 		}
 
 		p.Ops = append(p.Ops, op)
