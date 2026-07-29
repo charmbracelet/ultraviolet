@@ -7,8 +7,11 @@ name: conformance
 # belongs in the library that ships to users. That also means the root module's
 # CI never runs them, so they get their own workflow here.
 
+# push is scoped to main so a push to a PR branch fires only the
+# pull_request run, not both. Merges to main still run via push.
 on:
   push:
+    branches: [main]
   pull_request:
   schedule:
     # A nightly coverage-guided run, so new bugs are found without waiting for

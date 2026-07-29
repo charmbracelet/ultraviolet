@@ -1,6 +1,9 @@
 name: lint
+# push is scoped to main so a push to a PR branch fires only the
+# pull_request run, not both. Merges to main still lint via push.
 on:
   push:
+    branches: [main]
   pull_request:
 
 env:
