@@ -3,6 +3,13 @@ on:
   push:
   pull_request:
 
+env:
+  # Must match conformance.yml. The lint-conformance job restores the same
+  # libghostty-vt cache the conformance tests build, so sharing the key means a
+  # warm cache there is a cache hit here and no rebuild happens.
+  GHOSTTY_PIN: 2dd79f3bc6af649e68422b08e21ad0300fd8b391
+  ZIG_VERSION: "0.16.0"
+
 jobs:
   lint:
     uses: charmbracelet/meta/.github/workflows/lint.yml@main
@@ -12,15 +19,58 @@ jobs:
       timeout: 10m
 
   # The conformance tests are a separate module, so the root lint job's ./...
-  # never reaches them. Lint them here with the same config. No C toolchain is
-  # needed: golangci-lint typechecks the cgo files without building them.
+  # never reaches them. Lint them here with the same config.
+  #
+  # The module imports go.mitchellh.com/libghostty, a cgo package. golangci-lint
+  # typechecks cgo files, which runs pkg-config and compiles the C preamble far
+  # enough to need the real headers. So, contrary to intuition, a C toolchain IS
+  # required: we restore the prebuilt libghostty-vt (headers plus .pc file) from
+  # the same cache conformance.yml populates and point pkg-config at it. No
+  # linking happens during typecheck, so the static archive itself is unused.
+  #
+  # This is a standalone job rather than the shared meta workflow because that
+  # workflow cannot restore a cache or set PKG_CONFIG_PATH for its lint step.
   lint-conformance:
-    uses: charmbracelet/meta/.github/workflows/lint.yml@main
-    with:
-      directory: internal/conformance
-      # The shared workflow checks the repo out into a github.repository/
-      # subdirectory and runs from internal/conformance, so the config is two
-      # levels up.
-      golangci_path: ../../.golangci.yml
-      golangci_version: latest
-      timeout: 10m
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ./internal/conformance/go.mod
+          cache: true
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Cache libghostty-vt
+        id: cache-vt
+        uses: actions/cache@v4
+        with:
+          path: .cache/libghostty-vt
+          key: libghostty-vt-${{ env.GHOSTTY_PIN }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build libghostty-vt
+        if: steps.cache-vt.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
+          cmake -B /tmp/go-libghostty/build -S /tmp/go-libghostty -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/go-libghostty/build
+          mkdir -p .cache
+          cp -r /tmp/go-libghostty/build/_deps/ghostty-src/zig-out .cache/libghostty-vt
+
+      # The .pc file records the absolute path it was built at. Rewrite it to
+      # point at this workspace so a restored cache resolves correctly.
+      - name: Configure pkg-config
+        run: sed -i "s|^prefix=.*|prefix=${{ github.workspace }}/.cache/libghostty-vt|" .cache/libghostty-vt/share/pkgconfig/libghostty-vt-static.pc
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          working-directory: internal/conformance
+          args: |
+            --config="../../.golangci.yml" --timeout=10m ./...
+          version: latest
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/.cache/libghostty-vt/share/pkgconfig
