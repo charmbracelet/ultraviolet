@@ -169,24 +169,57 @@ func (p Program) String() string {
 // widthless control characters. Choosing from a curated set means every
 // generated line is made of clusters that actually stress the width model.
 //
-// It covers each width case the renderer has to handle: narrow ASCII, wide
-// CJK, plain emoji, and the VS16 and ZWJ sequences that legacy width tables
-// and grapheme width disagree about.
+// The clusters are grouped by width behaviour. Everything from
+// driftClusterOffset onward is a cluster where legacy wcwidth and grapheme
+// width disagree, and those are the ones that provoke column drift. The
+// clusters before that point exercise distinct code paths (combining marks,
+// text presentation, a different wide script) without drifting, so the fuzzer
+// explores them too.
 var corpusAlphabet = []string{
+	// Narrow ASCII.
 	"a", "b", "c", "X", " ", ".", "|", "#",
+	// Wide CJK.
 	"世", "界",
-	"\U0001fae0",                   // melting face
-	"\U0001f469\u200d\U0001f4bb",   // woman technologist, ZWJ, widths agree
-	"\u2639\ufe0f",                 // frowning face + VS16
-	"\u2764\ufe0f",                 // heart + VS16
-	"\u2708\ufe0f",                 // airplane + VS16
-	"\u26d3\ufe0f\u200d\U0001f4a5", // broken chain: VS16 + ZWJ
-	"\U0001f426\u200d\U0001f525",   // phoenix: ZWJ
+	// Wide Hangul, a different script in the same width class.
+	"가", "한",
+	// Plain emoji, width 2, no modifiers.
+	"\U0001fae0", // melting face
+	// Combining marks: a base plus a zero-width combiner, width 1 total.
+	"e\u0301", // é
+	"n\u0303", // ñ
+	// VS15 text presentation, forces narrow rendering, width 1.
+	"\u2639\ufe0e", // frowning face, text style
+	// ZWJ sequences where both width models agree at 2.
+	"\U0001f469\u200d\U0001f4bb", // woman technologist
+	"\U0001f426\u200d\U0001f525", // phoenix
+	// Skin tone modifiers. Both uv width models agree at 2, so driftIndices
+	// does not flag them, but ghostty's legacy mode paints these as 4 columns,
+	// so they still drift in practice. Kept here so the fuzzer explores them
+	// even though the seeds do not target them specifically.
+	"\U0001f44d\U0001f3fd", // thumbs up, medium skin
+	"\U0001f44b\U0001f3ff", // waving hand, dark skin
+
+	// --- drift-prone clusters below: legacy wcwidth != grapheme width ---
+
+	// VS16 emoji presentation: legacy says 1, grapheme says 2.
+	"\u2639\ufe0f", // frowning face
+	"\u2764\ufe0f", // heart
+	"\u2708\ufe0f", // airplane
+	// ZWJ with VS16: legacy says 1, grapheme says 2.
+	"\u26d3\ufe0f\u200d\U0001f4a5", // broken chain
+	// Regional indicators: legacy width varies wildly across terminals,
+	// grapheme says 2. A single unpaired indicator is the most ambiguous case.
+	"\U0001f1fa",           // single regional indicator U
+	"\U0001f1fa\U0001f1f8", // flag US
+	"\U0001f1ef\U0001f1f5", // flag JP
+	// Keycap: legacy says 1, grapheme says 2.
+	"1\ufe0f\u20e3", // keycap 1
 }
 
-// driftClusterOffset is where the multi-rune clusters begin in corpusAlphabet.
-// Everything from here on is a VS16 or ZWJ sequence.
-const driftClusterOffset = 11
+// driftClusterOffset is where the drift-prone clusters begin in corpusAlphabet.
+// Everything from here on is a VS16, ZWJ, regional-indicator, or keycap sequence
+// where legacy wcwidth and grapheme width disagree.
+const driftClusterOffset = 20
 
 // driftIndices are the positions in corpusAlphabet whose clusters legacy
 // wcwidth and grapheme width disagree about.
