@@ -10,3 +10,17 @@ jobs:
       golangci_path: .golangci.yml
       golangci_version: latest
       timeout: 10m
+
+  # The conformance tests are a separate module, so the root lint job's ./...
+  # never reaches them. Lint them here with the same config. No C toolchain is
+  # needed: golangci-lint typechecks the cgo files without building them.
+  lint-conformance:
+    uses: charmbracelet/meta/.github/workflows/lint.yml@main
+    with:
+      directory: internal/conformance
+      # The shared workflow checks the repo out into a github.repository/
+      # subdirectory and runs from internal/conformance, so the config is two
+      # levels up.
+      golangci_path: ../../.golangci.yml
+      golangci_version: latest
+      timeout: 10m
