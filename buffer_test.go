@@ -692,9 +692,36 @@ func TestRenderLinePreservesStyledTrailingSpaces(t *testing.T) {
 		t.Errorf("Render() produced %d visible chars, want 5; output=%q visible=%q",
 			len(visible), output, visible)
 	}
-	// The output must contain a background color sequence for the trailing spaces.
-	if !strings.Contains(output, "41") { // SGR 41 = red background
-		t.Errorf("Render() missing red background SGR for trailing styled spaces; output=%q", output)
+	// The output must contain the background color sequence for the trailing
+	// spaces. Derive the expected sequence from the style itself rather than
+	// hardcoding an SGR number.
+	red := Style{Bg: ansi.Red}
+	wantSeq := red.Diff(&Style{})
+	if !strings.Contains(output, wantSeq) {
+		t.Errorf("Render() missing background SGR %q for trailing styled spaces; output=%q", wantSeq, output)
+	}
+}
+
+func TestRenderLineWideCellTail(t *testing.T) {
+	// A line ending in a wide cell's continuation column (a zero cell) must
+	// not disturb pending empty cells: the zero cell is skipped, and the
+	// buffered spaces are still flushed at end of line.
+	l := NewLine(6)
+	l[0] = Cell{Content: "A", Width: 1}
+	// Positions 1-3 remain EmptyCell.
+	l[4] = Cell{Content: "你", Width: 2}
+	l[5] = Cell{} // continuation column of the wide cell
+
+	output := l.Render()
+
+	visible := ansi.Strip(output)
+	// "A", 3 buffered spaces, then the wide grapheme. The continuation
+	// column contributes nothing.
+	if want := "A   你"; visible != want {
+		t.Errorf("Render() = %q, want %q; output=%q", visible, want, output)
+	}
+	if w := uniseg.StringWidth(visible); w != 6 {
+		t.Errorf("Render() visible width = %d, want 6; output=%q", w, output)
 	}
 }
 
