@@ -16,9 +16,11 @@ require (
 	golang.org/x/sys v0.47.0
 )
 
-require github.com/clipperhouse/displaywidth v0.11.0 // indirect
-
 require (
-	github.com/lucasb-eyer/go-colorful v1.4.1
-	github.com/mattn/go-runewidth v0.0.23 // indirect
+	github.com/clipperhouse/displaywidth v0.11.0 // indirect
+	github.com/mattn/go-runewidth v0.0.24 // indirect
 )
+
+require github.com/lucasb-eyer/go-colorful v1.4.1
+
+replace github.com/charmbracelet/x/ansi => ../x/ansi
