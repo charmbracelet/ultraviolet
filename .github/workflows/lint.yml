@@ -49,7 +49,7 @@ jobs:
 
       - name: Cache libghostty-vt
         id: cache-vt
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/libghostty-vt
           key: libghostty-vt-${{ env.GHOSTTY_PIN }}-${{ runner.os }}-${{ runner.arch }}
