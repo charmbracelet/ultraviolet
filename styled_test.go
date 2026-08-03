@@ -441,3 +441,288 @@ func newWcCell(s string, style *Style, link *Link) Cell {
 	}
 	return *c
 }
+
+func TestStyledStringHeight(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		expected int
+	}{
+		{"single line", "hello", 1},
+		{"two lines", "ab\ncd", 2},
+		{"empty", "", 1},
+		{"leading newline", "\nhello", 2},
+		{"trailing newline", "hello\n", 2},
+		{"multiple consecutive newlines", "a\n\nb", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			got := ss.Height()
+			if got != tc.expected {
+				t.Errorf("Height() = %d, want %d", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestStyledStringBounds(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		wantW    int
+		wantH    int
+	}{
+		{"single line", "hello", 5, 1},
+		{"two lines same width", "abc\ndef", 3, 2},
+		{"different widths", "hi\nhello", 5, 2},
+		{"with ANSI", "\x1b[31mhi\x1b[0m", 2, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			b := ss.Bounds()
+			if b.Dx() != tc.wantW {
+				t.Errorf("Bounds().Dx() = %d, want %d", b.Dx(), tc.wantW)
+			}
+			if b.Dy() != tc.wantH {
+				t.Errorf("Bounds().Dy() = %d, want %d", b.Dy(), tc.wantH)
+			}
+		})
+	}
+}
+
+func TestStyledStringWidthMethods(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		wantW int
+	}{
+		{"simple", "hello", 5},
+		{"with CJK", "a世b", 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+" UnicodeWidth", func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			got := ss.UnicodeWidth()
+			if got != tc.wantW {
+				t.Errorf("UnicodeWidth() = %d, want %d", got, tc.wantW)
+			}
+		})
+		t.Run(tc.name+" WcWidth", func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			got := ss.WcWidth()
+			if got != tc.wantW {
+				t.Errorf("WcWidth() = %d, want %d", got, tc.wantW)
+			}
+		})
+	}
+}
+
+func TestStyledStringString(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"plain", "hello"},
+		{"with ANSI", "\x1b[31mhi\x1b[0m"},
+		{"multi-line", "a\nb"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			got := ss.String()
+			if got != tc.input {
+				t.Errorf("String() = %q, want %q", got, tc.input)
+			}
+		})
+	}
+}
+
+func TestStyledStringLines(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		method   ansi.Method
+		expected []Line
+	}{
+		{
+			name:   "single line plain text",
+			input:  "Hello",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("H", nil, nil),
+					newWcCell("e", nil, nil),
+					newWcCell("l", nil, nil),
+					newWcCell("l", nil, nil),
+					newWcCell("o", nil, nil),
+				},
+			},
+		},
+		{
+			name:   "multiple lines",
+			input:  "ab\ncd",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("a", nil, nil),
+					newWcCell("b", nil, nil),
+				},
+				{
+					newWcCell("c", nil, nil),
+					newWcCell("d", nil, nil),
+				},
+			},
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			method:   ansi.WcWidth,
+			expected: []Line{},
+		},
+		{
+			name:   "ansi styled single line",
+			input:  "\x1b[31;1mHi\x1b[0m",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("H", &Style{Fg: ansi.Red, Attrs: AttrBold}, nil),
+					newWcCell("i", &Style{Fg: ansi.Red, Attrs: AttrBold}, nil),
+				},
+			},
+		},
+		{
+			name:   "ansi across multiple lines",
+			input:  "\x1b[31mLine1\nLine2\x1b[0m",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("L", &Style{Fg: ansi.Red}, nil),
+					newWcCell("i", &Style{Fg: ansi.Red}, nil),
+					newWcCell("n", &Style{Fg: ansi.Red}, nil),
+					newWcCell("e", &Style{Fg: ansi.Red}, nil),
+					newWcCell("1", &Style{Fg: ansi.Red}, nil),
+				},
+				{
+					newWcCell("L", &Style{Fg: ansi.Red}, nil),
+					newWcCell("i", &Style{Fg: ansi.Red}, nil),
+					newWcCell("n", &Style{Fg: ansi.Red}, nil),
+					newWcCell("e", &Style{Fg: ansi.Red}, nil),
+					newWcCell("2", &Style{Fg: ansi.Red}, nil),
+				},
+			},
+		},
+		{
+			name:   "hyperlink",
+			input:  "\x1b]8;;https://charm.sh\x1b\\C\x1b]8;;\x1b\\",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("C", nil, &Link{URL: "https://charm.sh"}),
+				},
+			},
+		},
+		{
+			name:   "mixed styling with hyperlinks",
+			input:  "\x1b[31mR\x1b]8;;https://charm.sh\x1b\\\x1b[4mC\x1b]8;;\x1b\\\x1b[0m",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("R", &Style{Fg: ansi.Red}, nil),
+					newWcCell("C", &Style{Fg: ansi.Red, Underline: UnderlineStyleSingle}, &Link{URL: "https://charm.sh"}),
+				},
+			},
+		},
+		{
+			name:   "unicode characters",
+			input:  "a世b",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("a", nil, nil),
+					newWcCell("世", nil, nil),
+					newWcCell("b", nil, nil),
+				},
+			},
+		},
+		{
+			name:   "grapheme width method",
+			input:  "Hi",
+			method: ansi.GraphemeWidth,
+			expected: []Line{
+				{
+					{Content: "H", Width: 1},
+					{Content: "i", Width: 1},
+				},
+			},
+		},
+		{
+			name:   "leading newline",
+			input:  "\nhello",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{},
+				{
+					newWcCell("h", nil, nil),
+					newWcCell("e", nil, nil),
+					newWcCell("l", nil, nil),
+					newWcCell("l", nil, nil),
+					newWcCell("o", nil, nil),
+				},
+			},
+		},
+		{
+			name:   "trailing newline",
+			input:  "hello\n",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("h", nil, nil),
+					newWcCell("e", nil, nil),
+					newWcCell("l", nil, nil),
+					newWcCell("l", nil, nil),
+					newWcCell("o", nil, nil),
+				},
+				{},
+			},
+		},
+		{
+			name:   "multiple consecutive newlines",
+			input:  "a\n\nb",
+			method: ansi.WcWidth,
+			expected: []Line{
+				{
+					newWcCell("a", nil, nil),
+				},
+				{},
+				{
+					newWcCell("b", nil, nil),
+				},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			got := ss.Lines(tc.method)
+
+			if len(got) != len(tc.expected) {
+				t.Fatalf("expected %d lines, got %d", len(tc.expected), len(got))
+			}
+			for y := range tc.expected {
+				if len(got[y]) != len(tc.expected[y]) {
+					t.Fatalf("line %d: expected %d cells, got %d", y, len(tc.expected[y]), len(got[y]))
+				}
+				for x := range tc.expected[y] {
+					gotCell := &got[y][x]
+					wantCell := &tc.expected[y][x]
+					if !cellEqual(wantCell, gotCell) {
+						t.Errorf("cell (%d, %d): expected %#v, got %#v", x, y, wantCell, gotCell)
+					}
+				}
+			}
+		})
+	}
+}
