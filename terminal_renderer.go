@@ -1191,6 +1191,14 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	if curWidth != newWidth || curHeight != newHeight {
 		s.oldhash, s.newhash = nil, nil
+		// A shrink makes the terminal reflow in emulator-defined ways the
+		// incremental model cannot predict; force a full repaint. Only in
+		// fullscreen, where the renderer owns every cell it is about to
+		// clear. Inline mode shares the screen with whatever came before,
+		// so it uses the narrower partial clear below instead.
+		if s.flags.Contains(tFullscreen) && (newWidth < curWidth || newHeight < curHeight) {
+			s.clear = true
+		}
 	}
 
 	// TODO: Investigate whether this is necessary. Theoretically, terminals
@@ -1219,6 +1227,12 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		s.clearBelow(newbuf, nil, newHeight-1)
 	}
 
+	// Resize the model before diffing so the loop below walks every row
+	// of the new screen, including rows added by a grow.
+	if curWidth != newWidth || curHeight != newHeight {
+		s.curbuf.Resize(newWidth, newHeight)
+	}
+
 	if s.clear { //nolint:nestif
 		s.clearUpdate(newbuf)
 		s.clear = false
@@ -1237,14 +1251,10 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		var changedLines int
 		var i int
 
-		if s.flags.Contains(tFullscreen) {
-			nonEmpty = min(curHeight, newHeight)
-		} else {
-			nonEmpty = newHeight
-		}
+		nonEmpty = newHeight
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
-		for i = 0; i < nonEmpty && i < newHeight; i++ {
+		for i = 0; i < nonEmpty; i++ {
 			if newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
@@ -1282,15 +1292,6 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		}
 	}
 
-	if curWidth != newWidth || curHeight != newHeight {
-		// Resize the old buffer to match the new buffer.
-		s.curbuf.Resize(newWidth, newHeight)
-		// Sync new lines to old lines
-		for i := curHeight - 1; i < newHeight; i++ {
-			copy(s.curbuf.Line(i), newbuf.Line(i))
-		}
-	}
-
 	s.updatePen(nil) // nil indicates a blank cell with no styles
 }
 
@@ -1301,9 +1302,21 @@ func (s *TerminalRenderer) Erase() {
 
 // Resize updates the terminal screen tab stops. This is used to calculate
 // terminal tab stops for hard tab optimizations.
+//
+// Resize also invalidates the cursor model when the renderer can recover
+// from it: a terminal may move the cursor on any resize, so the remembered
+// position no longer matches reality, and the next move will be absolute.
+//
+// In relative cursor mode there is no absolute move to fall back on, and
+// -1 there means "first move, assume the origin" rather than "unknown", so
+// invalidating would assert a position instead of forgetting one. Keep the
+// old model in that mode and let the next render diff against it.
 func (s *TerminalRenderer) Resize(width, _ int) {
 	if s.tabs != nil {
 		s.tabs.Resize(width)
+	}
+	if !s.flags.Contains(tRelativeCursor) {
+		s.cur.X, s.cur.Y = -1, -1
 	}
 }
 
