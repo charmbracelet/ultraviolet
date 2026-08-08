@@ -131,7 +131,10 @@ func printString[T []byte | string](
 		switch width {
 		case 1, 2, 3, 4: // wide cells can go up to 4 cells wide
 			cell.Width = width
-			cell.Content = string(seq)
+			// Prepend any accumulated zero-width graphemes (ZWNJ, ZWSP,
+			// combining marks decoded as width-0 sequences) so they survive
+			// the cell round-trip instead of being clobbered.
+			cell.Content = cell.Content + string(seq)
 			cell.Style = style
 			cell.Link = link
 
