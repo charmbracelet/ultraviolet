@@ -2,6 +2,7 @@ package uv
 
 import (
 	"image/color"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -440,4 +441,66 @@ func newWcCell(s string, style *Style, link *Link) Cell {
 		c.Link = *link
 	}
 	return *c
+}
+
+// ASCII-heavy line: the common case. Guards the printString re-decode
+// pre-filter (str[1] >= 0xc0) from regressing plain-text draws.
+func BenchmarkPrintStringASCII(b *testing.B) {
+	line := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 4)
+	buf := NewScreenBuffer(200, 4)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		NewStyledString(line).Draw(buf, Rect(0, 0, 200, 1))
+	}
+}
+
+// GraphemeWidth variant of the ASCII draw, since the decoder selection
+// differs.
+func BenchmarkPrintStringASCIIGrapheme(b *testing.B) {
+	line := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 4)
+	buf := NewScreenBuffer(200, 4)
+	buf.Method = ansi.GraphemeWidth
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		NewStyledString(line).Draw(buf, Rect(0, 0, 200, 1))
+	}
+}
+
+// Cluster-heavy line: keycaps, VS16 emoji, combining marks. Exercises the
+// FirstGraphemeCluster re-decode path.
+func BenchmarkPrintStringClusters(b *testing.B) {
+	line := strings.Repeat("1️⃣❤️é☹️", 20)
+	buf := NewScreenBuffer(200, 4)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		NewStyledString(line).Draw(buf, Rect(0, 0, 200, 1))
+	}
+}
+
+func TestStyledStringCombiningMarks(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"combining mark folds into its base", "a\u0301b", []string{"a\u0301", "b"}},
+		{"keycap stays in one cell", "1\ufe0f\u20e3x", []string{"1\ufe0f\u20e3", "x"}},
+		{"style change between cells", "a\u0301\x1b[31mR", []string{"a\u0301", "R"}},
+		// The re-decode cannot fold this one, since the escape sequence sits
+		// between the base and the mark. The mark still belongs to the cell
+		// before it, and dropping it would lose the glyph.
+		{"style change between base and mark", "a\x1b[31m\u0301b", []string{"a\u0301", "b"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := NewScreenBuffer(10, 1)
+			NewStyledString(tc.in).Draw(buf, Rect(0, 0, 10, 1))
+			for x, want := range tc.want {
+				if got := buf.CellAt(x, 0).Content; got != want {
+					t.Errorf("cell %d = %q, want %q", x, got, want)
+				}
+			}
+		})
+	}
 }

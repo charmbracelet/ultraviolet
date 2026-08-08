@@ -1,6 +1,7 @@
 package conformance_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -191,15 +192,36 @@ func isKnownResidue(got, want string) bool {
 	return want != "" && got != want && strings.HasPrefix(got, want)
 }
 
+// Codepoints an emulator is known to swallow, so [FuzzScreenShowsContent] can
+// assert on everything else instead of giving up on whole clusters. Each entry
+// is a characterised emulator behaviour, not a renderer bug: keep them as tight
+// as the emulator forces and no tighter, since every rune listed here is one the
+// target can no longer catch the renderer dropping.
+const (
+	// VS16 asks for emoji presentation. ghostty's legacy width mode reads it as
+	// a hint and does not store it in the cell, so it never reads back.
+	variationSelector16 = '\ufe0f'
+	// The keycap combining mark. x/vt splits a keycap across two cells and the
+	// mark is lost from the row readback unless the cluster ends the line, so it
+	// disappears on a fresh full paint too. ghostty keeps it in both width
+	// modes, which is where the assertion still bites.
+	combiningKeycap = '\u20e3'
+)
+
 // oracles are the emulators every fuzz target runs against.
 var oracles = []struct {
-	name string
-	mk   func(*testing.T, int, int, bool) oracle
+	name  string
+	mk    func(*testing.T, int, int, bool) oracle
+	drops []rune
 }{
-	{"ghostty", newGhostty},
+	{"ghostty", newGhostty, []rune{variationSelector16}},
 	// x/vt has no legacy width mode, so its width model is fixed regardless of
 	// what the program asked for.
-	{"vt", func(t *testing.T, w, h int, _ bool) oracle { return newVT(t, w, h) }},
+	{
+		"vt",
+		func(t *testing.T, w, h int, _ bool) oracle { return newVT(t, w, h) },
+		[]rune{variationSelector16, combiningKeycap},
+	},
 }
 
 // addSeeds seeds a fuzz target from the shared corpus.
@@ -323,11 +345,19 @@ func FuzzRedrawResyncs(f *testing.F) {
 // repaint agree perfectly while both drop a glyph.
 //
 // So this target asserts something absolute instead. The most recently drawn
-// line must appear on its row, with every drift-prone cluster it contained
-// present the right number of times. It deliberately says nothing about
-// columns, because the emulators legitimately disagree about those, but "the
-// glyph reached the screen at all" is a floor that holds under every width
-// model.
+// line must appear on its row, with every codepoint of every drift-prone
+// cluster it contained present at least as many times as it was drawn.
+//
+// Codepoints are counted one at a time rather than as whole clusters because
+// the emulators disagree about how a cluster lands in cells: x/vt splits a
+// keycap across two, so the bytes are on the row but not contiguous. Counting
+// them separately keeps the assertion blind to layout and sharp about loss,
+// which matters, since dropping a combining mark is the bug this target was
+// written to catch. Where an emulator swallows a codepoint outright it is
+// listed in that oracle's drops, so the tolerance is per-emulator and named
+// rather than applied to everyone. Extra occurrences are tolerated as
+// emulator-defined residue from earlier draws. "The glyph reached the screen at
+// all" is a floor that holds under every width model.
 //
 // Only the last draw is checked, not every draw. A resize can clip rows drawn
 // earlier or shrink the screen below them, and whether clipped content should
@@ -382,13 +412,21 @@ func FuzzScreenShowsContent(f *testing.F) {
 				if want == 0 {
 					continue
 				}
-				if got := strings.Count(screen[lastY], cluster); got != want {
-					t.Errorf("%s: row %d shows %q %d times but %d were drawn\n"+
-						"  screen %q\n"+
-						"  drawn  %q\n"+
-						"program:\n%s",
-						o.name, lastY, cluster, got, want, screen[lastY], lastText, p)
-					return
+				// Count codepoints, not clusters; extras are residue.
+				for _, r := range cluster {
+					if slices.Contains(o.drops, r) {
+						continue
+					}
+					wantRune := strings.Count(lastText, string(r))
+					gotRune := strings.Count(screen[lastY], string(r))
+					if gotRune < wantRune {
+						t.Errorf("%s: row %d shows %q of cluster %q %d times but at least %d were drawn\n"+
+							"  screen %q\n"+
+							"  drawn  %q\n"+
+							"program:\n%s",
+							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[lastY], lastText, p)
+						return
+					}
 				}
 			}
 		}
