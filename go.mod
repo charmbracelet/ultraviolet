@@ -19,6 +19,6 @@ require (
 require github.com/clipperhouse/displaywidth v0.11.0 // indirect
 
 require (
-	github.com/lucasb-eyer/go-colorful v1.4.0
+	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 )
