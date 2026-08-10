@@ -129,7 +129,7 @@ jobs:
       # be committed as a regression test rather than lost with the runner.
       - name: Upload new crashers
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: crashers-${{ matrix.target }}
           path: internal/conformance/testdata/fuzz/
