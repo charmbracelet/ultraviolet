@@ -808,6 +808,64 @@ func (s *TerminalRenderer) el0Cost() int {
 	return len(ansi.EraseLineRight)
 }
 
+// lineHasDrift reports whether the line contains a cell that a cell-level
+// diff cannot safely reposition across: a wide cell (width > 1), or a cell
+// whose width the terminal may measure differently than the model. Wide cells
+// occupy several columns, so a diff that lands on a continuation column splits
+// the character; and a width disagreement means the model cannot know which
+// column each glyph landed on.
+func lineHasDrift(m ansi.Method, line Line) bool {
+	for i := 0; i < len(line); i++ {
+		c := line.At(i)
+		if c == nil || c.Width == 0 || len(c.Content) == 0 {
+			continue
+		}
+		if c.Width > 1 || m.StringWidth(c.Content) != ansi.StringWidth(c.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+// repaintLine repaints a line from scratch. Unlike
+// [TerminalRenderer.transformLine] it does not diff against the previous
+// frame: it erases the whole line from column 0 with [ansi.EraseLineRight]
+// and then writes the new frame's cells. Erasing from column 0 removes the
+// entire line including any wide cells the terminal painted at a different
+// width than the model measured, whose real extent the model cannot know.
+// The repaint then starts from a known-empty line and an absolute cursor
+// position, so the result does not depend on where the previous frame left
+// the cursor.
+func (s *TerminalRenderer) repaintLine(newbuf *RenderBuffer, y int) {
+	oldLine := s.curbuf.Line(y)
+	newLine := newbuf.Line(y)
+
+	s.move(newbuf, 0, y)
+	blank := s.clearBlank()
+	s.updatePen(blank)
+	_, _ = s.buf.WriteString(ansi.EraseLineRight)
+	s.cur.X = 0
+
+	// Write the content cells. The line was just erased, so trailing blanks
+	// need no write, and writing them would risk wrapping past the right
+	// margin if the terminal painted a wide cell wider than the model
+	// measured.
+	last := -1
+	for x := 0; x < newbuf.Width(); x++ {
+		if c := newLine.At(x); c != nil && !c.isWidePlaceholder() && !cellEqual(c, blank) {
+			last = x
+		}
+	}
+	for x := 0; x <= last; x++ {
+		s.putCell(newbuf, newLine.At(x))
+	}
+
+	// Adopt the new line as the model of what is on screen.
+	if len(oldLine) == len(newLine) {
+		copy(oldLine, newLine)
+	}
+}
+
 // transformLine transforms the given line in the current window to the
 // corresponding line in the new window. It uses [ansi.ICH] and [ansi.DCH] to
 // insert or delete characters.
@@ -818,6 +876,22 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 
 	s.lineHadWide = false
 	defer s.reanchorWideLine(newbuf)
+
+	// If either frame's line holds a cell that a cell-level diff cannot
+	// safely reposition across, repaint the whole line instead. A wide cell
+	// (width > 1) occupies several columns, so a diff that lands on a
+	// continuation column splits the character, and per DEC semantics (also
+	// implemented by ghostty and x/vt) an erase that splits a multi-cell
+	// character erases the whole character, including a head cell that
+	// belongs to the new frame. A cell whose width the terminal measures
+	// differently than the model (an emoji cluster, a keycap) leaves the
+	// real cursor at a column the model cannot predict, so a later erase in
+	// the same transform fires at the wrong column. Repainting depends only
+	// on an absolute cursor position and a known-empty line.
+	if lineHasDrift(s.method, oldLine) || lineHasDrift(s.method, newLine) {
+		s.repaintLine(newbuf, y)
+		return
+	}
 
 	// Find the first changed cell in the line
 	blank := newLine.At(0)

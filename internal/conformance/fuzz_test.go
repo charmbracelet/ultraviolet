@@ -7,6 +7,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/internal/conformance"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // runner drives one fuzz program against one emulator.
@@ -39,11 +40,19 @@ func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int
 	rend.SetScrollOptim(p.ScrollOptim)
 	rend.Erase()
 
+	// The buffer and the renderer must measure width the same way, otherwise
+	// the cells the renderer is asked to draw have widths it did not expect.
+	// The emulator follows the same flag, so all three agree.
+	buf := uv.NewScreenBuffer(p.Width, p.Height)
+	if p.GraphemeWidth {
+		buf.Method = ansi.GraphemeWidth
+	}
+
 	return &runner{
 		prog: p,
 		rend: rend,
 		term: term,
-		buf:  uv.NewScreenBuffer(p.Width, p.Height),
+		buf:  buf,
 		w:    p.Width,
 		h:    p.Height,
 	}
@@ -158,14 +167,6 @@ func compare(t *testing.T, p conformance.Program, what string, got, want []strin
 		if got[y] == want[y] {
 			continue
 		}
-		if isKnownResidue(got[y], want[y]) {
-			t.Skipf("known issue: a shrinking line leaves cluster residue behind\n"+
-				"  %s, row %d\n"+
-				"  got  %q\n"+
-				"  want %q\n"+
-				"program:\n%s",
-				what, y, got[y], want[y], p)
-		}
 		t.Errorf("%s: screen disagrees with a full repaint at row %d\n"+
 			"  got  %q\n"+
 			"  want %q\n"+
@@ -173,23 +174,6 @@ func compare(t *testing.T, p conformance.Program, what string, got, want []strin
 			what, y, got[y], want[y], p)
 		return
 	}
-}
-
-// isKnownResidue reports whether a mismatch is the already-characterised bug
-// where a shrinking line leaves the tail of a cluster behind.
-//
-// This exists because fuzzing cannot start past a failing seed: Go checks the
-// whole seed corpus before it begins mutating, so a single known bug blocks the
-// search for every unknown one. Recognising the known failure keeps the targets
-// fuzzable while leaving the expectation written down, and
-// TestKnownResidueStillReproduces fails once the bug is fixed, so the allowance
-// gets removed rather than quietly masking a later regression.
-//
-// The rule is deliberately narrow: the incremental screen must still contain the
-// entire expected row, with extra content only after it. Anything that erases or
-// shifts content fails as normal.
-func isKnownResidue(got, want string) bool {
-	return want != "" && got != want && strings.HasPrefix(got, want)
 }
 
 // Codepoints an emulator is known to swallow, so [FuzzScreenShowsContent] can
