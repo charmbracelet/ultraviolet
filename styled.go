@@ -139,8 +139,13 @@ func printString[T []byte | string](
 				seq, width, n = cluster, cw, len(cluster)
 			}
 		}
-		switch width {
-		case 1, 2, 3, 4: // wide cells can go up to 4 cells wide
+		switch {
+		// Any positive width is a printable grapheme cluster. Wcwidth measures
+		// a cluster per codepoint, so this is not bounded by how wide a glyph
+		// can be: a ZWJ emoji sequence such as "👨‍👩‍👧‍👦" is eight columns,
+		// and capping the width here would fall through to the escape sequence
+		// branch and drop the cluster from the screen.
+		case width > 0:
 			cell.Width = width
 			cell.Content = string(seq)
 			cell.Style = style

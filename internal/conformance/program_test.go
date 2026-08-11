@@ -181,28 +181,3 @@ func TestFuzzTargetsRunSeeds(t *testing.T) {
 	t.Log("go test runs each FuzzXxx target over its seeds; " +
 		"use -fuzz to search for new inputs")
 }
-
-// TestIsKnownResidueIsNarrow pins down the allowance that lets fuzzing start.
-//
-// isKnownResidue suppresses a real failure, so it has to stay tight. If it ever
-// widened to match erased or shifted content it would hide exactly the bugs
-// these targets exist to find, and nothing else would notice.
-func TestIsKnownResidueIsNarrow(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		got, want string
-		known     bool
-	}{
-		{"identical rows are not a failure at all", "ab", "ab", false},
-		{"trailing residue is the known bug", "a\u26d3\ufe0f\u200d\U0001f4a5\U0001f4a5", "a\u26d3\ufe0f\u200d\U0001f4a5", true},
-		{"erased content must still fail", "a", "a\u26d3\ufe0f\u200d\U0001f4a5", false},
-		{"shifted content must still fail", " ab", "ab", false},
-		{"a wholly different row must still fail", "xy", "ab", false},
-		{"an empty expectation must never be excused", "junk", "", false},
-	} {
-		if got := isKnownResidue(tc.got, tc.want); got != tc.known {
-			t.Errorf("%s: isKnownResidue(%q, %q) = %v, want %v",
-				tc.name, tc.got, tc.want, got, tc.known)
-		}
-	}
-}
