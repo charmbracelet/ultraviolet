@@ -6,6 +6,7 @@ import (
 	"hash/maphash"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -144,7 +145,7 @@ type TerminalRenderer struct {
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
-	lineHadWide      bool         // whether the line currently being transformed contained a wide cell
+	wideDrift        bool         // whether the terminal cursor column may have drifted after a wide glyph
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -435,6 +436,13 @@ func (s *TerminalRenderer) move(newbuf *RenderBuffer, x, y int) {
 		s.cur.X = 0
 		_ = s.buf.WriteByte('\r')
 		s.atPhantom = false // reset phantom cell state
+		s.wideDrift = false // CR lands on a known column
+	} else if s.wideDrift {
+		// The terminal's column may disagree with ours after wide glyphs. CR
+		// re-anchors the column so the movement below stays exact.
+		s.cur.X = 0
+		_ = s.buf.WriteByte('\r')
+		s.wideDrift = false
 	}
 
 	// TODO: Investigate if we need to handle this case and/or if we need the
@@ -529,6 +537,12 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 		s.atPhantom = false
 	}
 
+	if cell == nil || cell.Width == 1 {
+		// A narrow cell must land on its exact column, so fix any drift left
+		// behind by preceding wide glyphs first.
+		s.reanchor()
+	}
+
 	s.updatePen(cell)
 	cellWidth := 1
 	if cell == nil {
@@ -543,9 +557,33 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 		s.atPhantom = true
 	}
 
-	if cellWidth > 1 {
-		s.lineHadWide = true
+	if cell != nil && !s.flags.Contains(tGraphemeWidth) && cellMayDrift(cell) {
+		s.wideDrift = true
 	}
+}
+
+// cellMayDrift reports whether drawing the cell may desync the terminal's
+// cursor column from ours on terminals without mode 2027: legacy width tables
+// measure wide glyphs and multi-rune clusters (VS16/ZWJ sequences) differently.
+func cellMayDrift(cell *Cell) bool {
+	return cell.Width > 1 || utf8.RuneCountInString(cell.Content) > 1
+}
+
+// reanchor emits an absolute horizontal move when the terminal's cursor
+// column may disagree with ours. This happens after drawing wide glyphs on
+// terminals that did not negotiate Unicode grapheme width (mode 2027) and may
+// measure glyph widths differently (e.g. Terminal.app). Re-anchoring lazily
+// keeps the noise down: a run of wide glyphs re-anchors only once, right
+// before whatever needs an exact column next.
+func (s *TerminalRenderer) reanchor() {
+	if !s.wideDrift {
+		return
+	}
+	s.wideDrift = false
+	if s.atPhantom || s.cur.X < 0 {
+		return
+	}
+	_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
 }
 
 // putCellLR draws a cell at the lower right corner of the screen.
@@ -646,6 +684,7 @@ func (s *TerminalRenderer) emitRange(newbuf *RenderBuffer, line Line, n int) (eo
 			cup := ansi.CursorPosition(s.cur.X+count, s.cur.Y)
 			rep := ansi.RepeatPreviousCharacter(count)
 			if hasECH && count > len(ech)+len(cup) && canClearWith(&cell0) {
+				s.reanchor() // ECH erases at the cursor position
 				s.updatePen(&cell0)
 				_, _ = s.buf.WriteString(ech)
 
@@ -758,6 +797,7 @@ func (s *TerminalRenderer) clearToEnd(newbuf *RenderBuffer, blank *Cell, force b
 	}
 
 	if force {
+		s.reanchor() // EL erases from the cursor position
 		s.updatePen(blank)
 		count := newbuf.Width() - s.cur.X
 		if s.el0Cost() <= count {
@@ -816,8 +856,14 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
 
-	s.lineHadWide = false
-	defer s.reanchorWideLine(newbuf)
+	// Bound any residual drift from a trailing wide glyph to this line.
+	defer s.reanchor()
+
+	if !s.flags.Contains(tGraphemeWidth) &&
+		(lineMayDrift(oldLine, newbuf.Width()) || lineMayDrift(newLine, newbuf.Width())) {
+		s.redrawDriftLine(newbuf, oldLine, newLine, y)
+		return
+	}
 
 	// Find the first changed cell in the line
 	blank := newLine.At(0)
@@ -1009,20 +1055,46 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	}
 }
 
-// reanchorWideLine re-anchors the cursor with a single absolute horizontal
-// move after a line that contained a wide cell. This is a best-effort fallback
-// that bounds cursor desync to one line on terminals whose width model
-// disagrees with ours. When the terminal negotiated Unicode grapheme width
-// (mode 2027) the models agree, so no re-anchor is needed.
-func (s *TerminalRenderer) reanchorWideLine(newbuf *RenderBuffer) {
-	if !s.lineHadWide || s.flags.Contains(tGraphemeWidth) {
-		return
+// lineMayDrift reports whether the line contains cells that may desync the
+// terminal's cursor column on terminals without mode 2027.
+func lineMayDrift(line Line, width int) bool {
+	for x := 0; x < width; x++ {
+		if c := line.At(x); c != nil && cellMayDrift(c) {
+			return true
+		}
 	}
-	s.lineHadWide = false
-	if s.atPhantom || s.cur.X < 0 || s.cur.X >= newbuf.Width() {
-		return
+	return false
+}
+
+// redrawDriftLine erases and redraws a changed line wholly. Around
+// drift-prone glyphs, cell-level diffing cannot be trusted: the terminal may
+// have drawn them wider or narrower than we modeled, so the real screen
+// content around them differs from curbuf. Erasing first also wipes any
+// residue such glyphs left behind.
+func (s *TerminalRenderer) redrawDriftLine(newbuf *RenderBuffer, oldLine, newLine Line, y int) {
+	width := newbuf.Width()
+
+	firstCell := 0
+	for firstCell < width && cellEqual(oldLine.At(firstCell), newLine.At(firstCell)) {
+		firstCell++
 	}
-	_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
+	if firstCell >= width {
+		return // nothing changed
+	}
+
+	s.move(newbuf, 0, y)
+
+	last := width - 1
+	if blank := newLine.At(last); canClearWith(blank) {
+		s.updatePen(blank)
+		_, _ = s.buf.WriteString(ansi.EraseLineRight)
+		for last > 0 && cellEqual(newLine.At(last), blank) {
+			last--
+		}
+	}
+	s.emitRange(newbuf, newLine, last+1)
+
+	copy(oldLine, newLine)
 }
 
 // deleteCells deletes the count cells at the current cursor position and moves
@@ -1107,6 +1179,7 @@ func (s *TerminalRenderer) clearScreen(blank *Cell) {
 	_, _ = s.buf.WriteString(ansi.CursorHomePosition)
 	_, _ = s.buf.WriteString(ansi.EraseEntireScreen)
 	s.cur.X, s.cur.Y = 0, 0
+	s.wideDrift = false
 	s.curbuf.Fill(blank)
 }
 
@@ -1461,6 +1534,12 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 					cell := newbuf.CellAt(fx+i, ty)
 					if cell != nil && cell.Width > 0 {
 						i += cell.Width - 1
+						if !s.flags.Contains(tGraphemeWidth) && cellMayDrift(cell) {
+							// Overwriting these cells drifts the cursor on
+							// terminals without mode 2027.
+							overwrite = false
+							break
+						}
 						if !cell.Style.Equal(&s.cur.Style) || !cell.Link.Equal(&s.cur.Link) {
 							overwrite = false
 							break
