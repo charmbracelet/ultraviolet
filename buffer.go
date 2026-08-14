@@ -457,6 +457,28 @@ func (b *Buffer) InsertLine(y, n int, c *Cell) {
 	b.InsertLineArea(y, n, c, b.Bounds())
 }
 
+// canRotateLines reports whether [Buffer.InsertLineArea] and
+// [Buffer.DeleteLineArea] may rotate whole line slices instead of copying cells
+// one by one. This requires the area to span the full width of every affected
+// line, and the fill cell to be a plain single-width cell: wide cells and their
+// zero-width placeholders need the fix-up logic in [Line.Set].
+func (b *Buffer) canRotateLines(c *Cell, area Rectangle) bool {
+	if c != nil && c.Width != 1 {
+		return false
+	}
+	width := b.Width()
+	if area.Min.X != 0 || area.Max.X != width ||
+		area.Min.Y < 0 || area.Max.Y > len(b.Lines) {
+		return false
+	}
+	for i := area.Min.Y; i < area.Max.Y; i++ {
+		if len(b.Lines[i]) != width {
+			return false
+		}
+	}
+	return true
+}
+
 // InsertLineArea inserts new lines at the given line position, with the
 // given optional cell, within the rectangle bounds. Only cells within the
 // rectangle's horizontal bounds are affected. Lines are pushed out of the
@@ -469,6 +491,26 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 	// Limit number of lines to insert to available space
 	if y+n > area.Max.Y {
 		n = area.Max.Y - y
+	}
+
+	// Fast path: rotate the line slices instead of copying every cell. This is
+	// the common case (a terminal scrolling within its scroll region) and turns
+	// O(area) cell copies into O(rows) slice-header moves plus one O(width)
+	// blank fill of the line that gets recycled.
+	if b.canRotateLines(c, area) {
+		blank := EmptyCell
+		if c != nil {
+			blank = *c
+		}
+		for range n {
+			recycled := b.Lines[area.Max.Y-1]
+			copy(b.Lines[y+1:area.Max.Y], b.Lines[y:area.Max.Y-1])
+			for x := range recycled {
+				recycled[x] = blank
+			}
+			b.Lines[y] = recycled
+		}
+		return
 	}
 
 	// Move existing lines down within the bounds
@@ -500,6 +542,23 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 	// Limit deletion count to available space in scroll region
 	if n > area.Max.Y-y {
 		n = area.Max.Y - y
+	}
+
+	// Fast path: see [Buffer.InsertLineArea].
+	if b.canRotateLines(c, area) {
+		blank := EmptyCell
+		if c != nil {
+			blank = *c
+		}
+		for range n {
+			recycled := b.Lines[y]
+			copy(b.Lines[y:area.Max.Y-1], b.Lines[y+1:area.Max.Y])
+			for x := range recycled {
+				recycled[x] = blank
+			}
+			b.Lines[area.Max.Y-1] = recycled
+		}
+		return
 	}
 
 	// Shift cells up within the bounds
