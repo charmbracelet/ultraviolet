@@ -147,7 +147,10 @@ func printString[T []byte | string](
 		// branch and drop the cluster from the screen.
 		case width > 0:
 			cell.Width = width
-			cell.Content = string(seq)
+			// Prepend any accumulated zero-width graphemes (ZWNJ, ZWSP,
+			// combining marks decoded as width-0 sequences) so they survive
+			// the cell round-trip instead of being clobbered.
+			cell.Content = cell.Content + string(seq)
 			cell.Style = style
 			cell.Link = link
 

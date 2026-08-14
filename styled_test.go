@@ -377,6 +377,34 @@ func TestStyledString(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:           "zero-width graphemes preserved",
+			input:          "a\u200bb",
+			expectedWidth:  2,
+			expectedHeight: 1,
+			expected: &Buffer{
+				Lines: []Line{
+					{
+						newWcCell("a", nil, nil),
+						newWcCell("\u200bb", nil, nil),
+					},
+				},
+			},
+		},
+		{
+			name:           "combining mark preserved",
+			input:          "e\u0301x",
+			expectedWidth:  2,
+			expectedHeight: 1,
+			expected: &Buffer{
+				Lines: []Line{
+					{
+						newWcCell("e", nil, nil),
+						newWcCell("\u0301x", nil, nil),
+					},
+				},
+			},
+		},
 	}
 
 	for i, tc := range cases {
