@@ -1061,6 +1061,20 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 				s.insertCells(newbuf, newLine[n+1:], nLastCell-oLastCell)
 			}
 		} else if oLastCell > nLastCell {
+			// If the last reprinted cell (at n) is a wide character, its
+			// continuation (zero-width) cell occupies n+1. Deleting at n+1
+			// would split the wide character and corrupt the display (e.g.
+			// injecting a phantom space between CJK glyphs). Advance past the
+			// continuation cell(s) so that DCH targets the first real cell to
+			// remove. This mirrors the wide-char adjustment in the insert
+			// branch above.
+			if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
+				next := newLine.At(n + 1)
+				for next.isWidePlaceholder() {
+					n++
+					next = newLine.At(n + 1)
+				}
+			}
 			s.move(newbuf, n+1, y)
 			dchCost := 3 + oLastCell - nLastCell
 			if dchCost > len(ansi.EraseLineRight)+nLastNonBlank-(n+1) {
