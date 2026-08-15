@@ -550,7 +550,7 @@ func TestParseSequence(t *testing.T) {
 		seqTest{
 			[]byte("\x1b_Gi=1337,q=1;EINVAL:your face\x1b\\"),
 			[]Event{KittyGraphicsEvent{
-				Options: kitty.Options{ID: 1337, Quite: 1},
+				Options: kitty.Options{ID: 1337, Quiet: 1},
 				Payload: []byte("EINVAL:your face"),
 			}},
 		},

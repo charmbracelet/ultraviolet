@@ -22,16 +22,10 @@ func TestReader(t *testing.T) {
 		t.Errorf("expected no error, but got %s", err)
 	}
 
-	msg := "hello"
-	n, err := pw.Write([]byte(msg))
-	if n != 5 {
-		t.Errorf("expected 5 bytes written but got %d", n)
-	}
-	if err != nil {
-		t.Errorf("expected no error, but got %s", err)
-	}
-
+	// Don't write anything to the pipe yet so the read below blocks and
+	// cannot complete before the cancellation.
 	done := make(chan struct{})
+	var n int
 	go func() {
 		defer close(done)
 		p := make([]byte, 1)
@@ -56,6 +50,14 @@ func TestReader(t *testing.T) {
 
 	// Test that read is still possible after cancellation.
 	pollReader, err = newPollReader(pr)
+	if err != nil {
+		t.Errorf("expected no error, but got %s", err)
+	}
+	msg := "hello"
+	n, err = pw.Write([]byte(msg))
+	if n != 5 {
+		t.Errorf("expected 5 bytes written but got %d", n)
+	}
 	if err != nil {
 		t.Errorf("expected no error, but got %s", err)
 	}

@@ -1,0 +1,136 @@
+name: conformance
+
+# Fuzz tests that drive the renderer against real terminal emulators.
+#
+# They live in their own module (internal/conformance) because the reference
+# emulator is a cgo package with a newer Go requirement, and neither cost
+# belongs in the library that ships to users. That also means the root module's
+# CI never runs them, so they get their own workflow here.
+
+# push is scoped to main so a push to a PR branch fires only the
+# pull_request run, not both. Merges to main still run via push.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A nightly coverage-guided run, so new bugs are found without waiting for
+    # someone to run -fuzz by hand.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+env:
+  # Pinned to the ghostty commit that go-libghostty builds against. Bump this
+  # when that pin moves, or the cache goes stale and the build slows down.
+  GHOSTTY_PIN: 2dd79f3bc6af649e68422b08e21ad0300fd8b391
+  ZIG_VERSION: "0.16.0"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ./internal/conformance/go.mod
+          cache: true
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      # libghostty-vt is a C library that go-libghostty links via pkg-config.
+      # Building it from source takes a couple of minutes, so cache the output.
+      # The cache is keyed on the ghostty commit and the OS, so it rebuilds only
+      # when the pin moves.
+      - name: Cache libghostty-vt
+        id: cache-vt
+        uses: actions/cache@v6
+        with:
+          path: .cache/libghostty-vt
+          key: libghostty-vt-${{ env.GHOSTTY_PIN }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build libghostty-vt
+        if: steps.cache-vt.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
+          cmake -B /tmp/go-libghostty/build -S /tmp/go-libghostty -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/go-libghostty/build
+          mkdir -p .cache
+          cp -r /tmp/go-libghostty/build/_deps/ghostty-src/zig-out .cache/libghostty-vt
+
+      # The .pc file records the absolute path it was built at. Rewrite it to
+      # point at this workspace so a restored cache resolves correctly.
+      - name: Configure pkg-config
+        run: sed -i "s|^prefix=.*|prefix=${{ github.workspace }}/.cache/libghostty-vt|" .cache/libghostty-vt/share/pkgconfig/libghostty-vt-static.pc
+
+      - name: Test
+        working-directory: ./internal/conformance
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/.cache/libghostty-vt/share/pkgconfig
+        run: go test -count=1 -timeout 10m ./...
+
+
+  # Coverage-guided fuzzing. This is deliberately not run on every push; it is
+  # slow and its job is to find new bugs, not to gate commits. The test job
+  # above already replays every known failing input on each push.
+  fuzz:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - FuzzRenderer
+          - FuzzRendererIdempotent
+          - FuzzRedrawResyncs
+          - FuzzScreenShowsContent
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: ./internal/conformance/go.mod
+          cache: true
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Cache libghostty-vt
+        id: cache-vt
+        uses: actions/cache@v6
+        with:
+          path: .cache/libghostty-vt
+          key: libghostty-vt-${{ env.GHOSTTY_PIN }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build libghostty-vt
+        if: steps.cache-vt.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
+          cmake -B /tmp/go-libghostty/build -S /tmp/go-libghostty -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/go-libghostty/build
+          mkdir -p .cache
+          cp -r /tmp/go-libghostty/build/_deps/ghostty-src/zig-out .cache/libghostty-vt
+
+      # The .pc file records the absolute path it was built at. Rewrite it to
+      # point at this workspace so a restored cache resolves correctly.
+      - name: Configure pkg-config
+        run: sed -i "s|^prefix=.*|prefix=${{ github.workspace }}/.cache/libghostty-vt|" .cache/libghostty-vt/share/pkgconfig/libghostty-vt-static.pc
+
+      - name: Fuzz ${{ matrix.target }}
+        working-directory: ./internal/conformance
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/.cache/libghostty-vt/share/pkgconfig
+        run: go test -run='XXX' -fuzz='${{ matrix.target }}$' -fuzztime=15m
+
+      # A new crasher is written under testdata/ on failure. Upload it so it can
+      # be committed as a regression test rather than lost with the runner.
+      - name: Upload new crashers
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: crashers-${{ matrix.target }}
+          path: internal/conformance/testdata/fuzz/
+          if-no-files-found: ignore

@@ -3,6 +3,7 @@ package uv
 import (
 	"bytes"
 	"image/color"
+	"io"
 	"strings"
 	"testing"
 
@@ -622,7 +623,8 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	output := buf.String()
-	expected := "\x1b[HX\r\n\n\x1b[J\x1bMX\x1b[K\r\n\n\n\n"
+	// Home, draw X at (0,0); newline, draw X at (0,1); pad cursor to row 5.
+	expected := "\x1b[HX\r\nX\r\n\n\n\n"
 	if output != expected {
 		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
 	}
@@ -1335,4 +1337,147 @@ func (l *testLogger) Printf(format string, args ...interface{}) {
 	l.buf.WriteString("LOG: ")
 	l.buf.WriteString(format)
 	l.buf.WriteByte('\n')
+}
+
+// Steady-state render of a small changed region, no resize. The common
+// per-frame path.
+func BenchmarkRenderFrame(b *testing.B) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	buf := NewScreenBuffer(80, 24)
+	text := NewStyledString(strings.Repeat("x", 79))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		text.Draw(buf, Rect(0, i%24, 80, 1))
+		r.Render(buf.RenderBuffer)
+	}
+}
+
+// Render across alternating grow/shrink resizes, exercising the early curbuf
+// resize and the forced clear on shrink. The buffers are built up front so the
+// measurement is the renderer's resize handling and not ScreenBuffer.Resize
+// reallocating a grid every iteration.
+func BenchmarkRenderResize(b *testing.B) {
+	sizes := [][2]int{{100, 30}, {60, 20}, {120, 40}, {80, 24}}
+	bufs := make([]ScreenBuffer, len(sizes))
+	for i, sz := range sizes {
+		bufs[i] = NewScreenBuffer(sz[0], sz[1])
+	}
+
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	text := NewStyledString(strings.Repeat("x", 40))
+	text.Draw(bufs[0], Rect(0, 0, sizes[0][0], 1))
+	r.Render(bufs[0].RenderBuffer)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		n := i % len(sizes)
+		sz, buf := sizes[n], bufs[n]
+		r.Resize(sz[0], sz[1])
+		text.Draw(buf, Rect(0, 0, sz[0], 1))
+		r.Render(buf.RenderBuffer)
+	}
+}
+
+// A resize invalidates the renderer's cursor model so the next move is
+// absolute. In relative cursor mode there is no absolute move, and -1 there
+// means "first move, assume the origin", so invalidating would assert a
+// position rather than forget one and every later row would land low.
+func TestRendererInlineResizeKeepsCursorModel(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(80, 24)
+
+	cellbuf := NewRenderBuffer(80, 3)
+	for y := range 3 {
+		cellbuf.SetCell(0, y, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// A resize event that changes nothing, as a SIGWINCH handler would send.
+	r.Resize(80, 24)
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// Cursor is on row 2 after the first render, so reaching row 0 has to move
+	// up. Without the two-row move the "b" lands on row 2.
+	expected := "\r\x1b[2Ab"
+	if output := buf.String(); output != expected {
+		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
+	}
+}
+
+// A shrink forces a full repaint so the renderer does not diff against a model
+// the terminal has reflowed underneath it. Inline mode shares the screen with
+// whatever came before, so it keeps the narrower partial clear instead.
+func TestRendererInlineShrinkClearsPartially(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(80, 24)
+
+	cellbuf := NewRenderBuffer(80, 3)
+	for y := range 3 {
+		cellbuf.SetCell(0, y, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// The application gives up a row.
+	cellbuf.Resize(80, 2)
+	r.Resize(80, 24)
+	cellbuf.SetCell(0, 1, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// Up one row from row 2, erase the rest of the screen, redraw row 1.
+	expected := "\r\x1bM\x1b[Jb\r"
+	if output := buf.String(); output != expected {
+		t.Errorf("expected output after shrink to be %q, got: %q", expected, output)
+	}
+}
+
+// Rows added by a grow have to be diffed like any other. The model is resized
+// before the diff loop runs so the loop walks them; otherwise content drawn
+// into a new row never reaches the terminal.
+func TestRendererGrowPaintsNewRows(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(10, 3)
+
+	cellbuf := NewRenderBuffer(10, 3)
+	cellbuf.SetCell(0, 0, &Cell{Content: "A", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	cellbuf.Resize(10, 6)
+	r.Resize(10, 6)
+	cellbuf.SetCell(0, 5, &Cell{Content: "Z", Width: 1}) // a row the grow added
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	expected := "\x1b[6;1HZ"
+	if output := buf.String(); output != expected {
+		t.Errorf("expected output after grow to be %q, got: %q", expected, output)
+	}
 }
