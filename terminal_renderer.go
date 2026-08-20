@@ -1301,15 +1301,24 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		s.clearBelow(newbuf, nil, newHeight-1)
 	}
 
+	// Keep the old height through an inline erase so we can still walk the
+	// cursor back to the top. Shrinking first clamps Y and we never move.
+	holdHeight := s.clear &&
+		!s.flags.Contains(tFullscreen) &&
+		curHeight > newHeight
+
 	// Resize the model before diffing so the loop below walks every row
 	// of the new screen, including rows added by a grow.
-	if curWidth != newWidth || curHeight != newHeight {
+	if !holdHeight && (curWidth != newWidth || curHeight != newHeight) {
 		s.curbuf.Resize(newWidth, newHeight)
 	}
 
 	if s.clear { //nolint:nestif
 		s.clearUpdate(newbuf)
 		s.clear = false
+		if holdHeight {
+			s.curbuf.Resize(newWidth, newHeight)
+		}
 	} else if touchedLines > 0 {
 		// On Windows, there's a bug with Windows Terminal where [ansi.DECSTBM]
 		// misbehaves and moves the cursor outside of the scrolling region. For
