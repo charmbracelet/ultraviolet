@@ -184,6 +184,76 @@ func TestRendererWideCellReanchor(t *testing.T) {
 	}
 }
 
+func TestRendererNarrowClusterReanchor(t *testing.T) {
+	// Under wcwidth a VS16 cluster such as "☹️" measures a single column, but a
+	// terminal that doesn't negotiate mode 2027 may advance the cursor further.
+	// Such a line must be re-anchored too, otherwise the drift leaks into the
+	// relative cursor movements of the following lines.
+	render := func(grapheme bool) string {
+		var buf bytes.Buffer
+		s := NewTerminalRenderer(&buf, []string{
+			"TERM=xterm-256color",
+			"COLORTERM=truecolor",
+		})
+		s.SetFullscreen(true)
+		s.SetGraphemeWidth(grapheme)
+		s.SaveCursor()
+		s.Erase()
+
+		scr := NewScreenBuffer(10, 2)
+		buf.Reset()
+		NewStyledString("☹️abc\n     Z").Draw(scr, scr.Bounds())
+		s.Render(scr.RenderBuffer)
+		if err := s.Flush(); err != nil {
+			t.Fatalf("Flush failed: %v", err)
+		}
+		return buf.String()
+	}
+
+	if out := render(false); !strings.Contains(out, "\x1b[5G") {
+		t.Errorf("line with a narrow cluster should be re-anchored: %q", out)
+	}
+	if out := render(true); strings.Contains(out, "\x1b[5G") {
+		t.Errorf("grapheme-mode line should not re-anchor: %q", out)
+	}
+}
+
+func TestRendererUnchangedDriftLineNotRepainted(t *testing.T) {
+	// Lines that hold drift-prone cells are repainted instead of diffed, but
+	// only when they actually changed: an untouched line must cost nothing.
+	var buf bytes.Buffer
+	s := NewTerminalRenderer(&buf, []string{
+		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+	})
+	s.SetFullscreen(true)
+	s.SetGraphemeWidth(false)
+	s.SaveCursor()
+	s.Erase()
+
+	scr := NewScreenBuffer(10, 2)
+	NewStyledString("☹️世abc\nxyz").Draw(scr, scr.Bounds())
+	s.Render(scr.RenderBuffer)
+	if err := s.Flush(); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	buf.Reset()
+	NewStyledString("☹️世abc\nxyZ").Draw(scr, scr.Bounds())
+	s.Render(scr.RenderBuffer)
+	if err := s.Flush(); err != nil {
+		t.Fatalf("Flush failed: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "☹️") || strings.Contains(out, "世") {
+		t.Errorf("unchanged drift-prone line was repainted: %q", out)
+	}
+	if !strings.Contains(out, "Z") {
+		t.Errorf("changed line was not updated: %q", out)
+	}
+}
+
 var loremIpsum = []string{
 	"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vivamus at ornare risus, quis lacinia magna. Suspendisse egestas purus risus, id rutrum diam porta non. Duis luctus tempus dictum. Maecenas luctus metus vitae nulla consectetur egestas. Curabitur faucibus nunc vel eros semper scelerisque. Proin dictum aliquam lacus dignissim fringilla. Praesent ut quam id dui aliquam vehicula in vitae orci. Fusce imperdiet aliquam quam. Nullam euismod magna tincidunt nisl ullamcorper, dignissim rutrum arcu rutrum. Nulla ac fringilla velit. Duis non pellentesque erat.",
 	"In egestas ex et sem vulputate, congue bibendum diam ultrices. Nam auctor dictum enim, in rutrum nulla vestibulum sit amet. Vestibulum vel velit ac sem pellentesque accumsan. Vivamus pharetra mi non arcu tristique gravida. Interdum et malesuada fames ac ante ipsum primis in faucibus. Sed molestie lectus nunc, sit amet rhoncus orci laoreet vel. Nulla eget mattis massa. Nunc porta eros sollicitudin lorem dapibus luctus. Vestibulum ut turpis ut nibh tincidunt feugiat. Integer eget augue nunc. Morbi vitae ultrices neque. Nulla et convallis libero. Cras nec faucibus odio. Maecenas lacinia sed odio sit amet ultrices.",

@@ -144,7 +144,7 @@ type TerminalRenderer struct {
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
-	lineHadWide      bool         // whether the line currently being transformed contained a wide cell
+	lineHadDrift     bool         // whether the line currently being transformed held a drift-prone cell
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -543,8 +543,8 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 		s.atPhantom = true
 	}
 
-	if cellWidth > 1 {
-		s.lineHadWide = true
+	if cellHasDrift(s.method, cell) {
+		s.lineHadDrift = true
 	}
 }
 
@@ -808,6 +808,24 @@ func (s *TerminalRenderer) el0Cost() int {
 	return len(ansi.EraseLineRight)
 }
 
+// cellHasDrift reports whether the terminal may advance the cursor by a
+// different number of columns than the model measured for the cell: a wide
+// cell (width > 1) spans several columns, and a cell whose width the terminal
+// measures differently than the model (an emoji cluster, a keycap) leaves the
+// cursor at a column the model cannot predict.
+func cellHasDrift(m ansi.Method, c *Cell) bool {
+	if c == nil || c.Width == 0 || len(c.Content) == 0 {
+		return false
+	}
+	if c.Width > 1 {
+		return true
+	}
+	if len(c.Content) == 1 {
+		return false // ASCII, both models agree
+	}
+	return m.StringWidth(c.Content) != ansi.StringWidth(c.Content)
+}
+
 // lineHasDrift reports whether the line contains a cell that a cell-level
 // diff cannot safely reposition across: a wide cell (width > 1), or a cell
 // whose width the terminal may measure differently than the model. Wide cells
@@ -816,15 +834,24 @@ func (s *TerminalRenderer) el0Cost() int {
 // column each glyph landed on.
 func lineHasDrift(m ansi.Method, line Line) bool {
 	for i := 0; i < len(line); i++ {
-		c := line.At(i)
-		if c == nil || c.Width == 0 || len(c.Content) == 0 {
-			continue
-		}
-		if c.Width > 1 || m.StringWidth(c.Content) != ansi.StringWidth(c.Content) {
+		if cellHasDrift(m, line.At(i)) {
 			return true
 		}
 	}
 	return false
+}
+
+// lineEqual reports whether both lines hold the same cells.
+func lineEqual(a, b Line) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !cellEqual(a.At(i), b.At(i)) {
+			return false
+		}
+	}
+	return true
 }
 
 // repaintLine repaints a line from scratch. Unlike
@@ -839,6 +866,11 @@ func lineHasDrift(m ansi.Method, line Line) bool {
 func (s *TerminalRenderer) repaintLine(newbuf *RenderBuffer, y int) {
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
+
+	if lineEqual(oldLine, newLine) {
+		// Nothing changed, no need to pay for a full repaint.
+		return
+	}
 
 	s.move(newbuf, 0, y)
 	blank := s.clearBlank()
@@ -874,8 +906,8 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
 
-	s.lineHadWide = false
-	defer s.reanchorWideLine(newbuf)
+	s.lineHadDrift = false
+	defer s.reanchorDriftLine(newbuf)
 
 	// If either frame's line holds a cell that a cell-level diff cannot
 	// safely reposition across, repaint the whole line instead. A wide cell
@@ -1083,16 +1115,16 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	}
 }
 
-// reanchorWideLine re-anchors the cursor with a single absolute horizontal
-// move after a line that contained a wide cell. This is a best-effort fallback
-// that bounds cursor desync to one line on terminals whose width model
-// disagrees with ours. When the terminal negotiated Unicode grapheme width
-// (mode 2027) the models agree, so no re-anchor is needed.
-func (s *TerminalRenderer) reanchorWideLine(newbuf *RenderBuffer) {
-	if !s.lineHadWide || s.flags.Contains(tGraphemeWidth) {
+// reanchorDriftLine re-anchors the cursor with a single absolute horizontal
+// move after a line that held a drift-prone cell. This is a best-effort
+// fallback that bounds cursor desync to one line on terminals whose width
+// model disagrees with ours. When the terminal negotiated Unicode grapheme
+// width (mode 2027) the models agree, so no re-anchor is needed.
+func (s *TerminalRenderer) reanchorDriftLine(newbuf *RenderBuffer) {
+	if !s.lineHadDrift || s.flags.Contains(tGraphemeWidth) {
 		return
 	}
-	s.lineHadWide = false
+	s.lineHadDrift = false
 	if s.atPhantom || s.cur.X < 0 || s.cur.X >= newbuf.Width() {
 		return
 	}
