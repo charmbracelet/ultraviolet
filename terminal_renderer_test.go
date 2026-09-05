@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestSimpleRendererOutput(t *testing.T) {
@@ -1454,6 +1455,10 @@ func TestRendererInlineShrinkClearsPartially(t *testing.T) {
 // Rows added by a grow have to be diffed like any other. The model is resized
 // before the diff loop runs so the loop walks them; otherwise content drawn
 // into a new row never reaches the terminal.
+//
+// The grow repaints the screen rather than diffing it. The terminal fills rows
+// it gains from its own scrollback, and those lines arrive at the top and push
+// the rest down, so no row keeps its meaning across the resize.
 func TestRendererGrowPaintsNewRows(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
@@ -1476,8 +1481,199 @@ func TestRendererGrowPaintsNewRows(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	expected := "\x1b[6;1HZ"
+	expected := "\x1b[H\x1b[2JA\r\x1b[6dZ"
 	if output := buf.String(); output != expected {
 		t.Errorf("expected output after grow to be %q, got: %q", expected, output)
+	}
+}
+
+// A fullscreen shrink scrolls the terminal to keep the cursor visible, moving
+// every row the model has an opinion about. The next render has to repaint
+// rather than diff against a model the terminal moved underneath it, and
+// growing back does not undo the move.
+//
+// [TerminalRenderer.Render] catches a shrink it can see in the buffer
+// dimensions. This one it cannot: the screen shrinks and grows back with no
+// render in between, so only the resize itself can report it.
+func TestRendererFullscreenShrinkRepaints(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(10, 4)
+
+	cellbuf := NewRenderBuffer(10, 4)
+	cellbuf.SetCell(0, 2, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Resize(10, 2)
+	r.Resize(10, 4)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("shrink should force a repaint, got: %q", out)
+	}
+}
+
+// A drift-prone line is painted with autowrap off. A terminal that measures a
+// cluster wider than the model does would otherwise run past the right margin,
+// spilling the line onto the next row, or scrolling the whole screen when the
+// line is the last one. Neither shows up in the model, so the residue outlives
+// every later frame.
+func TestRendererNoWrapOnDriftLine(t *testing.T) {
+	render := func(content string, width, y int) string {
+		var buf bytes.Buffer
+		r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		r.Resize(width, 2)
+
+		scr := NewScreenBuffer(width, 2)
+		NewStyledString(content).Draw(scr, Rect(0, y, width, 1))
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		return buf.String()
+	}
+
+	for _, y := range []int{0, 1} {
+		wide := render("世界", 6, y)
+		if !strings.Contains(wide, ansi.ResetModeAutoWrap) || !strings.Contains(wide, ansi.SetModeAutoWrap) {
+			t.Errorf("drift-prone row %d should paint with autowrap off, got: %q", y, wide)
+		}
+	}
+
+	// A row of plain cells cannot overflow, so it pays nothing.
+	narrow := render("abc", 6, 1)
+	if strings.Contains(narrow, ansi.ResetModeAutoWrap) {
+		t.Errorf("plain row should not touch autowrap, got: %q", narrow)
+	}
+}
+
+// The repaint a height change forces belongs to fullscreen mode and to actual
+// changes. Inline frames are shorter than the terminal by design, and a render
+// that resizes nothing has nothing to distrust.
+func TestHeightRepaintScope(t *testing.T) {
+	render := func(r *TerminalRenderer, w, h int, mark string) {
+		cb := NewRenderBuffer(w, h)
+		cb.SetCell(0, 0, &Cell{Content: mark, Width: 1})
+		r.Render(cb)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("Flush: %v", err)
+		}
+	}
+
+	t.Run("inline mode leaves the height alone", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+		r.SetRelativeCursor(true)
+		render(r, 10, 2, "a")
+		buf.Reset()
+		render(r, 10, 5, "a")
+		if strings.Contains(buf.String(), ansi.EraseEntireScreen) {
+			t.Errorf("inline mode repainted on a height change: %q", buf.String())
+		}
+	})
+
+	t.Run("a steady size does not repaint", func(t *testing.T) {
+		var buf bytes.Buffer
+		r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		render(r, 10, 3, "a")
+		buf.Reset()
+		render(r, 10, 3, "b")
+		if strings.Contains(buf.String(), ansi.EraseEntireScreen) {
+			t.Errorf("repainted without a resize: %q", buf.String())
+		}
+	})
+
+	t.Run("degenerate sizes do not panic", func(t *testing.T) {
+		for _, size := range [][2]int{{0, 0}, {10, 0}, {0, 5}, {1, 1}} {
+			var buf bytes.Buffer
+			r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+			r.SetFullscreen(true)
+			render(r, 10, 3, "a")
+			r.Resize(size[0], size[1])
+			r.Render(NewRenderBuffer(size[0], size[1]))
+			if err := r.Flush(); err != nil {
+				t.Fatalf("size %v: Flush: %v", size, err)
+			}
+		}
+	})
+}
+
+// A carried sequence has to reach the terminal, and only when its cell changes.
+// Re-sending it every frame would have an image protocol retransmit the image
+// at the frame rate.
+func TestPassThroughSequenceReachesTerminalOnce(t *testing.T) {
+	const apc = "\x1b_Ga=T\x1b\\"
+
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+
+	scr := NewScreenBuffer(10, 2)
+	NewStyledString(apc+"hi").Draw(scr, Rect(0, 0, 10, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if n := strings.Count(buf.String(), apc); n != 1 {
+		t.Errorf("first render sent the sequence %d times, want 1: %q", n, buf.String())
+	}
+
+	buf.Reset()
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if n := strings.Count(buf.String(), apc); n != 0 {
+		t.Errorf("an unchanged render re-sent the sequence %d times: %q", n, buf.String())
+	}
+}
+
+// The ASCII short-circuit in lineHasDrift must never change its answer.
+// Compare against the unoptimised definition over everything the conformance
+// fuzzer can draw, plus every single byte.
+func TestDriftShortCircuitAgreesWithFullCheck(t *testing.T) {
+	full := func(m ansi.Method, c *Cell) bool {
+		return c.Width > 1 || m.StringWidth(c.Content) != ansi.StringWidth(c.Content)
+	}
+
+	var contents []string
+	for b := 0; b < 256; b++ {
+		contents = append(contents, string([]byte{byte(b)}))
+	}
+	contents = append(contents,
+		"a", "\u4e16", "\uac00", "\U0001fae0", "e\u0301", "n\u0303",
+		"\u2639\ufe0e", "\u2639\ufe0f", "\u2764\ufe0f", "\u2708\ufe0f",
+		"\U0001f469\u200d\U0001f4bb", "\U0001f426\u200d\U0001f525",
+		"\U0001f44d\U0001f3fd", "\U0001f44b\U0001f3ff",
+		"\u26d3\ufe0f\u200d\U0001f4a5", "\U0001f1fa", "\U0001f1fa\U0001f1f8",
+		"\U0001f1ef\U0001f1f5", "1\ufe0f\u20e3", "", " ", "\x1b_x\x1b\\a",
+	)
+
+	for _, m := range []ansi.Method{ansi.WcWidth, ansi.GraphemeWidth} {
+		for _, content := range contents {
+			for _, w := range []int{0, 1, 2} {
+				c := &Cell{Content: content, Width: w}
+				line := Line{*c}
+				got := lineHasDrift(m, line)
+				want := false
+				if c.Width != 0 && len(c.Content) != 0 {
+					want = full(m, c)
+				}
+				if got != want {
+					t.Errorf("method=%v content=%q width=%d: short-circuit says %v, full check says %v",
+						m, content, w, got, want)
+				}
+			}
+		}
 	}
 }

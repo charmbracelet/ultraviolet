@@ -2,6 +2,7 @@ package conformance_test
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
@@ -33,6 +34,10 @@ type oracle interface {
 
 	// Row returns the visible text of a row, trailing blanks removed.
 	Row(t *testing.T, y int) string
+
+	// CellAt returns the content of one cell. A cell that holds nothing, or
+	// that continues a wide glyph starting to its left, returns "".
+	CellAt(t *testing.T, x, y int) string
 
 	// Size reports the emulator's dimensions.
 	Size() (w, h int)
@@ -81,40 +86,106 @@ func (g *ghosttyOracle) Resize(w, h int) {
 	_ = g.term.Resize(uint16(w), uint16(h), 0, 0)
 }
 
+func (g *ghosttyOracle) CellAt(t *testing.T, x, y int) string {
+	t.Helper()
+
+	ref, err := g.term.GridRef(libghostty.Point{
+		Tag: libghostty.PointTagActive,
+		X:   uint16(x),
+		Y:   uint32(y),
+	})
+	if err != nil {
+		t.Fatalf("GridRef(%d, %d): %v", x, y, err)
+	}
+	cell, err := ref.Cell()
+	if err != nil {
+		t.Fatalf("Cell(%d, %d): %v", x, y, err)
+	}
+
+	// Graphemes returns the whole cluster including its base codepoint, so
+	// reading Codepoint as well would duplicate the base. Fall back to
+	// Codepoint only for cells that hold a single rune.
+	var b strings.Builder
+	if cps, err := ref.Graphemes(); err == nil && len(cps) > 0 {
+		for _, cp := range cps {
+			b.WriteRune(rune(cp))
+		}
+		return b.String()
+	}
+	if cp, err := cell.Codepoint(); err == nil && cp != 0 {
+		b.WriteRune(rune(cp))
+	}
+	return b.String()
+}
+
 func (g *ghosttyOracle) Row(t *testing.T, y int) string {
 	t.Helper()
 
 	var b strings.Builder
 	for x := range g.w {
-		ref, err := g.term.GridRef(libghostty.Point{
-			Tag: libghostty.PointTagActive,
-			X:   uint16(x),
-			Y:   uint32(y),
-		})
-		if err != nil {
-			t.Fatalf("GridRef(%d, %d): %v", x, y, err)
+		cell := g.CellAt(t, x, y)
+		if cell == "" {
+			// A cell that was erased reports no codepoint, while a cell
+			// someone wrote a space into reports one. They look the same on
+			// screen and mean the same thing, so read them back the same way.
+			// Otherwise a row painted by erasing compares unequal to the same
+			// row painted with spaces.
+			cell = " "
 		}
-		cell, err := ref.Cell()
-		if err != nil {
-			t.Fatalf("Cell(%d, %d): %v", x, y, err)
-		}
-
-		// Graphemes returns the whole cluster including its base codepoint, so
-		// reading Codepoint as well would duplicate the base. Fall back to
-		// Codepoint only for cells that hold a single rune.
-		if cps, err := ref.Graphemes(); err == nil && len(cps) > 0 {
-			for _, cp := range cps {
-				b.WriteRune(rune(cp))
-			}
-			continue
-		}
-		if cp, err := cell.Codepoint(); err == nil && cp != 0 {
-			b.WriteRune(rune(cp))
-		}
+		b.WriteString(cell)
 	}
 
 	// Empty cells read back as NUL rather than a space, so trim both.
 	return strings.TrimRight(b.String(), " \x00")
+}
+
+// clusterWidth reports how many columns an emulator advances when it prints one
+// grapheme cluster.
+//
+// Measured rather than modelled. How wide a cluster is happens to be the exact
+// thing these tests are about, so a width table here would be a second opinion
+// standing in for the emulator's, and wrong in the cases that matter: ghostty's
+// legacy mode paints a regional indicator pair in four columns where wcwidth
+// says two.
+//
+// The measurement writes the cluster followed by a marker and reports the
+// column the marker landed in, which is the advance width by definition. The
+// answers are cached because a fuzz target asks for the same handful of
+// clusters millions of times.
+var clusterWidths sync.Map
+
+func clusterWidth(t *testing.T, o oracleSpec, grapheme bool, cluster string) int {
+	t.Helper()
+
+	type key struct {
+		name     string
+		grapheme bool
+		cluster  string
+	}
+	k := key{o.name, grapheme, cluster}
+	if w, ok := clusterWidths.Load(k); ok {
+		return w.(int)
+	}
+
+	// Wide enough for any cluster in the corpus, with room for the marker.
+	const scratch = 64
+	const marker = "|"
+
+	term := o.mk(t, scratch, 1, grapheme)
+	defer term.Close()
+	if _, err := term.Write([]byte(cluster + marker)); err != nil {
+		t.Fatalf("measuring %q: %v", cluster, err)
+	}
+
+	w := 0
+	for x := range scratch {
+		if term.CellAt(t, x, 0) == marker {
+			w = x
+			break
+		}
+	}
+	clusterWidths.Store(k, w)
+	return w
 }
 
 // vtOracle wraps x/vt, which always measures whole grapheme clusters and so
@@ -134,14 +205,21 @@ func (v *vtOracle) Close()                      {}
 func (v *vtOracle) Name() string                { return "vt" }
 func (v *vtOracle) Resize(w, h int)             { v.em.Resize(w, h) }
 
+func (v *vtOracle) CellAt(t *testing.T, x, y int) string {
+	t.Helper()
+
+	if cell := v.em.CellAt(x, y); cell != nil {
+		return cell.Content
+	}
+	return ""
+}
+
 func (v *vtOracle) Row(t *testing.T, y int) string {
 	t.Helper()
 
 	var b strings.Builder
 	for x := range v.em.Width() {
-		if cell := v.em.CellAt(x, y); cell != nil {
-			b.WriteString(cell.Content)
-		}
+		b.WriteString(v.CellAt(t, x, y))
 	}
 	return strings.TrimRight(b.String(), " ")
 }

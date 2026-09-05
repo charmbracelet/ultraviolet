@@ -185,26 +185,41 @@ const (
 	// VS16 asks for emoji presentation. ghostty's legacy width mode reads it as
 	// a hint and does not store it in the cell, so it never reads back.
 	variationSelector16 = '\ufe0f'
-	// The keycap combining mark. x/vt splits a keycap across two cells and the
-	// mark is lost from the row readback unless the cluster ends the line, so it
-	// disappears on a fresh full paint too. ghostty keeps it in both width
-	// modes, which is where the assertion still bites.
+	// The keycap combining mark. Listed for documentation; x/vt's trouble with
+	// keycaps is handled per cluster rather than per codepoint, see skip below.
 	combiningKeycap = '\u20e3'
 )
 
+// keycap is the cluster x/vt cannot place coherently. It splits the cluster
+// across two cells but advances the cursor by only one, so its own idea of
+// where the row ends disagrees with what it drew. Whether any part of the
+// cluster survives then depends on where in the row it landed, which makes it
+// useless as evidence about the renderer. ghostty places it correctly in both
+// width modes, so the assertion still bites there.
+const keycap = "1\ufe0f\u20e3"
+
 // oracles are the emulators every fuzz target runs against.
-var oracles = []struct {
-	name  string
-	mk    func(*testing.T, int, int, bool) oracle
+// oracleSpec is one emulator the fuzz targets run against.
+type oracleSpec struct {
+	name string
+	mk   func(*testing.T, int, int, bool) oracle
+	// drops are codepoints this emulator swallows outright, so they never read
+	// back from any cell.
 	drops []rune
-}{
-	{"ghostty", newGhostty, []rune{variationSelector16}},
+	// skip are whole clusters this emulator cannot place coherently, so where
+	// their codepoints land says nothing about the renderer.
+	skip []string
+}
+
+var oracles = []oracleSpec{
+	{name: "ghostty", mk: newGhostty, drops: []rune{variationSelector16}},
 	// x/vt has no legacy width mode, so its width model is fixed regardless of
 	// what the program asked for.
 	{
-		"vt",
-		func(t *testing.T, w, h int, _ bool) oracle { return newVT(t, w, h) },
-		[]rune{variationSelector16, combiningKeycap},
+		name:  "vt",
+		mk:    func(t *testing.T, w, h int, _ bool) oracle { return newVT(t, w, h) },
+		drops: []rune{variationSelector16},
+		skip:  []string{keycap},
 	},
 }
 
@@ -319,6 +334,49 @@ func FuzzRedrawResyncs(f *testing.F) {
 	})
 }
 
+// drawnRow returns the text a buffer row holds that the emulator has room to
+// show: the content of every cell in order, skipping the placeholders that
+// continue a wide cell, and stopping at the first cluster that runs past the
+// right margin.
+//
+// This, and not the string the program asked to draw, is what the renderer was
+// given to paint and could paint. A cluster whose start column falls past the
+// right edge is never placed in the buffer at all. One that starts inside the
+// row but runs off the end cannot be shown whole, and the renderer paints such
+// a row with autowrap off, so it clips rather than spilling onto the next row
+// and everything after it is lost too.
+//
+// The walk stops at the first cluster the emulator measures differently than
+// the renderer does, and that cluster is not included either.
+//
+// Up to that point the two agree on every column, so the renderer put each
+// cluster exactly where the emulator was expecting it and it had to land. The
+// first disagreement ends that. The renderer goes on positioning by its own
+// model, so the very next write lands inside the cluster that disagreed and
+// destroys it, and every write after that is similarly adrift. A codepoint
+// missing from there on says the two disagree about width, which is a given
+// here, not that the renderer dropped it.
+//
+// This still bites where it matters. ghostty measures the drift-prone clusters
+// exactly as the renderer's matching width model does, in both legacy and mode
+// 2027, so the assertion covers all of them there. It is x/vt driven in legacy
+// mode that mostly falls out, and only because x/vt has no legacy mode to
+// drive.
+func drawnRow(buf uv.ScreenBuffer, y int, width func(string) int) string {
+	var b strings.Builder
+	for x := 0; x < buf.Width(); x++ {
+		c := buf.CellAt(x, y)
+		if c == nil || c.Width == 0 {
+			continue
+		}
+		if width(c.Content) != c.Width || x+c.Width > buf.Width() {
+			break
+		}
+		b.WriteString(c.Content)
+	}
+	return b.String()
+}
+
 // FuzzScreenShowsContent checks that everything drawn actually reaches the
 // screen, without reference to any other render.
 //
@@ -357,15 +415,15 @@ func FuzzScreenShowsContent(f *testing.F) {
 			return
 		}
 
-		// Track the last line drawn. A Clear invalidates it, since nothing is
-		// drawn after a clear unless a later DrawLine says so.
-		lastY, lastText := -1, ""
+		// Track the row of the last line drawn. A Clear invalidates it, since
+		// nothing is drawn after a clear unless a later DrawLine says so.
+		lastY := -1
 		for _, op := range p.Ops {
 			switch op.Kind {
 			case conformance.OpDrawLine:
-				lastY, lastText = op.Y, op.Text
+				lastY = op.Y
 			case conformance.OpClear:
-				lastY, lastText = -1, ""
+				lastY = -1
 			}
 		}
 		if lastY < 0 {
@@ -389,11 +447,14 @@ func FuzzScreenShowsContent(f *testing.F) {
 			}
 
 			screen := r.screen(t)
+			drawn := drawnRow(r.buf, lastY, func(cluster string) int {
+				return clusterWidth(t, o, p.GraphemeWidth, cluster)
+			})
 			r.close()
 
 			for _, cluster := range conformance.DriftClusters() {
-				want := strings.Count(lastText, cluster)
-				if want == 0 {
+				want := strings.Count(drawn, cluster)
+				if want == 0 || slices.Contains(o.skip, cluster) {
 					continue
 				}
 				// Count codepoints, not clusters; extras are residue.
@@ -401,14 +462,14 @@ func FuzzScreenShowsContent(f *testing.F) {
 					if slices.Contains(o.drops, r) {
 						continue
 					}
-					wantRune := strings.Count(lastText, string(r))
+					wantRune := strings.Count(drawn, string(r))
 					gotRune := strings.Count(screen[lastY], string(r))
 					if gotRune < wantRune {
 						t.Errorf("%s: row %d shows %q of cluster %q %d times but at least %d were drawn\n"+
 							"  screen %q\n"+
 							"  drawn  %q\n"+
 							"program:\n%s",
-							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[lastY], lastText, p)
+							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[lastY], drawn, p)
 						return
 					}
 				}

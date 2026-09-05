@@ -192,10 +192,11 @@ var corpusAlphabet = []string{
 	// ZWJ sequences where both width models agree at 2.
 	"\U0001f469\u200d\U0001f4bb", // woman technologist
 	"\U0001f426\u200d\U0001f525", // phoenix
-	// Skin tone modifiers. Both uv width models agree at 2, so driftIndices
-	// does not flag them, but ghostty's legacy mode paints these as 4 columns,
-	// so they still drift in practice. Kept here so the fuzzer explores them
-	// even though the seeds do not target them specifically.
+	// Skin tone modifiers. Legacy wcwidth measures these at 4, two columns for
+	// the base and two for the modifier, which is what ghostty's legacy mode
+	// paints. They sit before driftClusterOffset only so the seeds stay pointed
+	// at the sequences terminals disagree about; the fuzzer still reaches them,
+	// and a four-column cluster is worth reaching.
 	"\U0001f44d\U0001f3fd", // thumbs up, medium skin
 	"\U0001f44b\U0001f3ff", // waving hand, dark skin
 

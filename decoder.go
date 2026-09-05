@@ -1774,7 +1774,7 @@ func rgbToHSL(r, g, b uint8) (h, s, l float64) {
 	} else {
 		switch Cmax {
 		case Rnot:
-			h = 60 * (math.Mod((Gnot-Bnot)/Δ, 6))
+			h = 60 * math.Mod((Gnot-Bnot)/Δ, 6)
 		case Gnot:
 			h = 60 * (((Bnot - Rnot) / Δ) + 2)
 		case Bnot:

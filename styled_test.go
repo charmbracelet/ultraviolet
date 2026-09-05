@@ -377,6 +377,59 @@ func TestStyledString(t *testing.T) {
 				},
 			},
 		},
+		{
+			// A sequence that carries data rather than driving the cursor
+			// rides in the content of the cell that follows it, so it reaches
+			// the terminal when the cell is painted. See #95.
+			name:           "APC sequence rides the next cell",
+			input:          "\x1b_foo\x1b\\bar",
+			expectedWidth:  3,
+			expectedHeight: 1,
+			expected: &Buffer{
+				Lines: []Line{
+					{
+						newWcCell("\x1b_foo\x1b\\b", nil, nil),
+						newWcCell("a", nil, nil),
+						newWcCell("r", nil, nil),
+					},
+				},
+			},
+		},
+		{
+			// At the end of the string there is no following cell, so it folds
+			// into the last one. A width-0 cell one past the content would sit
+			// outside the bounds whenever the string filled them.
+			name:           "trailing APC folds into the last cell",
+			input:          "bar\x1b_foo\x1b\\",
+			expectedWidth:  3,
+			expectedHeight: 1,
+			expected: &Buffer{
+				Lines: []Line{
+					{
+						newWcCell("b", nil, nil),
+						newWcCell("a", nil, nil),
+						newWcCell("r\x1b_foo\x1b\\", nil, nil),
+					},
+				},
+			},
+		},
+		{
+			// Cursor movement is not carried. Replaying it from inside a cell
+			// would move the real cursor somewhere the renderer's model cannot
+			// see, so it stays dropped.
+			name:           "cursor movement is not carried",
+			input:          "a\x1b[5Cb",
+			expectedWidth:  2,
+			expectedHeight: 1,
+			expected: &Buffer{
+				Lines: []Line{
+					{
+						newWcCell("a", nil, nil),
+						newWcCell("b", nil, nil),
+					},
+				},
+			},
+		},
 	}
 
 	for i, tc := range cases {
@@ -432,6 +485,19 @@ func TestStyledStringEmptyLines(t *testing.T) {
 	}
 }
 
+func TestStyledStringLinesUnboundedContent(t *testing.T) {
+	const destination = "https://example.com"
+	input := "\x1b[31mab\x1b[0m\n" + ansi.SetHyperlink(destination, "") + "界" + ansi.ResetHyperlink()
+	lines := NewStyledString(input).Lines(ansi.GraphemeWidth)
+
+	if got := Lines(lines).String(); got != "ab\n界" {
+		t.Fatalf("Lines().String() = %q, want %q", got, "ab\n界")
+	}
+	if cell := lines[1][0]; cell.Width != 2 || cell.Link.URL != destination {
+		t.Fatalf("linked cell = %#v, want width 2 and link %q", cell, destination)
+	}
+}
+
 func newWcCell(s string, style *Style, link *Link) Cell {
 	c := NewCell(ansi.WcWidth, s)
 	if style != nil {
@@ -441,6 +507,15 @@ func newWcCell(s string, style *Style, link *Link) Cell {
 		c.Link = *link
 	}
 	return *c
+}
+
+func TestReadLinkAllowsSemicolonsInURL(t *testing.T) {
+	var link Link
+	ReadLink([]byte("8;id=123;Other;Guide.md"), &link)
+
+	if link.Params != "id=123" || link.URL != "Other;Guide.md" {
+		t.Fatalf("ReadLink() = %#v, want params %q and URL %q", link, "id=123", "Other;Guide.md")
+	}
 }
 
 // ASCII-heavy line: the common case. Guards the printString re-decode
@@ -502,5 +577,76 @@ func TestStyledStringCombiningMarks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A string-type sequence is only carried when it actually ended, and only when
+// it is one of the kinds a cell has any business replaying.
+func TestPassThroughTerminators(t *testing.T) {
+	for name, tc := range map[string]struct {
+		input   string
+		carried bool
+	}{
+		"APC ends with ST": {"\x1b_x\x1b\\a", true},
+		"DCS ends with ST": {"\x1bP1$r0m\x1b\\a", true},
+		"SOS ends with ST": {"\x1bXfoo\x1b\\a", true},
+		"PM ends with ST":  {"\x1b^bar\x1b\\a", true},
+
+		// The parser returns what it has when the input runs out. An
+		// unterminated introducer in a cell would have the terminal swallow
+		// everything painted after it.
+		"APC never terminated": {"a\x1b_x", false},
+		"OSC never terminated": {"a\x1b]0;t", false},
+		"DCS never terminated": {"a\x1bP1$r0m", false},
+
+		// 0x9c is a UTF-8 continuation byte as well as C1 ST, so a sequence
+		// that ran out partway through a character can end in a byte that
+		// looks like a terminator. U+071C encodes as dc 9c.
+		"APC cut off mid-character": {"a\x1b_x\u071c", false},
+		"OSC cut off mid-character": {"a\x1b]0;\u071c", false},
+		"APC ends with C1 ST":       {"\x1b_x\x9ca", false},
+
+		// An OSC carries data but a cell is painted again on every repaint. A
+		// title survives that; a clipboard write or a notification should not
+		// fire again on each resize.
+		"OSC ends with BEL": {"\x1b]0;t\x07a", false},
+		"OSC ends with ST":  {"\x1b]0;t\x1b\\a", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ss := NewStyledString(tc.input)
+			area := ss.Bounds()
+			buf := NewScreenBuffer(area.Dx(), area.Dy())
+			ss.Draw(buf, area)
+
+			var content string
+			for x := 0; x < buf.Width(); x++ {
+				if c := buf.CellAt(x, 0); c != nil {
+					content += c.Content
+				}
+			}
+			// Every input above introduces its sequence with ESC, so an ESC
+			// surviving into the cells is the sequence riding along.
+			if carried := strings.ContainsRune(content, ansi.ESC); carried != tc.carried {
+				t.Errorf("carried = %v, want %v (cells hold %q)", carried, tc.carried, content)
+			}
+		})
+	}
+}
+
+// A carried sequence must not change how wide its cell measures.
+// [lineHasDrift] works the width out from the content, so a sequence that
+// counted would have the renderer treat every line holding one as drift-prone
+// and repaint it whole.
+func TestPassThroughDoesNotAffectWidth(t *testing.T) {
+	ss := NewStyledString("\x1b_x\x1b\\abc")
+	area := ss.Bounds()
+	buf := NewScreenBuffer(area.Dx(), area.Dy())
+	ss.Draw(buf, area)
+
+	if c := buf.CellAt(0, 0); c == nil || c.Width != 1 {
+		t.Errorf("cell holding a sequence has width %v, want 1", c)
+	}
+	if lineHasDrift(ansi.WcWidth, buf.Line(0)) {
+		t.Error("a line holding a pass-through sequence was flagged drift-prone")
 	}
 }

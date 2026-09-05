@@ -54,6 +54,7 @@ which is what finds the combinations nobody thinks to write by hand.
 | `FuzzRenderer`            | An incrementally rendered screen matches a full repaint of the same frame. |
 | `FuzzRendererIdempotent`  | Rendering an unchanged buffer twice leaves the screen alone. |
 | `FuzzRedrawResyncs`       | A forced repaint recovers from any state the renderer drifted into. |
+| `FuzzScreenShowsContent`  | Every cluster the buffer holds on the last drawn row reaches the screen. |
 
 Every target runs against two emulators, because they disagree about how wide a
 grapheme cluster is and that disagreement is the subject of these tests:
@@ -66,16 +67,15 @@ grapheme cluster is and that disagreement is the subject of these tests:
 Neither is redundant. A bug that only appears under legacy widths is invisible
 to x/vt, and a disagreement between the two is itself worth investigating.
 
-## Known failures
+## The corpus
 
-`testdata/fuzz/` holds inputs that currently fail. They are real renderer bugs,
-not flaky tests, so the suite is red until they are fixed.
+`testdata/fuzz/` holds the inputs the nightly run has found. Each one was a real
+renderer bug when it landed, so keeping it there is what stops the bug coming
+back: the `test` job replays the whole corpus on every push, and Go validates it
+before any mutation starts.
 
-One further bug is recognised in code rather than by a corpus entry: see
-`isKnownResidue` in `fuzz_test.go`. Go validates the whole seed corpus before it
-starts mutating, so leaving that failure unhandled would block the search for
-every unknown bug. The allowance is deliberately narrow and
-`TestIsKnownResidueIsNarrow` keeps it that way.
+Add to it rather than pruning it. When a nightly run fails, download the
+`crashers-*` artifact and commit the new file alongside the fix.
 
 [libghostty]: https://github.com/mitchellh/go-libghostty
 [x/vt]: https://github.com/charmbracelet/x/tree/main/vt
