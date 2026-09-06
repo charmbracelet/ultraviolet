@@ -21,15 +21,24 @@ no cgo, no Go version bump. Nothing here reaches anyone who imports ultraviolet.
 
 ## Running
 
-Everything needs `libghostty-vt`. Build it once with [zig] and CMake:
+Everything needs `libghostty-vt`. Build it once with [zig] and CMake, from this
+directory:
 
 ```shell
-git clone https://github.com/mitchellh/go-libghostty
-cd go-libghostty && make build
-export PKG_CONFIG_PATH="$PWD/build/_deps/ghostty-src/zig-out/share/pkgconfig"
+# Build the commit go.mod depends on. go-libghostty's CMakeLists pins the
+# ghostty revision it fetches, and a newer one exports a different set of
+# symbols than these bindings call, so building its HEAD fails at link time.
+version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' go.mod)
+git clone https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
+git -C /tmp/go-libghostty checkout "${version##*-}"
+make -C /tmp/go-libghostty build
+export PKG_CONFIG_PATH="/tmp/go-libghostty/build/_deps/ghostty-src/zig-out/share/pkgconfig"
 ```
 
-Then, from this directory:
+CI does the same thing from `.github/actions/libghostty-vt`, reading the pin out
+of the same line of `go.mod`.
+
+Then, still from this directory:
 
 ```shell
 # Run the fuzz targets over their seed corpus, plus the regular tests.
