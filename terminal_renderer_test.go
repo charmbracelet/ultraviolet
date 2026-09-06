@@ -1452,6 +1452,49 @@ func TestRendererInlineShrinkClearsPartially(t *testing.T) {
 	}
 }
 
+// The same shrink, but through the full-erase path an application takes when it
+// knows the frame changed shape. The erase covers from the cursor to the end of
+// the screen, so where the cursor is decides how much of the old frame it
+// reaches, and the cursor is still on the last row of the frame that just ended.
+//
+// Clamping the remembered row to the new frame's height leaves the model
+// claiming the cursor is already at the top. The move up is then computed as
+// nothing, the erase runs from the bottom of the old frame, and every row above
+// it survives into the new one.
+func TestRendererInlineShrinkErasesFromTheTop(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(80, 24)
+
+	cellbuf := NewRenderBuffer(80, 3)
+	for y := range 3 {
+		cellbuf.SetCell(0, y, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Two rows shorter, painted from scratch rather than diffed.
+	r.Erase()
+	cellbuf.Touched = nil
+	cellbuf.Resize(80, 1)
+	cellbuf.Clear()
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// Up two rows from row 2, erase what the old frame left, draw row 0.
+	expected := "\r\x1b[2A\x1b[Jb\r"
+	if output := buf.String(); output != expected {
+		t.Errorf("expected output after shrink to be %q, got: %q", expected, output)
+	}
+}
+
 // Rows added by a grow have to be diffed like any other. The model is resized
 // before the diff loop runs so the loop walks them; otherwise content drawn
 // into a new row never reaches the terminal.
