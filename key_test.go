@@ -2744,3 +2744,41 @@ func TestKeyStringMore(t *testing.T) {
 		})
 	}
 }
+
+func TestLegacyCsiModifiedKeys(t *testing.T) {
+	tests := []struct {
+		name string
+		seq  []byte
+		want Event
+	}{
+		{"ctrl+left", []byte("\x1b[5D"), KeyPressEvent{Code: KeyLeft, Mod: ModCtrl}},
+		{"ctrl+right", []byte("\x1b[5C"), KeyPressEvent{Code: KeyRight, Mod: ModCtrl}},
+		{"ctrl+up", []byte("\x1b[5A"), KeyPressEvent{Code: KeyUp, Mod: ModCtrl}},
+		{"ctrl+down", []byte("\x1b[5B"), KeyPressEvent{Code: KeyDown, Mod: ModCtrl}},
+		{"shift+left", []byte("\x1b[2D"), KeyPressEvent{Code: KeyLeft, Mod: ModShift}},
+		{"alt+right", []byte("\x1b[3C"), KeyPressEvent{Code: KeyRight, Mod: ModAlt}},
+		{"shift+ctrl+left", []byte("\x1b[6D"), KeyPressEvent{Code: KeyLeft, Mod: ModShift | ModCtrl}},
+		{"shift+ctrl+right", []byte("\x1b[6C"), KeyPressEvent{Code: KeyRight, Mod: ModShift | ModCtrl}},
+		{"ctrl+home", []byte("\x1b[5H"), KeyPressEvent{Code: KeyHome, Mod: ModCtrl}},
+		{"ctrl+end", []byte("\x1b[5F"), KeyPressEvent{Code: KeyEnd, Mod: ModCtrl}},
+
+		// Unmodified and xterm-style sequences must be unchanged.
+		{"plain left", []byte("\x1b[D"), KeyPressEvent{Code: KeyLeft}},
+		{"xterm ctrl+left", []byte("\x1b[1;5D"), KeyPressEvent{Code: KeyLeft, Mod: ModCtrl}},
+		{"xterm shift+ctrl+right", []byte("\x1b[1;6C"), KeyPressEvent{Code: KeyRight, Mod: ModShift | ModCtrl}},
+		{"plain home", []byte("\x1b[H"), KeyPressEvent{Code: KeyHome}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var p EventDecoder
+			n, e := p.Decode(test.seq)
+			if n != len(test.seq) {
+				t.Fatalf("Decode(%q): expected to consume %d bytes, got %d", test.seq, len(test.seq), n)
+			}
+			if !reflect.DeepEqual(e, test.want) {
+				t.Fatalf("Decode(%q): expected %#v, got %#v", test.seq, test.want, e)
+			}
+		})
+	}
+}
