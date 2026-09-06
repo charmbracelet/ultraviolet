@@ -1485,6 +1485,44 @@ func TestRendererInlineShrinkClearsPartially(t *testing.T) {
 	}
 }
 
+// The rows an inline frame gives up have to be erased whether or not the width
+// moved at the same time. A terminal that changes width rewraps what it holds,
+// which spreads the abandoned rows further than the model can account for
+// rather than tidying them away, so a width change is the case that needs the
+// erase most.
+//
+// The fuzzer found this one the first time it was allowed to draw inline
+// frames: a row painted outside the new frame survived a resize that shrank the
+// screen and widened it in the same step.
+func TestRendererInlineShrinkErasesAcrossAWidthChange(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 4)
+	cellbuf.SetCell(0, 2, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Two rows shorter and much wider, the shape of a terminal resize the
+	// application reflowed its view for.
+	cellbuf.Resize(23, 2)
+	r.Resize(23, 10)
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseScreenBelow) {
+		t.Errorf("shrink should erase the rows the frame gave up, got: %q", out)
+	}
+}
+
 // The same shrink, but through the full-erase path an application takes when it
 // knows the frame changed shape. The erase covers from the cursor to the end of
 // the screen, so where the cursor is decides how much of the old frame it
