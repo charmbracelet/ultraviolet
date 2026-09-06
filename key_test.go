@@ -675,6 +675,19 @@ func TestParseSequence(t *testing.T) {
 			[]byte("\x1b[97;;229u"),
 			[]Event{KeyPressEvent{Code: 'a', Text: "å"}},
 		},
+		// Cyrillic Shift+у on Ukrainian layout:
+		// unicode=1091(у), shifted=1059(У), base=101(e), mod=Shift, text=101(e, wrong)
+		// Text should be corrected to ShiftedCode (У) since terminal sent base code.
+		seqTest{
+			[]byte("\x1b[1091:1059:101;2;101u"),
+			[]Event{KeyPressEvent{Code: 'у', Text: "У", Mod: ModShift, ShiftedCode: 'У', BaseCode: 'e'}},
+		},
+		// Shift+4 on Ukrainian layout: terminal sends no sub-params,
+		// unicode=52(4), mod=Shift, text=59(;) — Text already correct.
+		seqTest{
+			[]byte("\x1b[52;2;59u"),
+			[]Event{KeyPressEvent{Code: '4', Text: ";", Mod: ModShift}},
+		},
 
 		// focus/blur
 		seqTest{
