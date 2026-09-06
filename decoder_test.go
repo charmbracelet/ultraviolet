@@ -745,3 +745,188 @@ func TestWin32Functions(t *testing.T) {
 		}
 	})
 }
+
+// TestParseOsc tests parsing of OSC sequences
+func TestParseOsc(t *testing.T) {
+	var p EventDecoder
+	tests := []struct {
+		name      string
+		input     []byte
+		wantN     int
+		wantEvent Event
+	}{
+		{
+			name:      "shortcut alt+]",
+			input:     []byte{ansi.ESC, ']'},
+			wantN:     2,
+			wantEvent: KeyPressEvent{Code: ']', Mod: ModAlt},
+		},
+		{
+			name:      "OSC 10 Foreground Color with BEL",
+			input:     []byte("\x1b]10;rgb:ffff/ffff/ffff\x07"),
+			wantN:     24,
+			wantEvent: ForegroundColorEvent{color.RGBA{R: 255, G: 255, B: 255, A: 255}},
+		},
+		{
+			name:      "OSC 11 Background Color with ST",
+			input:     []byte("\x1b]11;rgb:0000/0000/0000\x1b\\"),
+			wantN:     25,
+			wantEvent: BackgroundColorEvent{color.RGBA{R: 0, G: 0, B: 0, A: 255}},
+		},
+		{
+			name:      "OSC 12 Cursor Color with ST",
+			input:     []byte("\x1b]12;rgb:1111/2222/3333\x1b\\"),
+			wantN:     25,
+			wantEvent: CursorColorEvent{color.RGBA{R: 17, G: 34, B: 51, A: 255}},
+		},
+		{
+			name:      "OSC 52 Clipboard System Selection and valid base64",
+			input:     []byte("\x1b]52;c;aGk=\x1b\\"),
+			wantN:     13,
+			wantEvent: ClipboardEvent{Selection: 'c', Content: "hi"},
+		},
+		{
+			name:      "OSC 52 Clipboard empty selection and valid base64",
+			input:     []byte("\x1b]52;;aGk=\x1b\\"),
+			wantN:     12,
+			wantEvent: ClipboardEvent{Selection: 0, Content: "hi"},
+		},
+		{
+			name:      "OSC 52 Clipboard system selection and invalid base64",
+			input:     []byte("\x1b]52;c;!\x1b\\"),
+			wantN:     10,
+			wantEvent: ClipboardEvent{Selection: 'c', Content: ""},
+		},
+		{
+			name:      "OSC 52 Clipboard system selection and invalid base64 with multiple semicolons",
+			input:     []byte("\x1b]52;c;aGk=;foo\x1b\\"),
+			wantN:     17,
+			wantEvent: ClipboardEvent{Selection: 'c', Content: ""},
+		},
+		{
+			name:      "OSC 52 Clipboard no semicolon",
+			input:     []byte("\x1b]52;c\x1b\\"),
+			wantN:     8,
+			wantEvent: ClipboardEvent{},
+		},
+		{
+			name:      "Unknown OSC command 999",
+			input:     []byte("\x1b]999;hello\x07"),
+			wantN:     12,
+			wantEvent: UnknownOscEvent("\x1b]999;hello\x07"),
+		},
+		{
+			name:      "Cancelled OSC sequence with CAN",
+			input:     []byte("\x1b]10;rgb:0000/0000/0000\x18"),
+			wantN:     24,
+			wantEvent: ignoredEvent("\x1b]10;rgb:0000/0000/0000\x18"),
+		},
+		{
+			name:      "Cancelled OSC sequence with SUB",
+			input:     []byte("\x1b]10;rgb:0000/0000/0000\x1a"),
+			wantN:     24,
+			wantEvent: ignoredEvent("\x1b]10;rgb:0000/0000/0000\x1a"),
+		},
+		{
+			name:      "Unterminated OSC sequence",
+			input:     []byte("\x1b]10;rgb:0000"),
+			wantN:     13,
+			wantEvent: UnknownEvent("\x1b]10;rgb:0000"),
+		},
+		{
+			name:      "Invalid ST terminator",
+			input:     []byte("\x1b]10;rgb:0000/0000/0000\x1b"),
+			wantN:     24,
+			wantEvent: ignoredEvent("\x1b]10;rgb:0000/0000/0000\x1b"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, event := p.parseOsc(tt.input)
+			if n != tt.wantN {
+				t.Errorf("parseOsc() n = %d, want %d", n, tt.wantN)
+			}
+			if tt.wantEvent == nil {
+				if event != nil {
+					t.Errorf("parseOsc() event = %v, want nil", event)
+				}
+			} else {
+				switch want := tt.wantEvent.(type) {
+				case KeyPressEvent:
+					if got, ok := event.(KeyPressEvent); ok {
+						if got.Code != want.Code || got.Mod != want.Mod {
+							t.Errorf("parseOsc() = %+v, want %+v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want KeyPressEvent", event)
+					}
+				case ForegroundColorEvent:
+					if got, ok := event.(ForegroundColorEvent); ok {
+						r1, g1, b1, a1 := got.RGBA()
+						r2, g2, b2, a2 := want.RGBA()
+						if r1 != r2 || g1 != g2 || b1 != b2 || a1 != a2 {
+							t.Errorf("parseOsc() = %+v, want %+v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want ForegroundColorEvent", event)
+					}
+				case BackgroundColorEvent:
+					if got, ok := event.(BackgroundColorEvent); ok {
+						r1, g1, b1, a1 := got.RGBA()
+						r2, g2, b2, a2 := want.RGBA()
+						if r1 != r2 || g1 != g2 || b1 != b2 || a1 != a2 {
+							t.Errorf("parseOsc() = %+v, want %+v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want BackgroundColorEvent", event)
+					}
+				case CursorColorEvent:
+					if got, ok := event.(CursorColorEvent); ok {
+						r1, g1, b1, a1 := got.RGBA()
+						r2, g2, b2, a2 := want.RGBA()
+						if r1 != r2 || g1 != g2 || b1 != b2 || a1 != a2 {
+							t.Errorf("parseOsc() = %+v, want %+v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want CursorColorEvent", event)
+					}
+				case ClipboardEvent:
+					if got, ok := event.(ClipboardEvent); ok {
+						if got.Selection != want.Selection || got.Content != want.Content {
+							t.Errorf("parseOsc() = %+v, want %+v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want ClipboardEvent", event)
+					}
+				case UnknownOscEvent:
+					if got, ok := event.(UnknownOscEvent); ok {
+						if got != want {
+							t.Errorf("parseOsc() = %v, want %v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want UnknownOscEvent", event)
+					}
+				case ignoredEvent:
+					if got, ok := event.(ignoredEvent); ok {
+						if got != want {
+							t.Errorf("parseOsc() = %v, want %v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want ignoredEvent", event)
+					}
+				case UnknownEvent:
+					if got, ok := event.(UnknownEvent); ok {
+						if got != want {
+							t.Errorf("parseOsc() = %v, want %v", got, want)
+						}
+					} else {
+						t.Errorf("parseOsc() = %T, want UnknownEvent", event)
+					}
+				default:
+					t.Errorf("unexpected expected event type %T", tt.wantEvent)
+				}
+			}
+		})
+	}
+}
