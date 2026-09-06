@@ -1,0 +1,64 @@
+name: libghostty-vt
+description: Build or restore libghostty-vt and point pkg-config at it.
+
+# libghostty-vt is the C library go-libghostty links against, and the
+# conformance module needs it to build at all. Three jobs across two workflows
+# need the same thing, so it lives here once rather than being copied into each
+# of them and drifting.
+
+runs:
+  using: composite
+  steps:
+    # The library has to be built from the go-libghostty commit the module
+    # already depends on. That commit's CMakeLists pins the ghostty revision it
+    # fetches, and a different revision exports a different set of symbols than
+    # these bindings call, so a mismatch fails at link time with undefined
+    # symbols. Reading the commit out of go.mod is what keeps the two in step:
+    # bumping the dependency moves the build with it, and there is no second
+    # place to remember to update.
+    #
+    # A pseudo-version ends in the commit, so the last dash-separated field is
+    # it. A tagged version has no trailing commit and comes through whole, which
+    # git can check out just as well, so both kinds of version work.
+    - name: Resolve the go-libghostty pin
+      id: pin
+      shell: bash
+      run: |
+        version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' internal/conformance/go.mod)
+        test -n "$version"
+        echo "rev=${version##*-}" >> "$GITHUB_OUTPUT"
+
+    - uses: mlugg/setup-zig@v2
+      with:
+        version: "0.16.0"
+
+    # Building from source takes a couple of minutes, so cache the result. The
+    # key carries the pin, so the build happens again exactly when the
+    # dependency moves and not otherwise.
+    - name: Cache libghostty-vt
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: .cache/libghostty-vt
+        key: libghostty-vt-${{ steps.pin.outputs.rev }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Build libghostty-vt
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        git clone https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
+        git -C /tmp/go-libghostty checkout --detach "${{ steps.pin.outputs.rev }}"
+        cmake -B /tmp/go-libghostty/build -S /tmp/go-libghostty -DCMAKE_BUILD_TYPE=Release
+        cmake --build /tmp/go-libghostty/build
+        mkdir -p .cache
+        cp -r /tmp/go-libghostty/build/_deps/ghostty-src/zig-out .cache/libghostty-vt
+
+    # The .pc file records the absolute path it was built at. Rewrite it to
+    # point at this workspace so a restored cache resolves correctly, then put
+    # it on PKG_CONFIG_PATH for every step that follows.
+    - name: Configure pkg-config
+      shell: bash
+      run: |
+        prefix="${{ github.workspace }}/.cache/libghostty-vt"
+        sed -i "s|^prefix=.*|prefix=$prefix|" "$prefix/share/pkgconfig/libghostty-vt-static.pc"
+        echo "PKG_CONFIG_PATH=$prefix/share/pkgconfig" >> "$GITHUB_ENV"

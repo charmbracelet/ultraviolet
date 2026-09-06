@@ -6,13 +6,6 @@ on:
     branches: [main]
   pull_request:
 
-env:
-  # Must match conformance.yml. The lint-conformance job restores the same
-  # libghostty-vt cache the conformance tests build, so sharing the key means a
-  # warm cache there is a cache hit here and no rebuild happens.
-  GHOSTTY_PIN: 2dd79f3bc6af649e68422b08e21ad0300fd8b391
-  ZIG_VERSION: "0.16.0"
-
 jobs:
   lint:
     uses: charmbracelet/meta/.github/workflows/lint.yml@main
@@ -43,30 +36,9 @@ jobs:
           go-version-file: ./internal/conformance/go.mod
           cache: true
 
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-
-      - name: Cache libghostty-vt
-        id: cache-vt
-        uses: actions/cache@v6
-        with:
-          path: .cache/libghostty-vt
-          key: libghostty-vt-${{ env.GHOSTTY_PIN }}-${{ runner.os }}-${{ runner.arch }}
-
-      - name: Build libghostty-vt
-        if: steps.cache-vt.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
-          cmake -B /tmp/go-libghostty/build -S /tmp/go-libghostty -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/go-libghostty/build
-          mkdir -p .cache
-          cp -r /tmp/go-libghostty/build/_deps/ghostty-src/zig-out .cache/libghostty-vt
-
-      # The .pc file records the absolute path it was built at. Rewrite it to
-      # point at this workspace so a restored cache resolves correctly.
-      - name: Configure pkg-config
-        run: sed -i "s|^prefix=.*|prefix=${{ github.workspace }}/.cache/libghostty-vt|" .cache/libghostty-vt/share/pkgconfig/libghostty-vt-static.pc
+      # The same cache conformance.yml populates, keyed the same way, so a
+      # warm cache there is a cache hit here and no rebuild happens.
+      - uses: ./.github/actions/libghostty-vt
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -75,5 +47,3 @@ jobs:
           args: |
             --config="../../.golangci.yml" --timeout=10m ./...
           version: latest
-        env:
-          PKG_CONFIG_PATH: ${{ github.workspace }}/.cache/libghostty-vt/share/pkgconfig
