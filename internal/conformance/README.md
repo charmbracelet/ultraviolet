@@ -77,6 +77,12 @@ program:
   past the bottom of the frame, because a frame that shrinks has to clear what
   it no longer covers and the abandoned rows are where the residue lands.
 
+  Inline screens are never narrowed, only widened. Narrowing makes the terminal
+  rewrap the rows it holds, carrying them, and the cursor among them, somewhere
+  a relative move cannot find again. What survives that is a property of drawing
+  inline rather than a defect, so asserting on it would only produce failures
+  nobody can act on.
+
 Every target runs against two emulators, because they disagree about how wide a
 grapheme cluster is and that disagreement is the subject of these tests:
 

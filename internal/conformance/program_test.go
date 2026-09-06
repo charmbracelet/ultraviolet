@@ -92,6 +92,11 @@ func TestDecodeProgramTotal(t *testing.T) {
 					t.Fatalf("DecodeProgram(%x) op %d resizes to height %d, outside [%d,%d]",
 						in, i, op.H, conformance.MinResizeH, conformance.MaxResizeH)
 				}
+				if p.Inline && op.W < curW {
+					t.Fatalf("DecodeProgram(%x) op %d narrows an inline screen from %d to %d columns, "+
+						"which rewraps rows the renderer then has no way to find",
+						in, i, curW, op.W)
+				}
 				curW, curH = op.W, op.H
 			}
 		}
