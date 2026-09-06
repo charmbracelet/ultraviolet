@@ -1446,6 +1446,13 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	if !s.clear && partialClear {
 		s.clearBelow(newbuf, nil, newHeight-1)
+
+		// The erase starts at the last row of the new frame, so it takes that
+		// row with it on the way down. The diff loop only visits rows the
+		// application drew into, and the application has no reason to draw into
+		// a row it did not change, so mark it here or the erase is the last
+		// thing that happens to it.
+		s.touchLine(newbuf, newHeight-1, 1, true)
 	}
 
 	// Resize the model before diffing so the loop below walks every row
