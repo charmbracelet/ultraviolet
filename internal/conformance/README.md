@@ -65,6 +65,18 @@ which is what finds the combinations nobody thinks to write by hand.
 | `FuzzRedrawResyncs`       | A forced repaint recovers from any state the renderer drifted into. |
 | `FuzzScreenShowsContent`  | Every cluster the buffer holds on the last drawn row reaches the screen. |
 
+Each target also runs both ways the renderer can own a screen, chosen per
+program:
+
+- **Fullscreen**, where the frame is the terminal and the renderer moves the
+  cursor absolutely.
+- **Inline**, where the frame is shorter than the terminal and the cursor moves
+  relatively. There is no absolute move to fall back on, so a model that loses
+  track of the cursor has nothing to recover with, and the rows below the frame
+  belong to whatever was on the screen first. The screen is read back in full,
+  past the bottom of the frame, because a frame that shrinks has to clear what
+  it no longer covers and the abandoned rows are where the residue lands.
+
 Every target runs against two emulators, because they disagree about how wide a
 grapheme cluster is and that disagreement is the subject of these tests:
 

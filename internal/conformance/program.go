@@ -86,6 +86,13 @@ const (
 	// worth fuzzing directly.
 	OpResize
 
+	// OpErase marks the screen to be repainted on the next render, without
+	// performing that render. OpRedraw does both at once and so can never be
+	// separated from what happens in between; an erase left pending across a
+	// resize is a different thing entirely, and the one applications drawing
+	// inline frames actually do when the frame changes shape.
+	OpErase
+
 	opKindCount
 )
 
@@ -97,6 +104,16 @@ const (
 	MinResizeW, MaxResizeW = 4, 32
 	MinResizeH, MaxResizeH = 2, 8
 )
+
+// InlineTermHeight is the terminal height an inline program runs against.
+//
+// An inline frame is shorter than the terminal by definition, so the terminal
+// needs room for the tallest frame a program can reach and a row to spare. A
+// frame that reaches the last row scrolls the screen on the next newline, and
+// content that has scrolled sits at a different absolute row in every run, so
+// a differential comparison against it would report the scroll as a bug. Give
+// the frame room and the two runs stay anchored at the same place.
+const InlineTermHeight = MaxResizeH + 2
 
 // String makes failures readable, since a raw OpKind number tells you nothing
 // about what the renderer was asked to do.
@@ -114,6 +131,8 @@ func (k OpKind) String() string {
 		return "MoveTo"
 	case OpResize:
 		return "Resize"
+	case OpErase:
+		return "Erase"
 	default:
 		return fmt.Sprintf("OpKind(%d)", uint8(k))
 	}
@@ -137,6 +156,15 @@ type Program struct {
 	// widths with them.
 	ScrollOptim bool
 
+	// Inline draws the frame inline instead of over the whole screen, the way
+	// a prompt or a progress display does. It is a different renderer
+	// entirely in the ways that matter here: the frame is shorter than the
+	// terminal, so the model cannot assume it owns every row, and the cursor
+	// moves relatively, so there is no absolute move to fall back on when the
+	// model loses track of where it is. Bugs that need those conditions are
+	// invisible to a fullscreen-only harness.
+	Inline bool
+
 	// Ops are the operations to run in order.
 	Ops []Op
 }
@@ -146,8 +174,8 @@ type Program struct {
 // tell you that.
 func (p Program) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "size=%dx%d graphemeWidth=%v scrollOptim=%v\n",
-		p.Width, p.Height, p.GraphemeWidth, p.ScrollOptim)
+	fmt.Fprintf(&b, "size=%dx%d graphemeWidth=%v scrollOptim=%v inline=%v\n",
+		p.Width, p.Height, p.GraphemeWidth, p.ScrollOptim, p.Inline)
 	for i, op := range p.Ops {
 		switch op.Kind {
 		case OpDrawLine:
@@ -272,9 +300,9 @@ func Seeds() [][]byte {
 	for _, i := range driftIndices() {
 		cluster := byte(i)
 
-		// Cover both width models crossed with both scroll settings, since a
-		// bug can hide in any one of the four combinations.
-		for mode := byte(0); mode < 4; mode++ {
+		// Cover both width models crossed with the scroll path and the frame
+		// mode, since a bug can hide in any one of the combinations.
+		for mode := byte(0); mode < 8; mode++ {
 			seeds = append(seeds, []byte{
 				14, 2, // 20x4
 				mode,
@@ -327,7 +355,7 @@ func Seeds() [][]byte {
 		// maps to minResize + b % (max-min+1).
 		resizeW := func(w int) byte { return byte((w - MinResizeW) % (MaxResizeW - MinResizeW + 1)) }
 		resizeH := func(h int) byte { return byte((h - MinResizeH) % (MaxResizeH - MinResizeH + 1)) }
-		for _, mode := range []byte{0, 1, 2, 3} {
+		for mode := byte(0); mode < 8; mode++ {
 			seeds = append(seeds, []byte{
 				14, 2, // 20x4
 				mode,
@@ -343,6 +371,24 @@ func Seeds() [][]byte {
 				byte(OpRender),
 			})
 		}
+
+		// An inline frame that changes shape. The erase is left pending across
+		// the resize, which is what an application does when its view swaps for
+		// a shorter one, and it is the case a single OpRedraw cannot express.
+		// Where the erase starts from decides how much of the taller frame it
+		// reaches, so a renderer that has lost track of the cursor leaves the
+		// top of the old frame on screen.
+		seeds = append(seeds, []byte{
+			14, 5, // 20x7
+			4, // inline
+			byte(OpDrawLine), 0, first, last, endOfLine,
+			byte(OpDrawLine), 4, first, endOfLine,
+			byte(OpRender),
+			byte(OpErase),
+			byte(OpResize), resizeW(20), resizeH(2),
+			byte(OpDrawLine), 0, last, endOfLine,
+			byte(OpRender),
+		})
 	}
 
 	return seeds
@@ -405,10 +451,11 @@ func DecodeProgram(data []byte) Program {
 	p := Program{Width: w + 6, Height: h + 2}
 
 	if b, ok := d.next(); ok {
-		// Two independent bits, so the fuzzer can flip either width model or
-		// the scroll path without disturbing the rest of the program.
+		// Independent bits, so the fuzzer can flip the width model, the scroll
+		// path or the frame mode without disturbing the rest of the program.
 		p.GraphemeWidth = b&1 != 0
 		p.ScrollOptim = b&2 != 0
+		p.Inline = b&4 != 0
 	}
 
 	// Bounded so a single input cannot run for an unreasonable time; the
