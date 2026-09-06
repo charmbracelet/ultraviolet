@@ -1756,3 +1756,41 @@ func TestDriftShortCircuitAgreesWithFullCheck(t *testing.T) {
 		}
 	}
 }
+
+// A grapheme cluster at the right margin is written with autowrap on, even in
+// the lower right corner where a plain cell is not. With autowrap off the
+// terminal never advances past the margin, so it reads the combining
+// codepoints as part of the cell to the left: the mark moves one column back
+// and the base rune is left alone at the margin. Both reference emulators
+// place the cluster correctly when autowrap stays on.
+func TestRendererMarginClusterKeepsAutowrap(t *testing.T) {
+	paint := func(content string, y int) string {
+		var buf bytes.Buffer
+		r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		r.Resize(6, 2)
+
+		scr := NewScreenBuffer(6, 2)
+		NewStyledString(content).Draw(scr, Rect(0, y, 6, 1))
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		return buf.String()
+	}
+
+	// e + U+0301. Two codepoints, one column.
+	const cluster = "e\u0301"
+
+	for _, y := range []int{0, 1} {
+		out := paint("###"+cluster+cluster+cluster, y)
+		if strings.Contains(out, ansi.ResetModeAutoWrap) {
+			t.Errorf("row %d: cluster at the margin painted with autowrap off: %q", y, out)
+		}
+	}
+
+	// The corner still gets the autowrap dance when nothing can be split.
+	if out := paint("######", 1); !strings.Contains(out, ansi.ResetModeAutoWrap) {
+		t.Errorf("plain corner cell should paint with autowrap off, got: %q", out)
+	}
+}

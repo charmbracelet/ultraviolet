@@ -503,18 +503,23 @@ func cellEqual(a, b *Cell) bool {
 
 // putCell draws a cell at the current cursor position.
 //
-// Two cells at the right margin are written with autowrap off. The lower right
-// corner, because writing it would scroll the screen. And a cell holding a
-// grapheme cluster of more than one codepoint, because terminals disagree about
-// what a pending wrap means for one: some hold the whole cluster on the row,
-// some let the combining codepoints wrap and land the tail on the next row.
-// Neither disagreement is visible to the model, so avoid provoking it.
+// One cell at the right margin is written with autowrap off: the lower right
+// corner, because writing it with autowrap on leaves a pending wrap that
+// scrolls the screen as soon as anything else prints.
+//
+// A cell holding a grapheme cluster of more than one codepoint keeps autowrap
+// on, corner or not. With autowrap off the terminal never advances past the
+// margin, so it reads the combining codepoints as belonging to the cell to the
+// left and moves the mark one column back; the base rune is then alone at the
+// margin and the row no longer says what the model thinks it says. With
+// autowrap on the whole cluster stays where it was put, and the pending wrap it
+// leaves behind is the ordinary kind [TerminalRenderer.move] already cancels.
 func (s *TerminalRenderer) putCell(newbuf *RenderBuffer, cell *Cell) {
 	width, height := newbuf.Width(), newbuf.Height()
 	atMargin := s.cur.X == width-1 && !s.noWrapLine
 	lowerRight := s.flags.Contains(tFullscreen) && s.cur.Y == height-1
 	splittable := cell != nil && utf8.RuneCountInString(cell.Content) > 1
-	if atMargin && (lowerRight || splittable) {
+	if atMargin && lowerRight && !splittable {
 		s.putCellLR(newbuf, cell)
 	} else {
 		s.putAttrCell(newbuf, cell)
