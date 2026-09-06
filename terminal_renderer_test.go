@@ -1794,3 +1794,44 @@ func TestRendererMarginClusterKeepsAutowrap(t *testing.T) {
 		t.Errorf("plain corner cell should paint with autowrap off, got: %q", out)
 	}
 }
+
+// A hardware scroll moves every row in its range, including rows the
+// application never drew into this frame. The diff loop only visits rows the
+// application touched, so without marking the range those rows keep the model's
+// old opinion of them and the content the scroll carried away never comes back.
+//
+// Here the scroll puts row 2 where row 0 belongs, which is what makes it worth
+// doing, and takes row 1 off the top of the screen on the way. Row 1 has to be
+// painted again even though nothing drew into it.
+func TestRendererScrollRepaintsRowsItMoved(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+	r.Resize(4, 8)
+
+	scr := NewScreenBuffer(4, 8)
+	NewStyledString("aa").Draw(scr, Rect(0, 1, 4, 1))
+	NewStyledString("bb").Draw(scr, Rect(0, 2, 4, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Row 1 keeps its "aa" from the frame before and is not drawn into.
+	NewStyledString("bb").Draw(scr, Rect(0, 0, 4, 1))
+	NewStyledString("aa").Draw(scr, Rect(0, 2, 4, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, ansi.ScrollUp(2)) {
+		t.Fatalf("expected a hardware scroll, got: %q", out)
+	}
+	if n := strings.Count(out, "aa"); n != 2 {
+		t.Errorf("scrolled rows painted %d times, want 2 (rows 1 and 2): %q", n, out)
+	}
+}
