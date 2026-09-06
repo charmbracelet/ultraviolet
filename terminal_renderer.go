@@ -1397,17 +1397,17 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	if curWidth != newWidth || curHeight != newHeight {
 		s.oldhash, s.newhash = nil, nil
-		// A shrink makes the terminal reflow in emulator-defined ways the
-		// incremental model cannot predict; force a full repaint. Only in
-		// fullscreen, where the renderer owns every cell it is about to
-		// clear. Inline mode shares the screen with whatever came before,
-		// so it uses the narrower partial clear below instead.
-		// A shrink makes the terminal reflow. A height grow is no safer: the
-		// terminal fills the rows it gains from its scrollback, and an earlier
-		// shrink may have rewrapped a row too wide to fit into exactly that
-		// space. Those lines come back at the top and push the screen down, so
-		// no row keeps its meaning and there is nothing to diff against.
-		if s.flags.Contains(tFullscreen) && (newWidth < curWidth || newHeight != curHeight) {
+		// Any change of size moves content the model cannot follow. A shrink
+		// makes the terminal reflow in emulator-defined ways, and a grow is no
+		// safer: the terminal fills the cells it gains from its scrollback,
+		// where an earlier shrink left whatever it rewrapped out of view. Those
+		// lines come back and push the screen around, so no row keeps its
+		// meaning and there is nothing to diff against.
+		//
+		// Only in fullscreen, where the renderer owns every cell it is about to
+		// clear. Inline mode shares the screen with whatever came before, so it
+		// uses the narrower partial clear below instead.
+		if s.flags.Contains(tFullscreen) {
 			s.clear = true
 		}
 	}
@@ -1524,24 +1524,26 @@ func (s *TerminalRenderer) Erase() {
 // invalidating would assert a position instead of forgetting one. Keep the
 // old model in that mode and let the next render diff against it.
 //
-// A resize that loses rows also forces the next render to repaint, since the
-// screen scrolls to keep the cursor visible and the model cannot see where its
-// rows went.
+// A resize also forces the next render to repaint, since the screen moves
+// content around to fit and the model cannot see where it went.
 func (s *TerminalRenderer) Resize(width, height int) {
 	if s.tabs != nil {
 		s.tabs.Resize(width)
 	}
 
-	// A screen that loses rows scrolls to keep the cursor visible, which moves
-	// every row the model has an opinion about. Nothing in the model records
-	// that shift, so there is no diff back to the truth: repaint instead. The
-	// flag survives a later grow, because the content moved when the rows went
-	// away and getting them back does not put it where it was.
+	// A resize moves content the model cannot follow, so the next render has to
+	// repaint rather than diff. [TerminalRenderer.Render] says the same thing
+	// about the frame it is handed, but it only sees the size the application
+	// draws at: a screen that shrinks and grows back between two frames looks
+	// unchanged by the time it gets there, and the content the terminal moved
+	// in the meantime would never be repainted. So the change is latched here,
+	// where every size the terminal passed through is visible.
 	//
-	// Only in fullscreen mode, where the model spans the whole screen and the
-	// height is comparable to it. Inline frames are shorter than the terminal
-	// by design, so the same comparison would repaint on every render.
-	if height > 0 && s.flags.Contains(tFullscreen) && s.curbuf != nil && height < s.curbuf.Height() {
+	// Only in fullscreen mode, where the model spans the whole screen and its
+	// size is comparable to it. Inline frames are shorter than the terminal by
+	// design, so the same comparison would repaint on every render.
+	if s.flags.Contains(tFullscreen) && s.curbuf != nil &&
+		((width > 0 && width != s.curbuf.Width()) || (height > 0 && height != s.curbuf.Height())) {
 		s.clear = true
 	}
 
