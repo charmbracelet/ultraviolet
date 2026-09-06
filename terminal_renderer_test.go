@@ -1564,6 +1564,42 @@ func TestRendererFullscreenShrinkRepaints(t *testing.T) {
 	}
 }
 
+// Losing columns is the same story told sideways: the terminal clips or
+// rewraps every row to fit the narrower screen, and the model records none of
+// it. Widening back restores the columns but not the content, so the model
+// still claims cells the terminal no longer shows.
+//
+// The fuzzer found this one as residue: a row of clusters painted at the old
+// width, narrowed and widened with no render in between, and the tail of the
+// row still on screen afterwards.
+func TestRendererFullscreenNarrowRepaints(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("narrowing should force a repaint, got: %q", out)
+	}
+}
+
 // A drift-prone line is painted with autowrap off. A terminal that measures a
 // cluster wider than the model does would otherwise run past the right margin,
 // spilling the line onto the next row, or scrolling the whole screen when the
