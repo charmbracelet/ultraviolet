@@ -1431,12 +1431,16 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	var nonEmpty int
 
-	// XXX: In inline mode, after a screen resize, we need to clear the extra
-	// lines at the bottom of the screen. This is because in inline mode, we
-	// don't use the full screen height and the current buffer size might be
-	// larger than the new buffer size.
+	// An inline frame that gives up rows has to erase what it no longer covers,
+	// or the tail of the taller frame stays on screen below the shorter one.
+	// Fullscreen has no such rows: it repaints the whole screen instead.
+	//
+	// The erase runs from the new last row to the bottom of the screen, so it
+	// reaches that residue wherever the terminal moved it. A width change at
+	// the same time is therefore a reason to erase rather than a reason to skip
+	// it, since a terminal that rewrapped those rows has spread them further
+	// than the model can account for.
 	partialClear := !s.flags.Contains(tFullscreen) && s.cur.X != -1 && s.cur.Y != -1 &&
-		curWidth == newWidth &&
 		curHeight > 0 &&
 		curHeight > newHeight
 
