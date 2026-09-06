@@ -26,6 +26,15 @@ var ErrReaderNotStarted = fmt.Errorf("reader not started")
 // process ESC sequences. It is set to 50 milliseconds.
 const DefaultEscTimeout = 50 * time.Millisecond
 
+// EventDispatchInterval is the minimum delay between dispatching events decoded
+// from the same input buffer. Frame-based renderers, like the one used by
+// Bubble Tea, render at a fixed rate (60 fps) and only display the state of the
+// program at the moment they flush. Without this delay, a burst of input (such
+// as an auto-repeating key) would be processed within a single frame and only
+// the first and last states would ever be visible. Pacing the dispatch lets the
+// renderer present each intermediate state.
+const EventDispatchInterval = 20 * time.Millisecond
+
 // TerminalReader represents an input event loop that reads input events from
 // a reader and parses them into human-readable events. It supports
 // reading escape sequences, mouse events, and bracketed paste mode.
@@ -161,11 +170,11 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 	for {
 		select {
 		case <-ctx.Done():
-			d.sendEvents(eventc, buf.Bytes(), true)
+			d.sendEvents(ctx, eventc, buf.Bytes(), true)
 			wg.Wait()
 			return nil
 		case err := <-errc:
-			d.sendEvents(eventc, buf.Bytes(), true)
+			d.sendEvents(ctx, eventc, buf.Bytes(), true)
 			wg.Wait()
 			return err // return the first error encountered
 		case <-timeout.C:
@@ -176,7 +185,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			timedout := time.Now().After(ttimeout)
 			if buf.Len() > 0 && timedout {
 				d.logf("timeout expired, processing buffer")
-				n = d.sendEvents(eventc, buf.Bytes(), true)
+				n = d.sendEvents(ctx, eventc, buf.Bytes(), true)
 			}
 
 			if n > 0 {
@@ -200,7 +209,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			d.logf("input: %q", read)
 			buf.Write(read)
 			ttimeout = time.Now().Add(d.EscTimeout)
-			n := d.sendEvents(eventc, buf.Bytes(), false)
+			n := d.sendEvents(ctx, eventc, buf.Bytes(), false)
 			if !timeout.Stop() {
 				// drain the channel if it was already running
 				select {
@@ -228,12 +237,37 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
-func (d *TerminalReader) sendEvents(eventc chan<- Event, buf []byte, expired bool) int {
+func (d *TerminalReader) sendEvents(ctx context.Context, eventc chan<- Event, buf []byte, expired bool) int {
 	n, events := d.eventScanner.scanEvents(buf, expired)
-	for _, event := range events {
+	for i, event := range events {
+		if i > 0 {
+			if kp, ok := event.(KeyPressEvent); ok && len(kp.Text) == 0 {
+				// Pace bursts of non-printable key events (e.g. auto-repeating
+				// navigation keys) so frame-based renderers can present each
+				// intermediate state. Printable text is dispatched immediately
+				// to avoid slowing down typing and pasting.
+				if !d.paceEvents(ctx) {
+					break
+				}
+			}
+		}
 		eventc <- event
 	}
 	return n
+}
+
+// paceEvents waits for [EventDispatchInterval] to allow frame-based renderers
+// to present the previous event before the next one is dispatched. It returns
+// false if the context was cancelled while waiting.
+func (d *TerminalReader) paceEvents(ctx context.Context) bool {
+	timer := time.NewTimer(EventDispatchInterval)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 // eventScanner scans the buffer for events and sends them to the event channel.

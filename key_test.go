@@ -923,6 +923,74 @@ func TestReadLongInput(t *testing.T) {
 	}
 }
 
+func TestReadNonPrintableBurstIsPaced(t *testing.T) {
+	const n = 8
+	input := strings.Repeat("\x1b[A", n)
+	rdr := strings.NewReader(input)
+	drv := NewTerminalReader(rdr, "dumb")
+
+	eventc := make(chan Event)
+	go func() {
+		defer close(eventc)
+		if err := drv.StreamEvents(context.TODO(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
+		}
+	}()
+
+	var times []time.Time
+	for ev := range eventc {
+		kp, ok := ev.(KeyPressEvent)
+		if !ok || kp.Code != KeyUp {
+			t.Fatalf("expected up arrow key event, got %#v", ev)
+		}
+		times = append(times, time.Now())
+	}
+	if len(times) != n {
+		t.Fatalf("expected %d events, got %d", n, len(times))
+	}
+
+	// Bursts of non-printable key events are dispatched with a delay between
+	// each event so that frame-based renderers can present intermediate states
+	// instead of collapsing the burst into a single frame.
+	want := time.Duration(n-1) * EventDispatchInterval
+	if got := times[len(times)-1].Sub(times[0]); got < want {
+		t.Errorf("expected dispatch of %d events to take at least %v, took %v", n, want, got)
+	}
+}
+
+func TestReadPrintableBurstIsNotPaced(t *testing.T) {
+	const n = 1000
+	input := strings.Repeat("a", n)
+	rdr := strings.NewReader(input)
+	drv := NewTerminalReader(rdr, "dumb")
+
+	eventc := make(chan Event)
+	start := time.Now()
+	go func() {
+		defer close(eventc)
+		if err := drv.StreamEvents(context.TODO(), eventc); err != nil {
+			t.Errorf("error streaming events: %v", err)
+		}
+	}()
+
+	count := 0
+	for ev := range eventc {
+		if kp, ok := ev.(KeyPressEvent); ok && kp.Text == "a" {
+			count++
+		}
+	}
+	elapsed := time.Since(start)
+	if count != n {
+		t.Fatalf("expected %d events, got %d", n, count)
+	}
+
+	// Printable text is dispatched immediately to avoid slowing down typing
+	// and pasting. Pacing it would take ~20 seconds for this burst.
+	if elapsed >= EventDispatchInterval*5 {
+		t.Errorf("expected printable text burst to dispatch immediately, took %v", elapsed)
+	}
+}
+
 func TestReadInput(t *testing.T) {
 	type test struct {
 		keyname string
