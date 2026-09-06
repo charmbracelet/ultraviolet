@@ -525,6 +525,22 @@ func DecodeProgram(data []byte) Program {
 			if !ok {
 				return p
 			}
+			// An inline frame is never narrowed. The terminal rewraps the
+			// rows it already holds, carrying them, and the cursor sitting
+			// among them, somewhere a relative move cannot find again. There
+			// is no absolute reference to recover from in inline mode, so
+			// what survives is a property of the mode rather than a defect,
+			// and a differential target that asserted on it would only report
+			// failures nobody can act on.
+			//
+			// Widening is safe to fuzz and worth fuzzing: lines are drawn to
+			// fit the width they are drawn at, so nothing has wrapped, and a
+			// resize that grows the screen while the frame gives up rows is
+			// the shape of a real terminal resize.
+			if p.Inline {
+				nw = max(nw, curW)
+			}
+
 			op.W, op.H = nw, nh
 			curW, curH = nw, nh
 		}
