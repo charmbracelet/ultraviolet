@@ -197,8 +197,15 @@ func (t *Terminal) Start() error {
 			if err != nil {
 				return fmt.Errorf("reading terminal input: %w", err)
 			}
+			// Hand the event loop its own copy. t.buf is reused by the
+			// next Read, and the receiver only copies out of the slice
+			// after the send has completed, so sending t.buf[:n] lets
+			// one read's bytes be overwritten by the next before they
+			// have been consumed.
+			data := make([]byte, n)
+			copy(data, t.buf[:n])
 			select {
-			case bufc <- t.buf[:n]:
+			case bufc <- data:
 			case <-t.donec:
 				return nil
 			}
