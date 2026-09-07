@@ -149,25 +149,6 @@ func (s *TerminalRenderer) scrollBuffer(b *RenderBuffer, n, top, bot int, blank 
 			b.FillArea(blank, Rect(0, line, b.Width(), 1))
 		}
 	}
-
-	s.touchLine(b, top, bot-top+1, true)
-}
-
-// touchLine marks the line as touched.
-func (s *TerminalRenderer) touchLine(newbuf *RenderBuffer, y, n int, changed bool) {
-	height := newbuf.Height()
-	if n < 0 || y < 0 || y >= height || newbuf.Touched == nil || len(newbuf.Touched) < height {
-		return // Nothing to touch
-	}
-
-	width := newbuf.Width()
-	for i := y; i < y+n && i < height && i < len(newbuf.Touched); i++ {
-		if changed {
-			newbuf.TouchLine(0, i, width)
-		} else {
-			newbuf.Touched[i] = nil
-		}
-	}
 }
 
 // scrollUp scrolls the screen up by n lines.
