@@ -1573,11 +1573,6 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 					FirstCell: -1, LastCell: -1,
 				}
 			}
-			if i < len(s.curbuf.Touched) && i < s.curbuf.Height()-1 {
-				s.curbuf.Touched[i] = &LineData{
-					FirstCell: -1, LastCell: -1,
-				}
-			}
 		}
 	}
 
@@ -1592,7 +1587,6 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		newbuf.Touched = make([]*LineData, newHeight)
 	}
 	resetTouched(newbuf.Touched)
-	resetTouched(s.curbuf.Touched)
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles
 }
