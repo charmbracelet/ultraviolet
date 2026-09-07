@@ -1514,17 +1514,11 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	}
 
 	// Sync windows and screen
-	newbuf.Touched = make([]*LineData, newHeight)
-	for i := range newbuf.Touched {
-		newbuf.Touched[i] = &LineData{
-			FirstCell: -1, LastCell: -1,
-		}
+	if len(newbuf.Touched) != newHeight {
+		newbuf.Touched = make([]*LineData, newHeight)
 	}
-	for i := range s.curbuf.Touched {
-		s.curbuf.Touched[i] = &LineData{
-			FirstCell: -1, LastCell: -1,
-		}
-	}
+	resetTouched(newbuf.Touched)
+	resetTouched(s.curbuf.Touched)
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles
 }
@@ -1916,4 +1910,16 @@ func xtermCaps(termtype string) (v capabilities) {
 	}
 
 	return v
+}
+
+// resetTouched marks every line as untouched, reusing the records already there
+// rather than allocating a new one per line on every render.
+func resetTouched(touched []*LineData) {
+	for i, ld := range touched {
+		if ld == nil {
+			touched[i] = &LineData{FirstCell: -1, LastCell: -1}
+			continue
+		}
+		ld.FirstCell, ld.LastCell = -1, -1
+	}
 }
