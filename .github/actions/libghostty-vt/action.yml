@@ -17,16 +17,22 @@ runs:
     # bumping the dependency moves the build with it, and there is no second
     # place to remember to update.
     #
-    # A pseudo-version ends in the commit, so the last dash-separated field is
-    # it. A tagged version has no trailing commit and comes through whole, which
-    # git can check out just as well, so both kinds of version work.
+    # What comes out is a git ref either way. A pseudo-version ends in the
+    # twelve-digit commit it was built from, and that commit is the ref. Any
+    # other version is one the module actually tags, and the tag is the ref, so
+    # it is used as it stands rather than being taken apart.
     - name: Resolve the go-libghostty pin
       id: pin
       shell: bash
       run: |
         version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' internal/conformance/go.mod)
         test -n "$version"
-        echo "rev=${version##*-}" >> "$GITHUB_OUTPUT"
+
+        rev=$version
+        if [[ $version =~ -([0-9a-f]{12})$ ]]; then
+          rev=${BASH_REMATCH[1]}
+        fi
+        echo "rev=$rev" >> "$GITHUB_OUTPUT"
 
     - uses: mlugg/setup-zig@v2
       with:
