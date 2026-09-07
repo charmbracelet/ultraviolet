@@ -110,11 +110,10 @@ func (s *TerminalRenderer) scrolln(newbuf *RenderBuffer, n, top, bot, maxY int) 
 
 	s.scrollBuffer(s.curbuf, n, top, bot, blank)
 
-	// The scroll moved rows the application never drew into, and the diff loop
-	// only visits rows the application touched. Mark the whole scrolled range
-	// so every row it moved is compared against the model again; a row the
-	// scroll already put right costs a comparison and no output.
-	s.touchLine(newbuf, top, bot-top+1, true)
+	// Every row in the range moved, whether or not the application drew into
+	// it. A row the scroll already put in the right place costs a comparison
+	// and no output, which is the whole point of scrolling in hardware.
+	s.damage(top, bot-top+1)
 
 	// shift hash values too, they can be reused
 	s.scrollOldhash(n, top, bot)

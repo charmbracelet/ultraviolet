@@ -5,7 +5,6 @@ import (
 	"errors"
 	"hash/maphash"
 	"io"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -151,6 +150,7 @@ type TerminalRenderer struct {
 	driftRows        []bool       // rows holding a cell the terminal may measure differently
 	termW, termH     int          // the size [TerminalRenderer.Resize] was last told
 	termResized      bool         // whether the terminal changed size since the last render
+	damaged          []bool       // rows this render disturbed itself, see [TerminalRenderer.damage]
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -1383,10 +1383,6 @@ type sizeChange struct {
 
 	// repaintAll requires every row to be painted whatever the model says.
 	repaintAll bool
-
-	// repaintRows are rows that have to be painted whether or not the
-	// application touched them.
-	repaintRows []bool
 }
 
 // reconcileSize decides what a change of size costs, and is the only place that
@@ -1429,13 +1425,44 @@ func (s *TerminalRenderer) reconcileSize(newbuf *RenderBuffer) sizeChange {
 	// model believes it painted the whole row. Changing the width changes what
 	// fits, so a row holding a cell the two might measure differently has to be
 	// painted again. Rows of plain cells are measured the same by everyone, so an
-	// ASCII screen pays nothing. Cloned because the diff loop updates driftRows
-	// as it goes.
+	// ASCII screen pays nothing.
 	if !fullscreen && curWidth != newWidth {
-		change.repaintRows = slices.Clone(s.driftRows)
+		for y, drifts := range s.driftRows {
+			if drifts {
+				s.damage(y, 1)
+			}
+		}
 	}
 
 	return change
+}
+
+// damage marks n rows from y as rows this render disturbed on its own: rows it
+// scrolled, rows it erased, rows the terminal is about to measure differently
+// than the model does. The diff loop paints a damaged row whether or not the
+// application drew into it, because the application has no reason to redraw a
+// row it did not change and no way to know the renderer moved it.
+func (s *TerminalRenderer) damage(y, n int) {
+	if y < 0 || n <= 0 {
+		return
+	}
+	if end := y + n; len(s.damaged) < end {
+		s.damaged = append(s.damaged, make([]bool, end-len(s.damaged))...)
+	}
+	for i := y; i < y+n; i++ {
+		s.damaged[i] = true
+	}
+}
+
+// damagedRow reports whether this render disturbed row y itself.
+func (s *TerminalRenderer) damagedRow(y int) bool {
+	return y >= 0 && y < len(s.damaged) && s.damaged[y]
+}
+
+// forgetDamage ends this render's account of what it disturbed. The slice is
+// kept, so a steady stream of frames allocates nothing.
+func (s *TerminalRenderer) forgetDamage() {
+	clear(s.damaged)
 }
 
 // Redraw forces a full redraw of the screen. It's equivalent to calling
@@ -1533,7 +1560,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 				// nothing; the row has to be put back whatever the model says.
 				s.repaintLine(newbuf, i)
 				changedLines++
-			} else if (i < len(size.repaintRows) && size.repaintRows[i]) ||
+			} else if s.damagedRow(i) ||
 				newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
@@ -1557,6 +1584,8 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	if !s.flags.Contains(tFullscreen) && size.frameResized {
 		s.move(newbuf, 0, max(newHeight-1, 0))
 	}
+
+	s.forgetDamage()
 
 	// Sync windows and screen
 	if len(newbuf.Touched) != newHeight {
