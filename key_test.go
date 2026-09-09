@@ -93,6 +93,27 @@ func buildBaseSeqTests() []seqTest {
 				KeyPressEvent{Code: KeySpace, Mod: ModAlt},
 			},
 		},
+		// Linux console function keys F1-F5 (ESC [ [ A .. ESC [ [ E).
+		seqTest{
+			[]byte("\x1b[[A"),
+			[]Event{KeyPressEvent{Code: KeyF1}},
+		},
+		seqTest{
+			[]byte("\x1b[[B"),
+			[]Event{KeyPressEvent{Code: KeyF2}},
+		},
+		seqTest{
+			[]byte("\x1b[[C"),
+			[]Event{KeyPressEvent{Code: KeyF3}},
+		},
+		seqTest{
+			[]byte("\x1b[[D"),
+			[]Event{KeyPressEvent{Code: KeyF4}},
+		},
+		seqTest{
+			[]byte("\x1b[[E"),
+			[]Event{KeyPressEvent{Code: KeyF5}},
+		},
 	)
 	return td
 }
