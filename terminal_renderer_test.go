@@ -1600,6 +1600,51 @@ func TestRendererFullscreenNarrowRepaints(t *testing.T) {
 	}
 }
 
+// The repaint a resize forces belongs to resizes that changed something. An
+// application is free to draw a frame smaller than the screen, so comparing the
+// reported size against the model would differ on every call and repaint the
+// screen each time the renderer was told a size it already knew. A duplicate
+// SIGWINCH costs nothing and a steady screen stays quiet.
+func TestRendererResizeLatchesOnlyRealChanges(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(20, 8)
+
+	// A frame two rows shorter than the screen, so the model and the reported
+	// size disagree for as long as the application keeps drawing it.
+	scr := NewScreenBuffer(20, 6)
+	NewStyledString("hello").Draw(scr, Rect(0, 0, 20, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	for range 3 {
+		buf.Reset()
+		r.Resize(20, 8) // the size it already is
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		if out := buf.String(); strings.Contains(out, ansi.EraseEntireScreen) {
+			t.Fatalf("a resize that changed nothing repainted the screen: %q", out)
+		}
+	}
+
+	// A real change still latches, and still survives the grow back.
+	buf.Reset()
+	r.Resize(20, 4)
+	r.Resize(20, 8)
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("a shrink and grow back should repaint, got: %q", out)
+	}
+}
+
 // A drift-prone line is painted with autowrap off. A terminal that measures a
 // cluster wider than the model does would otherwise run past the right margin,
 // spilling the line onto the next row, or scrolling the whole screen when the

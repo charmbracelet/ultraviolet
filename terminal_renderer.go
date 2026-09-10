@@ -149,6 +149,7 @@ type TerminalRenderer struct {
 	lineDrifted      bool         // whether the line currently being transformed may have left the cursor adrift
 	noWrapLine       bool         // whether autowrap is off for the line currently being transformed
 	driftRows        []bool       // rows holding a cell the terminal may measure differently
+	lastW, lastH     int          // the size [TerminalRenderer.Resize] was last told
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -1544,12 +1545,25 @@ func (s *TerminalRenderer) Resize(width, height int) {
 	// in the meantime would never be repainted. So the change is latched here,
 	// where every size the terminal passed through is visible.
 	//
-	// Only in fullscreen mode, where the model spans the whole screen and its
-	// size is comparable to it. Inline frames are shorter than the terminal by
-	// design, so the same comparison would repaint on every render.
-	if s.flags.Contains(tFullscreen) && s.curbuf != nil &&
-		((width > 0 && width != s.curbuf.Width()) || (height > 0 && height != s.curbuf.Height())) {
+	// Against the size last reported, not against the model. An application is
+	// free to draw a frame smaller than the screen, and one that does would
+	// differ from the model on every call and repaint the screen each time it
+	// was told a size it already knew.
+	//
+	// Only in fullscreen mode, where a resize moves content the renderer is
+	// responsible for. An inline frame is shorter than the terminal by design,
+	// and what a resize does to the rows around it is not the renderer's to
+	// repaint.
+	if s.flags.Contains(tFullscreen) && s.lastW > 0 && s.lastH > 0 &&
+		((width > 0 && width != s.lastW) || (height > 0 && height != s.lastH)) {
 		s.clear = true
+	}
+
+	if width > 0 {
+		s.lastW = width
+	}
+	if height > 0 {
+		s.lastH = height
 	}
 
 	if !s.flags.Contains(tRelativeCursor) {
