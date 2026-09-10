@@ -1462,7 +1462,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	}
 
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
-	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
+	curHeight := s.curbuf.Height()
 
 	size := s.reconcileSize(newbuf)
 
@@ -1493,14 +1493,19 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		curHeight > newHeight
 
 	if !s.clear && partialClear {
-		s.clearBelow(newbuf, nil, newHeight-1)
+		// Clamped, because a frame can collapse to no rows at all and the erase
+		// has to start at the frame's first row rather than the one above it.
+		// Everything above belongs to whatever shared the screen first, and
+		// erasing from there would take a row the renderer never wrote.
+		eraseRow := max(newHeight-1, 0)
+		s.clearBelow(newbuf, nil, eraseRow)
 
 		// The erase starts at the last row of the new frame, so it takes that
 		// row with it on the way down. The diff loop only visits rows the
 		// application drew into, and the application has no reason to draw into
 		// a row it did not change, so mark it here or the erase is the last
 		// thing that happens to it.
-		s.touchLine(newbuf, newHeight-1, 1, true)
+		s.touchLine(newbuf, eraseRow, 1, true)
 	}
 
 	// Resize the model before diffing so the loop below walks every row
@@ -1558,7 +1563,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	}
 
 	if !s.flags.Contains(tFullscreen) && size.frameResized {
-		s.move(newbuf, 0, newHeight-1)
+		s.move(newbuf, 0, max(newHeight-1, 0))
 	}
 
 	// Sync windows and screen
