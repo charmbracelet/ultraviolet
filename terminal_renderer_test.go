@@ -1381,6 +1381,39 @@ func BenchmarkRenderResize(b *testing.B) {
 	}
 }
 
+// Resizes that report the size the terminal already is, with a frame shorter
+// than the screen. Applications are told the size on a schedule rather than only
+// when it changes, so this is the steady state, not an edge case: a duplicate
+// SIGWINCH, or a handler that reports on every frame.
+//
+// The measurement is how little a resize that changed nothing costs. Comparing
+// the reported size against the model instead of against the last report makes
+// this repaint the whole screen every iteration, which the other resize
+// benchmark cannot see because it always resizes to exactly the frame size.
+func BenchmarkResizeSteadyShortFrame(b *testing.B) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(80, 24)
+
+	buf := NewScreenBuffer(80, 23) // one row shorter than the screen
+	text := NewStyledString(strings.Repeat("x", 40))
+	text.Draw(buf, Rect(0, 0, 80, 1))
+	r.Render(buf.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		b.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.Resize(80, 24)
+		text.Draw(buf, Rect(0, i%23, 80, 1))
+		r.Render(buf.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			b.Fatalf("failed to flush renderer: %v", err)
+		}
+	}
+}
+
 // A resize invalidates the renderer's cursor model so the next move is
 // absolute. In relative cursor mode there is no absolute move, and -1 there
 // means "first move, assume the origin", so invalidating would assert a
@@ -1564,6 +1597,87 @@ func TestRendererFullscreenShrinkRepaints(t *testing.T) {
 	}
 }
 
+// Losing columns is the same story told sideways: the terminal clips or
+// rewraps every row to fit the narrower screen, and the model records none of
+// it. Widening back restores the columns but not the content, so the model
+// still claims cells the terminal no longer shows.
+//
+// The fuzzer found this one as residue: a row of clusters painted at the old
+// width, narrowed and widened with no render in between, and the tail of the
+// row still on screen afterwards.
+func TestRendererFullscreenNarrowRepaints(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("narrowing should force a repaint, got: %q", out)
+	}
+}
+
+// The repaint a resize forces belongs to resizes that changed something. An
+// application is free to draw a frame smaller than the screen, so comparing the
+// reported size against the model would differ on every call and repaint the
+// screen each time the renderer was told a size it already knew. A duplicate
+// SIGWINCH costs nothing and a steady screen stays quiet.
+func TestRendererResizeLatchesOnlyRealChanges(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(20, 8)
+
+	// A frame two rows shorter than the screen, so the model and the reported
+	// size disagree for as long as the application keeps drawing it.
+	scr := NewScreenBuffer(20, 6)
+	NewStyledString("hello").Draw(scr, Rect(0, 0, 20, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	for range 3 {
+		buf.Reset()
+		r.Resize(20, 8) // the size it already is
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		if out := buf.String(); strings.Contains(out, ansi.EraseEntireScreen) {
+			t.Fatalf("a resize that changed nothing repainted the screen: %q", out)
+		}
+	}
+
+	// A real change still latches, and still survives the grow back.
+	buf.Reset()
+	r.Resize(20, 4)
+	r.Resize(20, 8)
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("a shrink and grow back should repaint, got: %q", out)
+	}
+}
+
 // A drift-prone line is painted with autowrap off. A terminal that measures a
 // cluster wider than the model does would otherwise run past the right margin,
 // spilling the line onto the next row, or scrolling the whole screen when the
@@ -1718,5 +1832,84 @@ func TestDriftShortCircuitAgreesWithFullCheck(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A grapheme cluster at the right margin is written with autowrap on, even in
+// the lower right corner where a plain cell is not. With autowrap off the
+// terminal never advances past the margin, so it reads the combining
+// codepoints as part of the cell to the left: the mark moves one column back
+// and the base rune is left alone at the margin. Both reference emulators
+// place the cluster correctly when autowrap stays on.
+func TestRendererMarginClusterKeepsAutowrap(t *testing.T) {
+	paint := func(content string, y int) string {
+		var buf bytes.Buffer
+		r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		r.Resize(6, 2)
+
+		scr := NewScreenBuffer(6, 2)
+		NewStyledString(content).Draw(scr, Rect(0, y, 6, 1))
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		return buf.String()
+	}
+
+	// e + U+0301. Two codepoints, one column.
+	const cluster = "e\u0301"
+
+	for _, y := range []int{0, 1} {
+		out := paint("###"+cluster+cluster+cluster, y)
+		if strings.Contains(out, ansi.ResetModeAutoWrap) {
+			t.Errorf("row %d: cluster at the margin painted with autowrap off: %q", y, out)
+		}
+	}
+
+	// The corner still gets the autowrap dance when nothing can be split.
+	if out := paint("######", 1); !strings.Contains(out, ansi.ResetModeAutoWrap) {
+		t.Errorf("plain corner cell should paint with autowrap off, got: %q", out)
+	}
+}
+
+// A hardware scroll moves every row in its range, including rows the
+// application never drew into this frame. The diff loop only visits rows the
+// application touched, so without marking the range those rows keep the model's
+// old opinion of them and the content the scroll carried away never comes back.
+//
+// Here the scroll puts row 2 where row 0 belongs, which is what makes it worth
+// doing, and takes row 1 off the top of the screen on the way. Row 1 has to be
+// painted again even though nothing drew into it.
+func TestRendererScrollRepaintsRowsItMoved(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+	r.Resize(4, 8)
+
+	scr := NewScreenBuffer(4, 8)
+	NewStyledString("aa").Draw(scr, Rect(0, 1, 4, 1))
+	NewStyledString("bb").Draw(scr, Rect(0, 2, 4, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Row 1 keeps its "aa" from the frame before and is not drawn into.
+	NewStyledString("bb").Draw(scr, Rect(0, 0, 4, 1))
+	NewStyledString("aa").Draw(scr, Rect(0, 2, 4, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, ansi.ScrollUp(2)) {
+		t.Fatalf("expected a hardware scroll, got: %q", out)
+	}
+	if n := strings.Count(out, "aa"); n != 2 {
+		t.Errorf("scrolled rows painted %d times, want 2 (rows 1 and 2): %q", n, out)
 	}
 }

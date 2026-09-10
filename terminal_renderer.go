@@ -149,6 +149,7 @@ type TerminalRenderer struct {
 	lineDrifted      bool         // whether the line currently being transformed may have left the cursor adrift
 	noWrapLine       bool         // whether autowrap is off for the line currently being transformed
 	driftRows        []bool       // rows holding a cell the terminal may measure differently
+	lastW, lastH     int          // the size [TerminalRenderer.Resize] was last told
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -503,18 +504,23 @@ func cellEqual(a, b *Cell) bool {
 
 // putCell draws a cell at the current cursor position.
 //
-// Two cells at the right margin are written with autowrap off. The lower right
-// corner, because writing it would scroll the screen. And a cell holding a
-// grapheme cluster of more than one codepoint, because terminals disagree about
-// what a pending wrap means for one: some hold the whole cluster on the row,
-// some let the combining codepoints wrap and land the tail on the next row.
-// Neither disagreement is visible to the model, so avoid provoking it.
+// One cell at the right margin is written with autowrap off: the lower right
+// corner, because writing it with autowrap on leaves a pending wrap that
+// scrolls the screen as soon as anything else prints.
+//
+// A cell holding a grapheme cluster of more than one codepoint keeps autowrap
+// on, corner or not. With autowrap off the terminal never advances past the
+// margin, so it reads the combining codepoints as belonging to the cell to the
+// left and moves the mark one column back; the base rune is then alone at the
+// margin and the row no longer says what the model thinks it says. With
+// autowrap on the whole cluster stays where it was put, and the pending wrap it
+// leaves behind is the ordinary kind [TerminalRenderer.move] already cancels.
 func (s *TerminalRenderer) putCell(newbuf *RenderBuffer, cell *Cell) {
 	width, height := newbuf.Width(), newbuf.Height()
 	atMargin := s.cur.X == width-1 && !s.noWrapLine
 	lowerRight := s.flags.Contains(tFullscreen) && s.cur.Y == height-1
 	splittable := cell != nil && utf8.RuneCountInString(cell.Content) > 1
-	if atMargin && (lowerRight || splittable) {
+	if atMargin && lowerRight && !splittable {
 		s.putCellLR(newbuf, cell)
 	} else {
 		s.putAttrCell(newbuf, cell)
@@ -1397,17 +1403,17 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	if curWidth != newWidth || curHeight != newHeight {
 		s.oldhash, s.newhash = nil, nil
-		// A shrink makes the terminal reflow in emulator-defined ways the
-		// incremental model cannot predict; force a full repaint. Only in
-		// fullscreen, where the renderer owns every cell it is about to
-		// clear. Inline mode shares the screen with whatever came before,
-		// so it uses the narrower partial clear below instead.
-		// A shrink makes the terminal reflow. A height grow is no safer: the
-		// terminal fills the rows it gains from its scrollback, and an earlier
-		// shrink may have rewrapped a row too wide to fit into exactly that
-		// space. Those lines come back at the top and push the screen down, so
-		// no row keeps its meaning and there is nothing to diff against.
-		if s.flags.Contains(tFullscreen) && (newWidth < curWidth || newHeight != curHeight) {
+		// Any change of size moves content the model cannot follow. A shrink
+		// makes the terminal reflow in emulator-defined ways, and a grow is no
+		// safer: the terminal fills the cells it gains from its scrollback,
+		// where an earlier shrink left whatever it rewrapped out of view. Those
+		// lines come back and push the screen around, so no row keeps its
+		// meaning and there is nothing to diff against.
+		//
+		// Only in fullscreen, where the renderer owns every cell it is about to
+		// clear. Inline mode shares the screen with whatever came before, so it
+		// uses the narrower partial clear below instead.
+		if s.flags.Contains(tFullscreen) {
 			s.clear = true
 		}
 	}
@@ -1524,25 +1530,40 @@ func (s *TerminalRenderer) Erase() {
 // invalidating would assert a position instead of forgetting one. Keep the
 // old model in that mode and let the next render diff against it.
 //
-// A resize that loses rows also forces the next render to repaint, since the
-// screen scrolls to keep the cursor visible and the model cannot see where its
-// rows went.
+// A resize also forces the next render to repaint, since the screen moves
+// content around to fit and the model cannot see where it went.
 func (s *TerminalRenderer) Resize(width, height int) {
 	if s.tabs != nil {
 		s.tabs.Resize(width)
 	}
 
-	// A screen that loses rows scrolls to keep the cursor visible, which moves
-	// every row the model has an opinion about. Nothing in the model records
-	// that shift, so there is no diff back to the truth: repaint instead. The
-	// flag survives a later grow, because the content moved when the rows went
-	// away and getting them back does not put it where it was.
+	// A resize moves content the model cannot follow, so the next render has to
+	// repaint rather than diff. [TerminalRenderer.Render] says the same thing
+	// about the frame it is handed, but it only sees the size the application
+	// draws at: a screen that shrinks and grows back between two frames looks
+	// unchanged by the time it gets there, and the content the terminal moved
+	// in the meantime would never be repainted. So the change is latched here,
+	// where every size the terminal passed through is visible.
 	//
-	// Only in fullscreen mode, where the model spans the whole screen and the
-	// height is comparable to it. Inline frames are shorter than the terminal
-	// by design, so the same comparison would repaint on every render.
-	if height > 0 && s.flags.Contains(tFullscreen) && s.curbuf != nil && height < s.curbuf.Height() {
+	// Against the size last reported, not against the model. An application is
+	// free to draw a frame smaller than the screen, and one that does would
+	// differ from the model on every call and repaint the screen each time it
+	// was told a size it already knew.
+	//
+	// Only in fullscreen mode, where a resize moves content the renderer is
+	// responsible for. An inline frame is shorter than the terminal by design,
+	// and what a resize does to the rows around it is not the renderer's to
+	// repaint.
+	if s.flags.Contains(tFullscreen) && s.lastW > 0 && s.lastH > 0 &&
+		((width > 0 && width != s.lastW) || (height > 0 && height != s.lastH)) {
 		s.clear = true
+	}
+
+	if width > 0 {
+		s.lastW = width
+	}
+	if height > 0 {
+		s.lastH = height
 	}
 
 	if !s.flags.Contains(tRelativeCursor) {
