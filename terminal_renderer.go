@@ -1528,10 +1528,15 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 				changedLines++
 			}
 
-			// Mark line changed successfully.
+			// Mark line changed successfully, reusing the record rather than
+			// replacing it. Allocating one per row per render is what made the
+			// cost of a frame scale with the height of the screen, and
+			// resetTouched overwrites this one again on the way out regardless.
 			if i < len(newbuf.Touched) && i <= newbuf.Height()-1 {
-				newbuf.Touched[i] = &LineData{
-					FirstCell: -1, LastCell: -1,
+				if ld := newbuf.Touched[i]; ld != nil {
+					ld.FirstCell, ld.LastCell = -1, -1
+				} else {
+					newbuf.Touched[i] = &LineData{FirstCell: -1, LastCell: -1}
 				}
 			}
 		}
