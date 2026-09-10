@@ -2074,3 +2074,52 @@ func TestRendererCornerClusterLeavesNoPendingWrap(t *testing.T) {
 		t.Errorf("a frame that ends in pending wrap on the last row scrolls the screen on the next print: cursor x=%d, width=%d", x, cellbuf.Width())
 	}
 }
+
+// The renderer's record of the rows it disturbed itself. The guard matters:
+// the erase below a shrinking inline frame damages row newHeight-1, which is
+// -1 for an empty frame, and a render that walks no rows still has to leave
+// the record clean for the next one.
+func TestRendererDamageRecord(t *testing.T) {
+	var r TerminalRenderer
+
+	if r.damagedRow(0) {
+		t.Error("a renderer that has disturbed nothing reports damage")
+	}
+
+	r.damage(2, 3)
+	for y, want := range map[int]bool{0: false, 1: false, 2: true, 3: true, 4: true, 5: false} {
+		if got := r.damagedRow(y); got != want {
+			t.Errorf("after damage(2, 3), row %d damaged=%v, want %v", y, got, want)
+		}
+	}
+
+	// Out of range in either direction is a question, not a panic.
+	if r.damagedRow(-1) || r.damagedRow(1<<20) {
+		t.Error("a row outside the record reports damage")
+	}
+
+	// Nothing to mark, nothing marked. A negative row is what an empty frame
+	// asks about, and n of zero is a range that does not exist.
+	before := len(r.damaged)
+	r.damage(-1, 1)
+	r.damage(0, 0)
+	r.damage(0, -1)
+	if len(r.damaged) != before {
+		t.Errorf("a degenerate range grew the record from %d to %d", before, len(r.damaged))
+	}
+	if r.damagedRow(0) {
+		t.Error("damage(0, 0) marked row 0")
+	}
+
+	// The record is per render. Forgetting keeps the space it already has, so
+	// a steady stream of frames stops allocating.
+	r.forgetDamage()
+	for y := range 6 {
+		if r.damagedRow(y) {
+			t.Errorf("row %d still damaged after forgetDamage", y)
+		}
+	}
+	if len(r.damaged) != before {
+		t.Errorf("forgetDamage resized the record to %d, want %d kept", len(r.damaged), before)
+	}
+}
