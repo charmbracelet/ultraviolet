@@ -1381,6 +1381,39 @@ func BenchmarkRenderResize(b *testing.B) {
 	}
 }
 
+// Resizes that report the size the terminal already is, with a frame shorter
+// than the screen. Applications are told the size on a schedule rather than only
+// when it changes, so this is the steady state, not an edge case: a duplicate
+// SIGWINCH, or a handler that reports on every frame.
+//
+// The measurement is how little a resize that changed nothing costs. Comparing
+// the reported size against the model instead of against the last report makes
+// this repaint the whole screen every iteration, which the other resize
+// benchmark cannot see because it always resizes to exactly the frame size.
+func BenchmarkResizeSteadyShortFrame(b *testing.B) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(80, 24)
+
+	buf := NewScreenBuffer(80, 23) // one row shorter than the screen
+	text := NewStyledString(strings.Repeat("x", 40))
+	text.Draw(buf, Rect(0, 0, 80, 1))
+	r.Render(buf.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		b.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.Resize(80, 24)
+		text.Draw(buf, Rect(0, i%23, 80, 1))
+		r.Render(buf.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			b.Fatalf("failed to flush renderer: %v", err)
+		}
+	}
+}
+
 // A resize invalidates the renderer's cursor model so the next move is
 // absolute. In relative cursor mode there is no absolute move, and -1 there
 // means "first move, assume the origin", so invalidating would assert a
