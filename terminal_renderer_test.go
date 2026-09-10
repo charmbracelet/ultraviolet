@@ -2072,3 +2072,37 @@ func TestRendererDamageRecord(t *testing.T) {
 		t.Errorf("forgetDamage resized the record to %d, want %d kept", len(r.damaged), before)
 	}
 }
+
+// A touch list shorter than the screen is a state an application can reach: drop
+// the list, which is what an application does when it knows the frame changed
+// shape, then touch one row. The list grows only as far as the rows it was told
+// about, so it ends up shorter than the screen while the screen keeps its
+// height, and the scroll optimisation walked every row of the screen through
+// it.
+//
+// The dimensions have to stay put for this, since a change of size discards the
+// hashes and takes the rehash-everything path that never indexes the list.
+func TestRendererHashesAShortTouchList(t *testing.T) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+
+	cellbuf := NewRenderBuffer(5, 4)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	cellbuf.Touched = nil
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	if len(cellbuf.Touched) >= cellbuf.Height() {
+		t.Fatalf("expected a touch list shorter than the %d-row screen, got %d rows",
+			cellbuf.Height(), len(cellbuf.Touched))
+	}
+
+	r.Render(cellbuf) // indexed the list by screen row and ran off the end
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+}
