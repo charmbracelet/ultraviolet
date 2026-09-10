@@ -1560,6 +1560,41 @@ func TestRendererInlineShrinkKeepsItsLastRow(t *testing.T) {
 	}
 }
 
+// A frame can collapse to nothing, and a buffer resized to zero rows reports
+// zero columns too, so the erase below it has no row of its own to start from.
+// Starting one row higher would reach above the frame, into rows that belong to
+// whatever shared the screen first: a shell's output, another frame, scrollback.
+// The renderer never wrote them and does not get to erase them.
+func TestRendererInlineCollapseStaysBelowItsOrigin(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(10, 20)
+
+	cellbuf := NewRenderBuffer(10, 4)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	cellbuf.Resize(10, 0)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// Cursor up from the frame's first row would leave the frame entirely, and
+	// the erase that follows would take the row above with it.
+	if out := buf.String(); strings.Contains(out, ansi.CUU1) || strings.Contains(out, "\x1b[1A") {
+		t.Errorf("collapsing the frame moved above its first row: %q", out)
+	}
+	if _, y := r.Position(); y < 0 {
+		t.Errorf("collapsing the frame left the cursor model at row %d", y)
+	}
+}
+
 // The same shrink, but through the full-erase path an application takes when it
 // knows the frame changed shape. The erase covers from the cursor to the end of
 // the screen, so where the cursor is decides how much of the old frame it
