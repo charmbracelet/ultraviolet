@@ -77,6 +77,17 @@ program:
   past the bottom of the frame, because a frame that shrinks has to clear what
   it no longer covers and the abandoned rows are where the residue lands.
 
+  Rows of someone else's output sit above every inline frame, and the screen is
+  read back over them too. They are the point rather than scenery: an inline
+  renderer finds the top of its frame by counting rows upward from the cursor,
+  and a count that overshoots erases into them. With nothing up there, an erase
+  that reached a row too far would read back as blanks, which is what blank rows
+  look like anyway, and the mistake would not show.
+
+  An inline frame may also collapse to no rows at all, which is the case most
+  likely to reach above itself, since there is no last row for the erase below
+  the frame to start from.
+
   Inline screens are never narrowed, only widened. Narrowing makes the terminal
   rewrap the rows it holds, carrying them, and the cursor among them, somewhere
   a relative move cannot find again. What survives that is a property of drawing

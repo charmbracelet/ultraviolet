@@ -105,15 +105,27 @@ const (
 	MinResizeH, MaxResizeH = 2, 8
 )
 
+// InlineRowsAbove is how many rows of someone else's output sit above an inline
+// frame: a shell prompt, the tail of a build log, whatever was on the screen
+// when the application started.
+//
+// They are the point, not scenery. An inline renderer reaches the top of its
+// frame by counting rows upward from the cursor, and if it miscounts it erases
+// into this region. With nothing up there a frame that erased one row too far
+// would read back as a screen full of blanks, which is what the screen should
+// look like anyway, and the whole class of bug is invisible.
+const InlineRowsAbove = 2
+
 // InlineTermHeight is the terminal height an inline program runs against.
 //
 // An inline frame is shorter than the terminal by definition, so the terminal
-// needs room for the tallest frame a program can reach and a row to spare. A
-// frame that reaches the last row scrolls the screen on the next newline, and
-// content that has scrolled sits at a different absolute row in every run, so
-// a differential comparison against it would report the scroll as a bug. Give
-// the frame room and the two runs stay anchored at the same place.
-const InlineTermHeight = MaxResizeH + 2
+// needs room for the rows above it, the tallest frame a program can reach, and
+// a row to spare. A frame that reaches the last row scrolls the screen on the
+// next newline, and content that has scrolled sits at a different absolute row
+// in every run, so a differential comparison against it would report the scroll
+// as a bug. Give the frame room and the two runs stay anchored at the same
+// place.
+const InlineTermHeight = InlineRowsAbove + MaxResizeH + 2
 
 // String makes failures readable, since a raw OpKind number tells you nothing
 // about what the renderer was asked to do.
@@ -353,8 +365,13 @@ func Seeds() [][]byte {
 		// geometry across one, so each seed draws, resizes, and draws again.
 		// The dimensions are encoded relative to the resize bounds: a byte b
 		// maps to minResize + b % (max-min+1).
+		// The decoder maps a byte to a size within the resize bounds, so a seed
+		// that wants a particular size has to encode it the same way. An inline
+		// program may collapse to no rows, so its heights start from zero and
+		// the same byte means a different height in each mode; pass the low
+		// bound the target mode uses.
 		resizeW := func(w int) byte { return byte((w - MinResizeW) % (MaxResizeW - MinResizeW + 1)) }
-		resizeH := func(h int) byte { return byte((h - MinResizeH) % (MaxResizeH - MinResizeH + 1)) }
+		resizeH := func(h, lo int) byte { return byte((h - lo) % (MaxResizeH - lo + 1)) }
 		for mode := byte(0); mode < 8; mode++ {
 			seeds = append(seeds, []byte{
 				14, 2, // 20x4
@@ -362,11 +379,11 @@ func Seeds() [][]byte {
 				byte(OpDrawLine), 0, first, first, last, last, endOfLine,
 				byte(OpRender),
 				// Shrink, then draw a line that only fits the smaller screen.
-				byte(OpResize), resizeW(8), resizeH(3),
+				byte(OpResize), resizeW(8), resizeH(3, MinResizeH),
 				byte(OpDrawLine), 0, first, 0, endOfLine,
 				byte(OpRender),
 				// Grow back, which is where clipped content can leave residue.
-				byte(OpResize), resizeW(24), resizeH(6),
+				byte(OpResize), resizeW(24), resizeH(6, MinResizeH),
 				byte(OpDrawLine), 0, last, last, last, endOfLine,
 				byte(OpRender),
 			})
@@ -385,7 +402,7 @@ func Seeds() [][]byte {
 			byte(OpDrawLine), 4, first, endOfLine,
 			byte(OpRender),
 			byte(OpErase),
-			byte(OpResize), resizeW(20), resizeH(2),
+			byte(OpResize), resizeW(20), resizeH(2, 0),
 			byte(OpDrawLine), 0, last, endOfLine,
 			byte(OpRender),
 		})
@@ -521,7 +538,15 @@ func DecodeProgram(data []byte) Program {
 			if !ok {
 				return p
 			}
-			nh, ok := d.intrange(MinResizeH, MaxResizeH)
+			// An inline frame is allowed to collapse to nothing. A view can
+			// vanish while the application keeps drawing, and a frame with no
+			// rows leaves the erase below it no row of its own to start from,
+			// which is the case most likely to reach above the frame.
+			minH := MinResizeH
+			if p.Inline {
+				minH = 0
+			}
+			nh, ok := d.intrange(minH, MaxResizeH)
 			if !ok {
 				return p
 			}

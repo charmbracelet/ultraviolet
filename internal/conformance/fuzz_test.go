@@ -1,6 +1,7 @@
 package conformance_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -45,6 +46,25 @@ func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int
 	}
 
 	term := mk(t, p.Width, termH, p.GraphemeWidth)
+
+	// An inline frame shares the screen, so put something on it first and leave
+	// the cursor below: a shell's last lines, a build log, whatever the
+	// application started under. The renderer finds the top of its frame by
+	// counting rows upward from where the cursor is, and these rows are what an
+	// upward count that overshoots lands in. Without them every erase that
+	// reached too far would still read back as blanks, which is what blank rows
+	// look like, and the mistake would not show.
+	//
+	// Written straight to the emulator rather than through the renderer, since
+	// the renderer must not know they exist.
+	if p.Inline {
+		for y := range conformance.InlineRowsAbove {
+			if _, err := fmt.Fprintf(term, "above %d\r\n", y); err != nil {
+				t.Fatalf("seeding the rows above the frame: %v", err)
+			}
+		}
+	}
+
 	rend := uv.NewTerminalRenderer(term, []string{
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
@@ -131,6 +151,20 @@ func (r *runner) step(t *testing.T, op conformance.Op) {
 	case conformance.OpErase:
 		r.rend.Erase()
 	}
+}
+
+// frameTop is the terminal row the frame's first row sits on. A fullscreen frame
+// starts at the top of the screen; an inline one starts below the rows that were
+// already there, which is where the cursor was when the renderer first saw it.
+//
+// Anything comparing a frame row against a screen row has to go through this.
+// The differential targets do not, because both of their runs are offset
+// identically and the offset cancels.
+func (r *runner) frameTop() int {
+	if r.prog.Inline {
+		return conformance.InlineRowsAbove
+	}
+	return 0
 }
 
 // screen returns every row of the terminal, for comparison against another
@@ -486,6 +520,7 @@ func FuzzScreenShowsContent(f *testing.F) {
 			}
 
 			screen := r.screen(t)
+			screenY := lastY + r.frameTop()
 			drawn := drawnRow(r.buf, lastY, func(cluster string) int {
 				return clusterWidth(t, o, p.GraphemeWidth, cluster)
 			})
@@ -502,13 +537,13 @@ func FuzzScreenShowsContent(f *testing.F) {
 						continue
 					}
 					wantRune := strings.Count(drawn, string(r))
-					gotRune := strings.Count(screen[lastY], string(r))
+					gotRune := strings.Count(screen[screenY], string(r))
 					if gotRune < wantRune {
 						t.Errorf("%s: row %d shows %q of cluster %q %d times but at least %d were drawn\n"+
 							"  screen %q\n"+
 							"  drawn  %q\n"+
 							"program:\n%s",
-							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[lastY], drawn, p)
+							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[screenY], drawn, p)
 						return
 					}
 				}
