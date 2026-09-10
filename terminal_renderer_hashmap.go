@@ -30,7 +30,12 @@ func (s *TerminalRenderer) updateHashmap(newbuf *RenderBuffer) {
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := range height {
-			if newbuf.Touched == nil || newbuf.Touched[i] != nil {
+			// A touch list shorter than the screen is not a contradiction: an
+			// application may drop the list and touch one row, and the list
+			// grows only as far as the rows it was told about. Rows past the end
+			// are rows nobody claimed either way, so rehash them, which is what
+			// a missing list means here too.
+			if i >= len(newbuf.Touched) || newbuf.Touched[i] != nil {
 				// TODO: Investigate why this is needed. If we remove this
 				// line, scroll optimization does not work correctly. This
 				// should happen else where.
