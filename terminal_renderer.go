@@ -5,7 +5,6 @@ import (
 	"errors"
 	"hash/maphash"
 	"io"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -150,6 +149,7 @@ type TerminalRenderer struct {
 	noWrapLine       bool         // whether autowrap is off for the line currently being transformed
 	driftRows        []bool       // rows holding a cell the terminal may measure differently
 	lastW, lastH     int          // the size [TerminalRenderer.Resize] was last told
+	damaged          []bool       // rows this render disturbed itself, see [TerminalRenderer.damage]
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -1364,6 +1364,39 @@ func (s *TerminalRenderer) Flush() (err error) {
 	return
 }
 
+// damage marks n rows from y as rows this render disturbed on its own: rows it
+// scrolled, rows it erased, rows the terminal is about to measure differently
+// than the model does. The diff loop paints a damaged row whether or not the
+// application drew into it, because the application has no reason to redraw a
+// row it did not change and no way to know the renderer moved it.
+//
+// This is the renderer talking to itself, so it is kept here rather than
+// written into the frame it was handed. A row the renderer disturbed and a row
+// the application drew into need the same treatment but mean different things,
+// and only one of them is the caller's to know about.
+func (s *TerminalRenderer) damage(y, n int) {
+	if y < 0 || n <= 0 {
+		return
+	}
+	if end := y + n; len(s.damaged) < end {
+		s.damaged = append(s.damaged, make([]bool, end-len(s.damaged))...)
+	}
+	for i := y; i < y+n; i++ {
+		s.damaged[i] = true
+	}
+}
+
+// damagedRow reports whether this render disturbed row y itself.
+func (s *TerminalRenderer) damagedRow(y int) bool {
+	return y >= 0 && y < len(s.damaged) && s.damaged[y]
+}
+
+// forgetDamage ends this render's account of what it disturbed. The slice is
+// kept, so a steady stream of frames allocates nothing.
+func (s *TerminalRenderer) forgetDamage() {
+	clear(s.damaged)
+}
+
 // Redraw forces a full redraw of the screen. It's equivalent to calling
 // [TerminalRenderer.Erase] and [TerminalRenderer.Render].
 func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
@@ -1395,10 +1428,13 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	// application touched it. Rows of plain cells are measured the same by
 	// everyone and are left alone, so an ASCII screen pays nothing.
 	//
-	// Cloned because the diff loop below updates driftRows as it goes.
-	var repaintRows []bool
+	// Recorded before the loop, which updates driftRows as it goes.
 	if curWidth != newWidth {
-		repaintRows = slices.Clone(s.driftRows)
+		for y, drifts := range s.driftRows {
+			if drifts {
+				s.damage(y, 1)
+			}
+		}
 	}
 
 	if curWidth != newWidth || curHeight != newHeight {
@@ -1453,11 +1489,8 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		s.clearBelow(newbuf, nil, eraseRow)
 
 		// The erase starts at the last row of the new frame, so it takes that
-		// row with it on the way down. The diff loop only visits rows the
-		// application drew into, and the application has no reason to draw into
-		// a row it did not change, so mark it here or the erase is the last
-		// thing that happens to it.
-		s.touchLine(newbuf, eraseRow, 1, true)
+		// row with it on the way down.
+		s.damage(eraseRow, 1)
 	}
 
 	// Resize the model before diffing so the loop below walks every row
@@ -1488,22 +1521,22 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
-			if (i < len(repaintRows) && repaintRows[i]) ||
+			if s.damagedRow(i) ||
 				newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
 				changedLines++
 			}
 
-			// Mark line changed successfully.
+			// Mark line changed successfully, reusing the record rather than
+			// replacing it. Allocating one per row per render is what made the
+			// cost of a frame scale with the height of the screen, and
+			// resetTouched overwrites this one again on the way out regardless.
 			if i < len(newbuf.Touched) && i <= newbuf.Height()-1 {
-				newbuf.Touched[i] = &LineData{
-					FirstCell: -1, LastCell: -1,
-				}
-			}
-			if i < len(s.curbuf.Touched) && i < s.curbuf.Height()-1 {
-				s.curbuf.Touched[i] = &LineData{
-					FirstCell: -1, LastCell: -1,
+				if ld := newbuf.Touched[i]; ld != nil {
+					ld.FirstCell, ld.LastCell = -1, -1
+				} else {
+					newbuf.Touched[i] = &LineData{FirstCell: -1, LastCell: -1}
 				}
 			}
 		}
@@ -1513,18 +1546,13 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		s.move(newbuf, 0, max(newHeight-1, 0))
 	}
 
+	s.forgetDamage()
+
 	// Sync windows and screen
-	newbuf.Touched = make([]*LineData, newHeight)
-	for i := range newbuf.Touched {
-		newbuf.Touched[i] = &LineData{
-			FirstCell: -1, LastCell: -1,
-		}
+	if len(newbuf.Touched) != newHeight {
+		newbuf.Touched = make([]*LineData, newHeight)
 	}
-	for i := range s.curbuf.Touched {
-		s.curbuf.Touched[i] = &LineData{
-			FirstCell: -1, LastCell: -1,
-		}
-	}
+	resetTouched(newbuf.Touched)
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles
 }
@@ -1916,4 +1944,16 @@ func xtermCaps(termtype string) (v capabilities) {
 	}
 
 	return v
+}
+
+// resetTouched marks every line as untouched, reusing the records already there
+// rather than allocating a new one per line on every render.
+func resetTouched(touched []*LineData) {
+	for i, ld := range touched {
+		if ld == nil {
+			touched[i] = &LineData{FirstCell: -1, LastCell: -1}
+			continue
+		}
+		ld.FirstCell, ld.LastCell = -1, -1
+	}
 }
