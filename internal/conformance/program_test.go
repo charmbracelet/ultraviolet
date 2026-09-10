@@ -88,9 +88,15 @@ func TestDecodeProgramTotal(t *testing.T) {
 					t.Fatalf("DecodeProgram(%x) op %d resizes to width %d, outside [%d,%d]",
 						in, i, op.W, conformance.MinResizeW, conformance.MaxResizeW)
 				}
-				if op.H < conformance.MinResizeH || op.H > conformance.MaxResizeH {
+				// An inline frame may collapse to nothing; a fullscreen one
+				// may not, since the renderer owns every row of the screen.
+				minH := conformance.MinResizeH
+				if p.Inline {
+					minH = 0
+				}
+				if op.H < minH || op.H > conformance.MaxResizeH {
 					t.Fatalf("DecodeProgram(%x) op %d resizes to height %d, outside [%d,%d]",
-						in, i, op.H, conformance.MinResizeH, conformance.MaxResizeH)
+						in, i, op.H, minH, conformance.MaxResizeH)
 				}
 				if p.Inline && op.W < curW {
 					t.Fatalf("DecodeProgram(%x) op %d narrows an inline screen from %d to %d columns, "+
@@ -189,7 +195,7 @@ func TestSeedCorpusIsInteresting(t *testing.T) {
 // widening the resize bounds fails loudly rather than turning the inline
 // targets into a source of false failures.
 func TestInlineFramesFitTheTerminal(t *testing.T) {
-	tallest := max(conformance.MaxResizeH, decodedMaxHeight(t))
+	tallest := conformance.InlineRowsAbove + max(conformance.MaxResizeH, decodedMaxHeight(t))
 	if tallest >= conformance.InlineTermHeight {
 		t.Errorf("a program can reach %d rows in a terminal of %d, leaving no room below the frame",
 			tallest, conformance.InlineTermHeight)
