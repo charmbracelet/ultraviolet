@@ -65,6 +65,35 @@ which is what finds the combinations nobody thinks to write by hand.
 | `FuzzRedrawResyncs`       | A forced repaint recovers from any state the renderer drifted into. |
 | `FuzzScreenShowsContent`  | Every cluster the buffer holds on the last drawn row reaches the screen. |
 
+Each target also runs both ways the renderer can own a screen, chosen per
+program:
+
+- **Fullscreen**, where the frame is the terminal and the renderer moves the
+  cursor absolutely.
+- **Inline**, where the frame is shorter than the terminal and the cursor moves
+  relatively. There is no absolute move to fall back on, so a model that loses
+  track of the cursor has nothing to recover with, and the rows below the frame
+  belong to whatever was on the screen first. The screen is read back in full,
+  past the bottom of the frame, because a frame that shrinks has to clear what
+  it no longer covers and the abandoned rows are where the residue lands.
+
+  Rows of someone else's output sit above every inline frame, and the screen is
+  read back over them too. They are the point rather than scenery: an inline
+  renderer finds the top of its frame by counting rows upward from the cursor,
+  and a count that overshoots erases into them. With nothing up there, an erase
+  that reached a row too far would read back as blanks, which is what blank rows
+  look like anyway, and the mistake would not show.
+
+  An inline frame may also collapse to no rows at all, which is the case most
+  likely to reach above itself, since there is no last row for the erase below
+  the frame to start from.
+
+  Inline screens are never narrowed, only widened. Narrowing makes the terminal
+  rewrap the rows it holds, carrying them, and the cursor among them, somewhere
+  a relative move cannot find again. What survives that is a property of drawing
+  inline rather than a defect, so asserting on it would only produce failures
+  nobody can act on.
+
 Every target runs against two emulators, because they disagree about how wide a
 grapheme cluster is and that disagreement is the subject of these tests:
 

@@ -1,6 +1,7 @@
 package conformance_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -17,11 +18,17 @@ type runner struct {
 	term oracle
 	buf  uv.ScreenBuffer
 
-	// w and h track the live dimensions, which an OpResize changes. The buffer,
-	// the draw rectangle, and the screen readback all follow them so a line
-	// drawn after a resize is valid for the current screen, not the starting
-	// one.
+	// w and h track the live frame dimensions, which an OpResize changes. The
+	// buffer and the draw rectangle follow them so a line drawn after a resize
+	// is valid for the current frame, not the starting one.
 	w, h int
+
+	// termW and termH are the terminal's own dimensions, which the screen
+	// readback follows. A fullscreen frame is the terminal, so they match w and
+	// h. An inline frame is shorter, and the rows below it belong to the
+	// terminal rather than the frame: reading them back is what catches a
+	// shrink that leaves the tail of a taller frame behind.
+	termW, termH int
 }
 
 // newRunner wires a renderer to a fresh emulator sized for the program. The
@@ -30,12 +37,47 @@ type runner struct {
 func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int, bool) oracle) *runner {
 	t.Helper()
 
-	term := mk(t, p.Width, p.Height, p.GraphemeWidth)
+	// An inline frame shares the terminal with whatever came before it, so the
+	// terminal is taller than the frame and the extra rows are part of what is
+	// under test. A fullscreen frame is the terminal.
+	termH := p.Height
+	if p.Inline {
+		termH = conformance.InlineTermHeight
+	}
+
+	term := mk(t, p.Width, termH, p.GraphemeWidth)
+
+	// An inline frame shares the screen, so put something on it first and leave
+	// the cursor below: a shell's last lines, a build log, whatever the
+	// application started under. The renderer finds the top of its frame by
+	// counting rows upward from where the cursor is, and these rows are what an
+	// upward count that overshoots lands in. Without them every erase that
+	// reached too far would still read back as blanks, which is what blank rows
+	// look like, and the mistake would not show.
+	//
+	// Written straight to the emulator rather than through the renderer, since
+	// the renderer must not know they exist.
+	if p.Inline {
+		for y := range conformance.InlineRowsAbove {
+			if _, err := fmt.Fprintf(term, "above %d\r\n", y); err != nil {
+				t.Fatalf("seeding the rows above the frame: %v", err)
+			}
+		}
+	}
+
 	rend := uv.NewTerminalRenderer(term, []string{
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 	})
-	rend.SetFullscreen(true)
+	if p.Inline {
+		rend.SetRelativeCursor(true)
+		// An inline renderer is told the terminal size, not the frame size; it
+		// learns the frame from the buffer it is handed. Without this it has no
+		// idea how much room it has below the frame.
+		rend.Resize(p.Width, termH)
+	} else {
+		rend.SetFullscreen(true)
+	}
 	rend.SetGraphemeWidth(p.GraphemeWidth)
 	rend.SetScrollOptim(p.ScrollOptim)
 	rend.Erase()
@@ -49,12 +91,14 @@ func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int
 	}
 
 	return &runner{
-		prog: p,
-		rend: rend,
-		term: term,
-		buf:  buf,
-		w:    p.Width,
-		h:    p.Height,
+		prog:  p,
+		rend:  rend,
+		term:  term,
+		buf:   buf,
+		w:     p.Width,
+		h:     p.Height,
+		termW: p.Width,
+		termH: termH,
 	}
 }
 
@@ -90,18 +134,47 @@ func (r *runner) step(t *testing.T, op conformance.Op) {
 		// lockstep, the way a real SIGWINCH handler would. The renderer's model
 		// of the previous frame keeps its old dimensions, which is exactly the
 		// stale-geometry case under test.
+		//
+		// An inline frame changes height on its own, without the terminal
+		// moving underneath it: a view swaps for a taller or shorter one and
+		// the terminal never hears about it. So the terminal keeps its height
+		// here and only the frame changes, which also means a resize that keeps
+		// the width is a pure change of frame shape.
 		r.w, r.h = op.W, op.H
+		r.termW = op.W
+		if !r.prog.Inline {
+			r.termH = op.H
+		}
 		r.buf.Resize(op.W, op.H)
-		r.term.Resize(op.W, op.H)
-		r.rend.Resize(op.W, op.H)
+		r.term.Resize(r.termW, r.termH)
+		r.rend.Resize(r.termW, r.termH)
+	case conformance.OpErase:
+		r.rend.Erase()
 	}
 }
 
-// screen returns every row, for comparison against another runner.
+// frameTop is the terminal row the frame's first row sits on. A fullscreen frame
+// starts at the top of the screen; an inline one starts below the rows that were
+// already there, which is where the cursor was when the renderer first saw it.
+//
+// Anything comparing a frame row against a screen row has to go through this.
+// The differential targets do not, because both of their runs are offset
+// identically and the offset cancels.
+func (r *runner) frameTop() int {
+	if r.prog.Inline {
+		return conformance.InlineRowsAbove
+	}
+	return 0
+}
+
+// screen returns every row of the terminal, for comparison against another
+// runner. Every row, not every row of the frame: an inline frame that shrinks
+// has to clear what it no longer covers, and a row it abandoned is exactly
+// where the residue shows up.
 func (r *runner) screen(t *testing.T) []string {
 	t.Helper()
 
-	rows := make([]string, r.h)
+	rows := make([]string, r.termH)
 	for y := range rows {
 		rows[y] = r.term.Row(t, y)
 	}
@@ -447,6 +520,7 @@ func FuzzScreenShowsContent(f *testing.F) {
 			}
 
 			screen := r.screen(t)
+			screenY := lastY + r.frameTop()
 			drawn := drawnRow(r.buf, lastY, func(cluster string) int {
 				return clusterWidth(t, o, p.GraphemeWidth, cluster)
 			})
@@ -463,13 +537,13 @@ func FuzzScreenShowsContent(f *testing.F) {
 						continue
 					}
 					wantRune := strings.Count(drawn, string(r))
-					gotRune := strings.Count(screen[lastY], string(r))
+					gotRune := strings.Count(screen[screenY], string(r))
 					if gotRune < wantRune {
 						t.Errorf("%s: row %d shows %q of cluster %q %d times but at least %d were drawn\n"+
 							"  screen %q\n"+
 							"  drawn  %q\n"+
 							"program:\n%s",
-							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[lastY], drawn, p)
+							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[screenY], drawn, p)
 						return
 					}
 				}

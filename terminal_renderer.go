@@ -1431,17 +1431,33 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	var nonEmpty int
 
-	// XXX: In inline mode, after a screen resize, we need to clear the extra
-	// lines at the bottom of the screen. This is because in inline mode, we
-	// don't use the full screen height and the current buffer size might be
-	// larger than the new buffer size.
+	// An inline frame that gives up rows has to erase what it no longer covers,
+	// or the tail of the taller frame stays on screen below the shorter one.
+	// Fullscreen has no such rows: it repaints the whole screen instead.
+	//
+	// The erase runs from the new last row to the bottom of the screen, so it
+	// reaches that residue wherever the terminal moved it. A width change at
+	// the same time is therefore a reason to erase rather than a reason to skip
+	// it, since a terminal that rewrapped those rows has spread them further
+	// than the model can account for.
 	partialClear := !s.flags.Contains(tFullscreen) && s.cur.X != -1 && s.cur.Y != -1 &&
-		curWidth == newWidth &&
 		curHeight > 0 &&
 		curHeight > newHeight
 
 	if !s.clear && partialClear {
-		s.clearBelow(newbuf, nil, newHeight-1)
+		// Clamped, because a frame can collapse to no rows at all and the erase
+		// has to start at the frame's first row rather than the one above it.
+		// Everything above belongs to whatever shared the screen first, and
+		// erasing from there would take a row the renderer never wrote.
+		eraseRow := max(newHeight-1, 0)
+		s.clearBelow(newbuf, nil, eraseRow)
+
+		// The erase starts at the last row of the new frame, so it takes that
+		// row with it on the way down. The diff loop only visits rows the
+		// application drew into, and the application has no reason to draw into
+		// a row it did not change, so mark it here or the erase is the last
+		// thing that happens to it.
+		s.touchLine(newbuf, eraseRow, 1, true)
 	}
 
 	// Resize the model before diffing so the loop below walks every row
@@ -1494,7 +1510,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	}
 
 	if !s.flags.Contains(tFullscreen) && (curWidth != newWidth || curHeight != newHeight) {
-		s.move(newbuf, 0, newHeight-1)
+		s.move(newbuf, 0, max(newHeight-1, 0))
 	}
 
 	// Sync windows and screen

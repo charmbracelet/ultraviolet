@@ -1485,6 +1485,116 @@ func TestRendererInlineShrinkClearsPartially(t *testing.T) {
 	}
 }
 
+// The rows an inline frame gives up have to be erased whether or not the width
+// moved at the same time. A terminal that changes width rewraps what it holds,
+// which spreads the abandoned rows further than the model can account for
+// rather than tidying them away, so a width change is the case that needs the
+// erase most.
+//
+// The fuzzer found this one the first time it was allowed to draw inline
+// frames: a row painted outside the new frame survived a resize that shrank the
+// screen and widened it in the same step.
+func TestRendererInlineShrinkErasesAcrossAWidthChange(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 4)
+	cellbuf.SetCell(0, 2, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Two rows shorter and much wider, the shape of a terminal resize the
+	// application reflowed its view for.
+	cellbuf.Resize(23, 2)
+	r.Resize(23, 10)
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseScreenBelow) {
+		t.Errorf("shrink should erase the rows the frame gave up, got: %q", out)
+	}
+}
+
+// That erase starts at the last row of the new frame, so it takes that row with
+// it on the way down. The row still belongs to the frame and still holds what
+// it held before, and the application has no reason to draw into a row it did
+// not change, so nothing marks it for the diff loop to visit.
+//
+// The result is residue in reverse: not old content surviving, but current
+// content erased and never put back.
+func TestRendererInlineShrinkKeepsItsLastRow(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 8)
+	cellbuf.SetCell(0, 1, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Six rows shorter. Row 1 survives the shrink and is not drawn into.
+	cellbuf.Resize(6, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, ansi.EraseScreenBelow) {
+		t.Fatalf("expected the shrink to erase below the frame, got: %q", out)
+	}
+	if !strings.Contains(out, "a") {
+		t.Errorf("the erase took row 1 with it and nothing painted it back: %q", out)
+	}
+}
+
+// A frame can collapse to nothing, and a buffer resized to zero rows reports
+// zero columns too, so the erase below it has no row of its own to start from.
+// Starting one row higher would reach above the frame, into rows that belong to
+// whatever shared the screen first: a shell's output, another frame, scrollback.
+// The renderer never wrote them and does not get to erase them.
+func TestRendererInlineCollapseStaysBelowItsOrigin(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(10, 20)
+
+	cellbuf := NewRenderBuffer(10, 4)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	cellbuf.Resize(10, 0)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// Cursor up from the frame's first row would leave the frame entirely, and
+	// the erase that follows would take the row above with it.
+	if out := buf.String(); strings.Contains(out, ansi.CUU1) || strings.Contains(out, "\x1b[1A") {
+		t.Errorf("collapsing the frame moved above its first row: %q", out)
+	}
+	if _, y := r.Position(); y < 0 {
+		t.Errorf("collapsing the frame left the cursor model at row %d", y)
+	}
+}
+
 // The same shrink, but through the full-erase path an application takes when it
 // knows the frame changed shape. The erase covers from the cursor to the end of
 // the screen, so where the cursor is decides how much of the old frame it
