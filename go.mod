@@ -1,6 +1,6 @@
 module github.com/charmbracelet/ultraviolet
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/charmbracelet/colorprofile v0.4.3
@@ -12,8 +12,8 @@ require (
 	github.com/muesli/cancelreader v0.2.2
 	github.com/rivo/uniseg v0.4.7
 	github.com/xo/terminfo v1.0.0
-	golang.org/x/sync v0.22.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sync v0.23.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
