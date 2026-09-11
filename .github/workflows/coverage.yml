@@ -1,5 +1,10 @@
 name: coverage
-on: [push, pull_request]
+# push is scoped to main so a push to a PR branch fires only the
+# pull_request run, not both. Merges to main still run via push.
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   coverage:
@@ -12,18 +17,18 @@ jobs:
       GO111MODULE: "on"
     steps:
       - name: Install Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Coverage
         run: |
           go test -race -covermode=atomic -coverprofile='coverage.txt' ./...
 
-      - uses: codecov/codecov-action@v6
+      - uses: codecov/codecov-action@v7
         with:
           file: ./coverage.txt
           token: ${{ secrets.CODECOV_TOKEN }}
