@@ -50,7 +50,9 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 	}
 
 	modes := []uint32{
-		windows.ENABLE_VIRTUAL_TERMINAL_INPUT,
+		// Do not set ENABLE_VIRTUAL_TERMINAL_INPUT. VT can not represent sequences like shift+enter.
+		// Without it, full INPUT_RECORDs are delivered and the win32-input-mode
+		// encoding path in serializeWin32InputRecords preserves modifier state.
 		windows.ENABLE_WINDOW_INPUT,
 		windows.ENABLE_EXTENDED_FLAGS,
 	}
