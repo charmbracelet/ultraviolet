@@ -524,6 +524,13 @@ func DecodeProgram(data []byte) Program {
 		op := Op{Kind: opTable[slot]}
 		switch op.Kind {
 		case OpDrawLine:
+			// A frame with no rows has nowhere to draw. Skip the op rather than
+			// end the program: an inline frame may collapse to nothing and then
+			// grow again, and truncating here made everything after a collapse
+			// unreachable, including the redraw that proves it recovered.
+			if curH <= 0 {
+				continue
+			}
 			y, ok := d.intn(curH)
 			if !ok {
 				return p
@@ -557,6 +564,10 @@ func DecodeProgram(data []byte) Program {
 			op.Text = sb.String()
 
 		case OpMoveTo:
+			// Likewise, a frame with no columns has nowhere to move to.
+			if curW <= 0 {
+				continue
+			}
 			n, ok := d.intn(curW)
 			if !ok {
 				return p

@@ -163,3 +163,41 @@ func kindsOf(p Program) []string {
 	}
 	return out
 }
+
+// TestCollapseThenDrawIsReachable checks that an op a collapsed frame cannot
+// express does not end the program.
+//
+// Drawing needs a row, so a frame collapsed to nothing cannot take a DrawLine.
+// That used to end decoding, which made everything after a collapse unreachable:
+// the fuzzer could shrink an inline frame to zero but never reach the redraw
+// that proves it recovered, and the collapse is the case inline erasing is most
+// likely to get wrong.
+func TestCollapseThenDrawIsReachable(t *testing.T) {
+	width := byte((20 - MinResizeW) % (MaxResizeW - MinResizeW + 1))
+	program := []byte{
+		14, 2, // 20x4
+		4,                          // inline
+		opByte(OpResize), width, 0, // collapse to no rows
+		opByte(OpDrawLine), 0, 0, byte(len(corpusAlphabet)), // cannot be expressed
+		opByte(OpResize), width, 3, // grow back
+		opByte(OpRender), // has to still be reachable
+	}
+
+	p := DecodeProgram(program)
+
+	var collapsed, renderedAfter bool
+	for _, op := range p.Ops {
+		if op.Kind == OpResize && op.H == 0 {
+			collapsed = true
+		}
+		if collapsed && op.Kind == OpRender {
+			renderedAfter = true
+		}
+	}
+	if !collapsed {
+		t.Fatalf("expected the program to collapse the frame, got %v", kindsOf(p))
+	}
+	if !renderedAfter {
+		t.Errorf("decoding stopped at the collapsed frame, so its recovery cannot be fuzzed: %v", kindsOf(p))
+	}
+}
