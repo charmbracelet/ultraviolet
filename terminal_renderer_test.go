@@ -2225,3 +2225,43 @@ func TestRendererSurvivesAShortTouchList(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 }
+
+// A frame an application hands over with no touches recorded still has to be
+// repainted when the terminal resized under it.
+//
+// The touch list is exported, so an application is free to drop it, and a fresh
+// list records nothing. Both make TouchedLines report zero, which is otherwise
+// the renderer's signal that there is nothing to do. A resize latched in the
+// meantime has to override that, or the rows the terminal rewrapped stay put.
+func TestRendererRepaintsAResizeWithNoTouches(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// The application drops the list, so the next frame reports no touches.
+	cellbuf.Touched = nil
+	if got := cellbuf.TouchedLines(); got != 0 {
+		t.Fatalf("expected a frame reporting no touches, got %d", got)
+	}
+
+	buf.Reset()
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, "a") {
+		t.Errorf("a resize has to repaint even a frame reporting no touches, got: %q", out)
+	}
+}
