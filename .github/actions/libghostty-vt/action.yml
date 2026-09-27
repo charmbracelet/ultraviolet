@@ -16,20 +16,26 @@ runs:
     # symbols. Reading the commit out of go.mod is what keeps the two in step:
     # bumping the dependency moves the build with it, and there is no second
     # place to remember to update.
-    #
-    # What comes out is a git ref either way. A pseudo-version ends in the
-    # twelve-digit commit it was built from, and that commit is the ref. Any
-    # other version is one the module actually tags, and the tag is the ref, so
-    # it is used as it stands rather than being taken apart.
     - name: Resolve the go-libghostty pin
       id: pin
       shell: bash
       run: |
-        version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' internal/conformance/go.mod)
-        test -n "$version"
+        mod=internal/conformance/go.mod
 
-        rev=$version
-        if [[ $version =~ -([0-9a-f]{12})$ ]]; then
+        # Exactly one line may mention the module. A replace directive, in
+        # either spelling, adds another, and picking one silently builds a
+        # revision the module does not use.
+        matches=$(grep -c 'go\.mitchellh\.com/libghostty' "$mod" || true)
+        if [ "$matches" -ne 1 ]; then
+          echo "::error::expected one go.mitchellh.com/libghostty line in $mod, found $matches"
+          exit 1
+        fi
+        version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' "$mod")
+
+        # A pseudo-version ends in the twelve-digit commit it was built from,
+        # and that commit is the ref. Anything else is a tag, already a ref.
+        rev=${version%+incompatible}
+        if [[ $rev =~ -([0-9a-f]{12})$ ]]; then
           rev=${BASH_REMATCH[1]}
         fi
         echo "rev=$rev" >> "$GITHUB_OUTPUT"
@@ -45,7 +51,7 @@ runs:
       id: cache
       uses: actions/cache@v6
       with:
-        path: .cache/libghostty-vt
+        path: ${{ github.workspace }}/.cache/libghostty-vt
         key: libghostty-vt-${{ steps.pin.outputs.rev }}-${{ runner.os }}-${{ runner.arch }}
 
     - name: Build libghostty-vt

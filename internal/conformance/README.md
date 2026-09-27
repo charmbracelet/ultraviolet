@@ -29,14 +29,17 @@ directory:
 # ghostty revision it fetches, and a newer one exports a different set of
 # symbols than these bindings call, so building its HEAD fails at link time.
 version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' go.mod)
+rev=${version%+incompatible}
+[[ $rev =~ -([0-9a-f]{12})$ ]] && rev=${BASH_REMATCH[1]}
 git clone https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
-git -C /tmp/go-libghostty checkout "${version##*-}"
+git -C /tmp/go-libghostty checkout "$rev"
 make -C /tmp/go-libghostty build
 export PKG_CONFIG_PATH="/tmp/go-libghostty/build/_deps/ghostty-src/zig-out/share/pkgconfig"
 ```
 
 CI does the same thing from `.github/actions/libghostty-vt`, reading the pin out
-of the same line of `go.mod`.
+of the same line of `go.mod`. Splitting on the last dash is not enough: only a
+pseudo-version ends in a commit, so a tag has to be used as it stands.
 
 Then, still from this directory:
 
