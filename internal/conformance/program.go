@@ -96,6 +96,33 @@ const (
 	opKindCount
 )
 
+// opTable maps an input byte onto an operation. Its length is fixed and never
+// changes, so adding a kind rewrites only the slots it is given: every corpus
+// entry minted before it keeps decoding to the program it was minimised for.
+// Choosing the kind by [OpKind] count instead made every saved entry mean
+// something else the moment an op was added, silently, while still passing.
+//
+// TestCorpusDecodesStably pins what the saved entries decode to, so a change
+// here fails loudly and the entries can be re-minted on purpose.
+var opTable = [16]OpKind{
+	OpDrawLine, OpClear, OpRender, OpRedraw,
+	OpMoveTo, OpResize, OpErase, OpDrawLine,
+	OpClear, OpRender, OpRedraw, OpMoveTo,
+	OpResize, OpErase, OpDrawLine, OpRender,
+}
+
+// opByte is the input byte that decodes to kind. A hand-written seed goes
+// through this rather than using the enum's numeric value, which stopped being
+// the same thing when the decoder moved to a fixed slot table.
+func opByte(kind OpKind) byte {
+	for slot, k := range opTable {
+		if k == kind {
+			return byte(slot)
+		}
+	}
+	panic("opTable does not name " + kind.String())
+}
+
 // Resize bounds. Screens stay small so failures stay readable, but the range
 // is wide enough to shrink below and grow above the starting size, which is
 // where stale-geometry bugs show up. Exported so the decoder's own tests can
@@ -106,25 +133,21 @@ const (
 )
 
 // InlineRowsAbove is how many rows of someone else's output sit above an inline
-// frame: a shell prompt, the tail of a build log, whatever was on the screen
-// when the application started.
-//
-// They are the point, not scenery. An inline renderer reaches the top of its
-// frame by counting rows upward from the cursor, and if it miscounts it erases
-// into this region. With nothing up there a frame that erased one row too far
-// would read back as a screen full of blanks, which is what the screen should
-// look like anyway, and the whole class of bug is invisible.
+// frame. They are the point, not scenery: an erase that reaches one row too far
+// lands in them, and against a blank screen that mistake reads back as blanks
+// and never shows.
 const InlineRowsAbove = 2
 
-// InlineTermHeight is the terminal height an inline program runs against.
-//
-// An inline frame is shorter than the terminal by definition, so the terminal
-// needs room for the rows above it, the tallest frame a program can reach, and
-// a row to spare. A frame that reaches the last row scrolls the screen on the
-// next newline, and content that has scrolled sits at a different absolute row
-// in every run, so a differential comparison against it would report the scroll
-// as a bug. Give the frame room and the two runs stay anchored at the same
-// place.
+// InlineSeedWidth is how many columns each of those rows uses. It has to fit the
+// narrowest screen a program can ask for, or the text wraps, the rows above take
+// more rows than they were given, and the frame no longer starts where
+// InlineRowsAbove says it does.
+const InlineSeedWidth = 2
+
+// InlineTermHeight is the terminal height an inline program runs against. It
+// leaves a row below the tallest frame: a frame reaching the last row scrolls on
+// the next newline, and a scrolled screen sits at a different absolute row in
+// every run, which a differential comparison would report as a bug.
 const InlineTermHeight = InlineRowsAbove + MaxResizeH + 2
 
 // String makes failures readable, since a raw OpKind number tells you nothing
@@ -320,16 +343,16 @@ func Seeds() [][]byte {
 				mode,
 				// Two adjacent clusters, then render: drift accumulates across
 				// neighbours, so adjacency is the productive case.
-				byte(OpDrawLine), 0, cluster, cluster, endOfLine,
-				byte(OpRender),
+				opByte(OpDrawLine), 0, cluster, cluster, endOfLine,
+				opByte(OpRender),
 				// A second frame, so the renderer has to diff rather than
 				// paint, which is where the interesting bugs live.
-				byte(OpDrawLine), 1, cluster, 0, cluster, endOfLine,
-				byte(OpRender),
+				opByte(OpDrawLine), 1, cluster, 0, cluster, endOfLine,
+				opByte(OpRender),
 				// Shrink row 0, which leaves residue behind if the renderer's
 				// column model is wrong.
-				byte(OpDrawLine), 0, 0, cluster, endOfLine,
-				byte(OpRender),
+				opByte(OpDrawLine), 0, 0, cluster, endOfLine,
+				opByte(OpRender),
 			})
 		}
 	}
@@ -344,19 +367,19 @@ func Seeds() [][]byte {
 		seeds = append(seeds,
 			[]byte{
 				14, 2, 0,
-				byte(OpDrawLine), 0, first, last, 8, endOfLine,
-				byte(OpRender),
-				byte(OpClear),
-				byte(OpRender),
-				byte(OpRedraw),
+				opByte(OpDrawLine), 0, first, last, 8, endOfLine,
+				opByte(OpRender),
+				opByte(OpClear),
+				opByte(OpRender),
+				opByte(OpRedraw),
 			},
 			[]byte{
 				10, 1, 1,
-				byte(OpDrawLine), 0, last, last, endOfLine,
-				byte(OpRender),
-				byte(OpMoveTo), 3,
-				byte(OpDrawLine), 0, 0, endOfLine,
-				byte(OpRender),
+				opByte(OpDrawLine), 0, last, last, endOfLine,
+				opByte(OpRender),
+				opByte(OpMoveTo), 3,
+				opByte(OpDrawLine), 0, 0, endOfLine,
+				opByte(OpRender),
 			},
 		)
 
@@ -373,19 +396,26 @@ func Seeds() [][]byte {
 		resizeW := func(w int) byte { return byte((w - MinResizeW) % (MaxResizeW - MinResizeW + 1)) }
 		resizeH := func(h, lo int) byte { return byte((h - lo) % (MaxResizeH - lo + 1)) }
 		for mode := byte(0); mode < 8; mode++ {
+			// An inline frame may collapse to nothing, so its heights decode
+			// from a lower bound. Passing the fullscreen bound for all eight
+			// modes silently shifted every inline resize in these seeds.
+			lo := MinResizeH
+			if mode&4 != 0 {
+				lo = 0
+			}
 			seeds = append(seeds, []byte{
 				14, 2, // 20x4
 				mode,
-				byte(OpDrawLine), 0, first, first, last, last, endOfLine,
-				byte(OpRender),
+				opByte(OpDrawLine), 0, first, first, last, last, endOfLine,
+				opByte(OpRender),
 				// Shrink, then draw a line that only fits the smaller screen.
-				byte(OpResize), resizeW(8), resizeH(3, MinResizeH),
-				byte(OpDrawLine), 0, first, 0, endOfLine,
-				byte(OpRender),
+				opByte(OpResize), resizeW(8), resizeH(3, lo),
+				opByte(OpDrawLine), 0, first, 0, endOfLine,
+				opByte(OpRender),
 				// Grow back, which is where clipped content can leave residue.
-				byte(OpResize), resizeW(24), resizeH(6, MinResizeH),
-				byte(OpDrawLine), 0, last, last, last, endOfLine,
-				byte(OpRender),
+				opByte(OpResize), resizeW(24), resizeH(6, lo),
+				opByte(OpDrawLine), 0, last, last, last, endOfLine,
+				opByte(OpRender),
 			})
 		}
 
@@ -398,13 +428,13 @@ func Seeds() [][]byte {
 		seeds = append(seeds, []byte{
 			14, 5, // 20x7
 			4, // inline
-			byte(OpDrawLine), 0, first, last, endOfLine,
-			byte(OpDrawLine), 4, first, endOfLine,
-			byte(OpRender),
-			byte(OpErase),
-			byte(OpResize), resizeW(20), resizeH(2, 0),
-			byte(OpDrawLine), 0, last, endOfLine,
-			byte(OpRender),
+			opByte(OpDrawLine), 0, first, last, endOfLine,
+			opByte(OpDrawLine), 4, first, endOfLine,
+			opByte(OpRender),
+			opByte(OpErase),
+			opByte(OpResize), resizeW(20), resizeH(2, 0),
+			opByte(OpDrawLine), 0, last, endOfLine,
+			opByte(OpRender),
 		})
 	}
 
@@ -486,12 +516,12 @@ func DecodeProgram(data []byte) Program {
 	curW, curH := p.Width, p.Height
 
 	for len(p.Ops) < maxOps {
-		kind, ok := d.intn(int(opKindCount))
+		slot, ok := d.intn(len(opTable))
 		if !ok {
 			break
 		}
 
-		op := Op{Kind: OpKind(kind)}
+		op := Op{Kind: opTable[slot]}
 		switch op.Kind {
 		case OpDrawLine:
 			y, ok := d.intn(curH)
@@ -550,18 +580,10 @@ func DecodeProgram(data []byte) Program {
 			if !ok {
 				return p
 			}
-			// An inline frame is never narrowed. The terminal rewraps the
-			// rows it already holds, carrying them, and the cursor sitting
-			// among them, somewhere a relative move cannot find again. There
-			// is no absolute reference to recover from in inline mode, so
-			// what survives is a property of the mode rather than a defect,
-			// and a differential target that asserted on it would only report
-			// failures nobody can act on.
-			//
-			// Widening is safe to fuzz and worth fuzzing: lines are drawn to
-			// fit the width they are drawn at, so nothing has wrapped, and a
-			// resize that grows the screen while the frame gives up rows is
-			// the shape of a real terminal resize.
+			// An inline frame is never narrowed: the terminal rewraps the rows
+			// it holds and carries the cursor somewhere a relative move cannot
+			// find again, which is a property of the mode rather than a defect.
+			// Widening is safe and worth fuzzing.
 			if p.Inline {
 				nw = max(nw, curW)
 			}

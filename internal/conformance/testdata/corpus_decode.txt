@@ -1,0 +1,34 @@
+# What each saved fuzz entry decodes to.
+# Pinned by TestCorpusDecodesStably: an entry only guards the bug it was
+# minimised for while it keeps performing these operations. Regenerate only
+# when the entries are re-minted on purpose.
+FuzzRenderer/01e4c2e5d0a0a18a	DrawLine,Clear,Render,DrawLine,Redraw,Redraw
+FuzzRenderer/03c1c2969136ac42	Clear,DrawLine,DrawLine
+FuzzRenderer/0ba7b0cf2253d771	DrawLine,Render,Clear
+FuzzRenderer/0ebe6c4dfe2dc334	Clear,DrawLine,Render,DrawLine,Render,DrawLine
+FuzzRenderer/25e2f9b3d67061b5	DrawLine,Render,Clear,Clear
+FuzzRenderer/2da5813835c7c50b	DrawLine,Render,Clear,DrawLine
+FuzzRenderer/31d50934f50a96eb	DrawLine,Clear
+FuzzRenderer/54189f396b67a971	Clear,Render,DrawLine
+FuzzRenderer/650146855c5386c7	DrawLine,DrawLine,DrawLine,DrawLine,Clear,DrawLine,DrawLine,Clear
+FuzzRenderer/765a36e7c507006f	Clear,DrawLine,Render,Clear
+FuzzRenderer/7aba49955341e128	DrawLine,Render,DrawLine
+FuzzRenderer/8811f3253b926a84	DrawLine,Render,DrawLine
+FuzzRenderer/8a5333da998cd2fa	DrawLine,DrawLine,Render,DrawLine
+FuzzRenderer/8e096e0ae397d854	Render,Clear,Clear,DrawLine
+FuzzRenderer/a74b457ae4e70660	DrawLine,Clear,DrawLine
+FuzzRenderer/b658c8931146f4d4	Render,Clear,DrawLine,Render
+FuzzRenderer/c39596a3ee6c57bb	DrawLine,Clear
+FuzzRenderer/c46a50f901957d97	Clear,DrawLine,DrawLine,DrawLine,DrawLine,Render,Clear
+FuzzRenderer/cb55857874c7c38e	Clear,Render
+FuzzRenderer/d5e5470b806d58a6	Render,DrawLine,Render
+FuzzRenderer/ddb2994fe8f02ad1	DrawLine,DrawLine,Render,DrawLine
+FuzzRenderer/ea477bf024ae0883	Clear,DrawLine,DrawLine,Render,DrawLine,Render,Clear
+FuzzRendererIdempotent/7ce35d739e3b1b1f	DrawLine,Render,Clear,Clear
+FuzzRendererIdempotent/8458bb5e60f055df	Clear,DrawLine,Clear,Clear,Clear,Clear,Clear,Clear,Clear,Redraw,Clear,DrawLine,Clear,Clear,DrawLine,Clear,Clear,DrawLine,DrawLine,Render,Clear,Clear
+FuzzScreenShowsContent/29f3127566cae9d7	DrawLine
+FuzzScreenShowsContent/3faf7cde87650021	DrawLine
+FuzzScreenShowsContent/7aa0f1249a1da7ac	DrawLine,Clear
+FuzzScreenShowsContent/81382bf65b85f230	DrawLine,DrawLine
+FuzzScreenShowsContent/d4ca82d1cf41dd0d	DrawLine,Render,Clear,Clear
+FuzzScreenShowsContent/dc64a8711a734337	DrawLine,Clear
