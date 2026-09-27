@@ -2,6 +2,7 @@ package uv
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"io"
 	"strings"
@@ -2075,51 +2076,100 @@ func TestRendererCornerClusterLeavesNoPendingWrap(t *testing.T) {
 	}
 }
 
-// The renderer's record of the rows it disturbed itself. The guard matters:
-// the erase below a shrinking inline frame damages row newHeight-1, which is
-// -1 for an empty frame, and a render that walks no rows still has to leave
-// the record clean for the next one.
-func TestRendererDamageRecord(t *testing.T) {
-	var r TerminalRenderer
+// The renderer's account of the rows it disturbed itself is sized to the screen
+// it is about to paint, so a row that cannot be painted cannot be damaged and no
+// reader has to bounds-check the record.
+func TestRendererDamageIsSizedToTheScreen(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
 
-	if r.damagedRow(0) {
-		t.Error("a renderer that has disturbed nothing reports damage")
+	tall := NewRenderBuffer(4, 6)
+	tall.SetCell(0, 5, &Cell{Content: "a", Width: 1})
+	r.Render(tall)
+	if got := len(r.damaged); got != 6 {
+		t.Errorf("record holds %d rows for a 6-row screen, want 6", got)
 	}
 
-	r.damage(2, 3)
-	for y, want := range map[int]bool{0: false, 1: false, 2: true, 3: true, 4: true, 5: false} {
-		if got := r.damagedRow(y); got != want {
-			t.Errorf("after damage(2, 3), row %d damaged=%v, want %v", y, got, want)
+	// Out of range either way is dropped, rather than growing the record to fit
+	// rows the screen does not have.
+	r.damage(-3, 2)
+	r.damage(6, 99)
+	if got := len(r.damaged); got != 6 {
+		t.Errorf("damage outside the screen resized the record to %d, want 6", got)
+	}
+	for y, damaged := range r.damaged {
+		if damaged {
+			t.Errorf("row %d is damaged, but every damage call was outside the screen", y)
 		}
 	}
 
-	// Out of range in either direction is a question, not a panic.
-	if r.damagedRow(-1) || r.damagedRow(1<<20) {
-		t.Error("a row outside the record reports damage")
+	// A shorter frame gets a shorter record, and carries nothing over from the
+	// taller frame it replaced.
+	r.damage(4, 2)
+	short := NewRenderBuffer(4, 2)
+	short.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(short)
+	if got := len(r.damaged); got != 2 {
+		t.Errorf("record holds %d rows for a 2-row screen, want 2", got)
 	}
+}
 
-	// Nothing to mark, nothing marked. A negative row is what an empty frame
-	// asks about, and n of zero is a range that does not exist.
-	before := len(r.damaged)
-	r.damage(-1, 1)
-	r.damage(0, 0)
-	r.damage(0, -1)
-	if len(r.damaged) != before {
-		t.Errorf("a degenerate range grew the record from %d to %d", before, len(r.damaged))
+// BenchmarkRenderFrameByHeight pins the shape of the win, not just its size.
+//
+// The cost of a frame used to scale with the height of the screen, because every
+// render replaced one touch record per row. Reusing the records made it flat, and
+// a benchmark at a single height cannot tell the two apart: run a few heights and
+// the allocations per frame should not follow them.
+func BenchmarkRenderFrameByHeight(b *testing.B) {
+	for _, height := range []int{24, 100, 400} {
+		b.Run(fmt.Sprintf("h%d", height), func(b *testing.B) {
+			r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+			r.SetFullscreen(true)
+			buf := NewScreenBuffer(80, height)
+			text := NewStyledString(strings.Repeat("x", 79))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				text.Draw(buf, Rect(0, i%height, 80, 1))
+				r.Render(buf.RenderBuffer)
+			}
+		})
 	}
-	if r.damagedRow(0) {
-		t.Error("damage(0, 0) marked row 0")
-	}
+}
 
-	// The record is per render. Forgetting keeps the space it already has, so
-	// a steady stream of frames stops allocating.
-	r.forgetDamage()
-	for y := range 6 {
-		if r.damagedRow(y) {
-			t.Errorf("row %d still damaged after forgetDamage", y)
+// TestRenderAllocationsDoNotFollowScreenHeight guards the property the record
+// reuse bought, which a benchmark at one height cannot express.
+//
+// Every render used to replace one touch record per row, so the cost of a frame
+// grew with the screen. A tall screen and a short one should now allocate the
+// same amount per frame.
+func TestRenderAllocationsDoNotFollowScreenHeight(t *testing.T) {
+	perFrame := func(height int) float64 {
+		r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		buf := NewScreenBuffer(80, height)
+		text := NewStyledString(strings.Repeat("x", 79))
+
+		row := 0
+		draw := func() {
+			row = (row + 1) % height
+			text.Draw(buf, Rect(0, row, 80, 1))
+			r.Render(buf.RenderBuffer)
 		}
+
+		// Every row has to be drawn at least once first: a record is created on
+		// first touch, and counting that one-off as per-frame cost would make a
+		// tall screen look like it still scales.
+		for range height * 2 {
+			draw()
+		}
+		return testing.AllocsPerRun(256, draw)
 	}
-	if len(r.damaged) != before {
-		t.Errorf("forgetDamage resized the record to %d, want %d kept", len(r.damaged), before)
+
+	short, tall := perFrame(24), perFrame(400)
+	if tall > short+8 {
+		t.Errorf("a 400-row screen allocates %.0f per frame against %.0f for 24 rows, so the cost still follows the height",
+			tall, short)
 	}
 }

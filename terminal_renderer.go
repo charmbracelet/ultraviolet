@@ -1443,25 +1443,22 @@ func (s *TerminalRenderer) reconcileSize(newbuf *RenderBuffer) sizeChange {
 // application drew into it, because the application has no reason to redraw a
 // row it did not change and no way to know the renderer moved it.
 func (s *TerminalRenderer) damage(y, n int) {
-	if y < 0 || n <= 0 {
-		return
-	}
-	if end := y + n; len(s.damaged) < end {
-		s.damaged = append(s.damaged, make([]bool, end-len(s.damaged))...)
-	}
-	for i := y; i < y+n; i++ {
+	for i := max(y, 0); i < min(y+n, len(s.damaged)); i++ {
 		s.damaged[i] = true
 	}
 }
 
-// damagedRow reports whether this render disturbed row y itself.
-func (s *TerminalRenderer) damagedRow(y int) bool {
-	return y >= 0 && y < len(s.damaged) && s.damaged[y]
-}
-
-// forgetDamage ends this render's account of what it disturbed. The slice is
-// kept, so a steady stream of frames allocates nothing.
-func (s *TerminalRenderer) forgetDamage() {
+// beginDamage starts a fresh account, sized to the screen this render is about
+// to paint. A row outside it cannot be painted, so it cannot be damaged, and
+// clamping here is what lets every reader index the record without checking.
+// Reset on the way in rather than the way out, so no future exit path has to
+// remember to do it. The slice is kept when the size holds, so a steady stream
+// of frames allocates nothing.
+func (s *TerminalRenderer) beginDamage(height int) {
+	if len(s.damaged) != height {
+		s.damaged = make([]bool, height)
+		return
+	}
 	clear(s.damaged)
 }
 
@@ -1490,6 +1487,8 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
 	curHeight := s.curbuf.Height()
+
+	s.beginDamage(newHeight)
 
 	size := s.reconcileSize(newbuf)
 
@@ -1560,23 +1559,11 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 				// nothing; the row has to be put back whatever the model says.
 				s.repaintLine(newbuf, i)
 				changedLines++
-			} else if s.damagedRow(i) ||
+			} else if s.damaged[i] ||
 				newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
 				changedLines++
-			}
-
-			// Mark line changed successfully, reusing the record rather than
-			// replacing it. Allocating one per row per render is what made the
-			// cost of a frame scale with the height of the screen, and
-			// resetTouched overwrites this one again on the way out regardless.
-			if i < len(newbuf.Touched) && i <= newbuf.Height()-1 {
-				if ld := newbuf.Touched[i]; ld != nil {
-					ld.FirstCell, ld.LastCell = -1, -1
-				} else {
-					newbuf.Touched[i] = &LineData{FirstCell: -1, LastCell: -1}
-				}
 			}
 		}
 	}
@@ -1584,8 +1571,6 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	if !s.flags.Contains(tFullscreen) && size.frameResized {
 		s.move(newbuf, 0, max(newHeight-1, 0))
 	}
-
-	s.forgetDamage()
 
 	// Sync windows and screen
 	if len(newbuf.Touched) != newHeight {
