@@ -2173,3 +2173,55 @@ func TestRenderAllocationsDoNotFollowScreenHeight(t *testing.T) {
 			tall, short)
 	}
 }
+
+// A touch list shorter than the screen used to crash the scroll optimisation,
+// which walked every row of the screen through it. An application can reach that
+// state: the list is exported, so it can drop it and touch a single row.
+//
+// Enforced rather than tolerated, so the assertion is that the state cannot be
+// built, not that a bounds check catches it. Every reader indexes the list by
+// screen row, and there were five separate length checks standing in for this.
+func TestRenderBufferTouchedCoversEveryRow(t *testing.T) {
+	buf := NewRenderBuffer(5, 4)
+
+	if got := len(buf.Touched); got != buf.Height() {
+		t.Errorf("a new buffer has %d touch entries for %d rows", got, buf.Height())
+	}
+
+	// Dropping the list and touching one row restores the full length.
+	buf.Touched = nil
+	buf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	if got := len(buf.Touched); got != buf.Height() {
+		t.Errorf("after dropping the list and touching one row, %d entries for %d rows", got, buf.Height())
+	}
+
+	// And so does touching a row of a screen that has since grown.
+	buf.Touched = buf.Touched[:1]
+	buf.Resize(7, 9)
+	buf.SetCell(0, 8, &Cell{Content: "c", Width: 1})
+	if got := len(buf.Touched); got < buf.Height() {
+		t.Errorf("after growing to %d rows and touching the last one, %d touch entries", buf.Height(), got)
+	}
+}
+
+// The crash itself: a short list reaching the scroll optimisation, which indexed
+// it by screen row and ran off the end.
+func TestRendererSurvivesAShortTouchList(t *testing.T) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+
+	cellbuf := NewRenderBuffer(5, 4)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	cellbuf.Touched = nil
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+}

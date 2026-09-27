@@ -1480,6 +1480,11 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		return
 	}
 
+	// Every reader below indexes the touch list by screen row, so the list has to
+	// cover the screen before any of them run. Growing here is what lets them do
+	// it without a length check each.
+	newbuf.growTouched()
+
 	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
 		// Initialize the current buffer
 		s.curbuf = NewRenderBuffer(newbuf.Width(), newbuf.Height())
@@ -1559,8 +1564,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 				// nothing; the row has to be put back whatever the model says.
 				s.repaintLine(newbuf, i)
 				changedLines++
-			} else if s.damaged[i] ||
-				newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
+			} else if s.damaged[i] || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
 				changedLines++
@@ -1573,9 +1577,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	}
 
 	// Sync windows and screen
-	if len(newbuf.Touched) != newHeight {
-		newbuf.Touched = make([]*LineData, newHeight)
-	}
+	newbuf.growTouched()
 	resetTouched(newbuf.Touched)
 
 	s.updatePen(nil) // nil indicates a blank cell with no styles

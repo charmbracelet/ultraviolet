@@ -1,7 +1,3 @@
-# What each saved fuzz entry decodes to.
-# Pinned by TestCorpusDecodesStably: an entry only guards the bug it was
-# minimised for while it keeps performing these operations. Regenerate only
-# when the entries are re-minted on purpose.
 FuzzRenderer/01e4c2e5d0a0a18a	DrawLine,Clear,Render,DrawLine,Redraw,Redraw
 FuzzRenderer/03c1c2969136ac42	Clear,DrawLine,DrawLine
 FuzzRenderer/0ba7b0cf2253d771	DrawLine,Render,Clear
@@ -9,6 +5,7 @@ FuzzRenderer/0ebe6c4dfe2dc334	Clear,DrawLine,Render,DrawLine,Render,DrawLine
 FuzzRenderer/25e2f9b3d67061b5	DrawLine,Render,Clear,Clear
 FuzzRenderer/2da5813835c7c50b	DrawLine,Render,Clear,DrawLine
 FuzzRenderer/31d50934f50a96eb	DrawLine,Clear
+FuzzRenderer/527a4b961803b7bb	DrawLine,Render,Resize
 FuzzRenderer/54189f396b67a971	Clear,Render,DrawLine
 FuzzRenderer/650146855c5386c7	DrawLine,DrawLine,DrawLine,DrawLine,Clear,DrawLine,DrawLine,Clear
 FuzzRenderer/765a36e7c507006f	Clear,DrawLine,Render,Clear
