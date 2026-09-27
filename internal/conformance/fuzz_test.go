@@ -48,18 +48,13 @@ func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int
 	term := mk(t, p.Width, termH, p.GraphemeWidth)
 
 	// An inline frame shares the screen, so put something on it first and leave
-	// the cursor below: a shell's last lines, a build log, whatever the
-	// application started under. The renderer finds the top of its frame by
-	// counting rows upward from where the cursor is, and these rows are what an
-	// upward count that overshoots lands in. Without them every erase that
-	// reached too far would still read back as blanks, which is what blank rows
-	// look like, and the mistake would not show.
-	//
-	// Written straight to the emulator rather than through the renderer, since
-	// the renderer must not know they exist.
+	// the cursor below. Written straight to the emulator, since the renderer must
+	// not know these rows exist, and kept inside the narrowest screen a program
+	// can ask for: text that wraps takes more rows than it was given and puts the
+	// frame below where frameTop says it is.
 	if p.Inline {
 		for y := range conformance.InlineRowsAbove {
-			if _, err := fmt.Fprintf(term, "above %d\r\n", y); err != nil {
+			if _, err := fmt.Fprintf(term, "%0*d\r\n", conformance.InlineSeedWidth, y); err != nil {
 				t.Fatalf("seeding the rows above the frame: %v", err)
 			}
 		}
@@ -550,4 +545,38 @@ func FuzzScreenShowsContent(f *testing.F) {
 			}
 		}
 	})
+}
+
+// TestInlineSeedOccupiesTheRowsItClaims measures where an inline frame starts
+// instead of trusting the arithmetic.
+//
+// frameTop reports InlineRowsAbove, and the content oracle reads screen rows
+// through it. That is only true while the seeded rows each occupy exactly one
+// row, so it is checked here against a real emulator at the narrowest width a
+// program can ask for: seven columns of "above %d" in a six-column screen used
+// to wrap into four rows, and the oracle then read a seeded row and reported the
+// renderer as having lost content it never drew.
+func TestInlineSeedOccupiesTheRowsItClaims(t *testing.T) {
+	for _, spec := range oracles {
+		t.Run(spec.name, func(t *testing.T) {
+			narrowest := conformance.DecodeProgram(nil)
+			p := conformance.Program{
+				Width:  narrowest.Width,
+				Height: 2,
+				Inline: true,
+			}
+			r := newRunner(t, p, spec.mk)
+			defer r.term.Close()
+
+			for y := range conformance.InlineRowsAbove {
+				if got := r.term.Row(t, y); got == "" {
+					t.Errorf("row %d is blank, so the seeded rows do not reach it", y)
+				}
+			}
+			if got := r.term.Row(t, r.frameTop()); got != "" {
+				t.Errorf("the frame starts at row %d, but the rows above spilled into it: %q",
+					r.frameTop(), got)
+			}
+		})
+	}
 }
