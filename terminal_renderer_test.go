@@ -1478,8 +1478,10 @@ func TestRendererInlineShrinkClearsPartially(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	// Up one row from row 2, erase the rest of the screen, redraw row 1.
-	expected := "\r\x1bM\x1b[Jb\r"
+	// Erase from row 2, the row the frame gave up, then up to row 1 to write the
+	// cell that changed. The erase no longer reaches into the frame, so row 1 is
+	// written because the application drew into it, not to put it back.
+	expected := "\r\x1b[J\x1bMb\r"
 	if output := buf.String(); output != expected {
 		t.Errorf("expected output after shrink to be %q, got: %q", expected, output)
 	}
@@ -1530,7 +1532,7 @@ func TestRendererInlineShrinkErasesAcrossAWidthChange(t *testing.T) {
 //
 // The result is residue in reverse: not old content surviving, but current
 // content erased and never put back.
-func TestRendererInlineShrinkKeepsItsLastRow(t *testing.T) {
+func TestRendererInlineShrinkLeavesItsOwnRowsAlone(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
 	r.SetRelativeCursor(true)
@@ -1555,8 +1557,9 @@ func TestRendererInlineShrinkKeepsItsLastRow(t *testing.T) {
 	if !strings.Contains(out, ansi.EraseScreenBelow) {
 		t.Fatalf("expected the shrink to erase below the frame, got: %q", out)
 	}
-	if !strings.Contains(out, "a") {
-		t.Errorf("the erase took row 1 with it and nothing painted it back: %q", out)
+	if strings.Contains(out, "a") {
+		t.Errorf("row 1 survives the shrink, so the erase should have left it alone "+
+			"rather than taking it and painting it back: %q", out)
 	}
 }
 

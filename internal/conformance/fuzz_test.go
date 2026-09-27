@@ -580,3 +580,46 @@ func TestInlineSeedOccupiesTheRowsItClaims(t *testing.T) {
 		})
 	}
 }
+
+// TestInlineShrinkLeavesTheFramesOwnRows checks, against a real emulator, what an
+// inline frame that gives up rows looks like afterwards.
+//
+// The erase starts at the first row the frame gave up, so the rows it still owns
+// are left alone and nothing has to be painted back into them. Asserting on the
+// screen rather than on the escape sequence is the point: there is no single
+// correct sequence, and the byte-level tests in the root package could not tell
+// "left alone" from "erased and repainted".
+func TestInlineShrinkLeavesTheFramesOwnRows(t *testing.T) {
+	for _, spec := range oracles {
+		t.Run(spec.name, func(t *testing.T) {
+			p := conformance.Program{Width: 6, Height: 4, Inline: true}
+			r := newRunner(t, p, spec.mk)
+			defer r.term.Close()
+
+			r.step(t, conformance.Op{Kind: conformance.OpDrawLine, Y: 1, Text: "ab"})
+			r.step(t, conformance.Op{Kind: conformance.OpDrawLine, Y: 3, Text: "zz"})
+			r.step(t, conformance.Op{Kind: conformance.OpRender})
+
+			top := r.frameTop()
+			if got := r.term.Row(t, top+1); got != "ab" {
+				t.Fatalf("row 1 of the frame reads %q before the shrink", got)
+			}
+
+			// Give up the bottom two rows.
+			r.step(t, conformance.Op{Kind: conformance.OpResize, W: 6, H: 2})
+			r.step(t, conformance.Op{Kind: conformance.OpRender})
+
+			if got := r.term.Row(t, top+1); got != "ab" {
+				t.Errorf("the frame still owns row 1, but it reads %q after the shrink", got)
+			}
+			if got := r.term.Row(t, top+3); got != "" {
+				t.Errorf("row 3 was given up, so it should be blank, got %q", got)
+			}
+			for y := range conformance.InlineRowsAbove {
+				if got := r.term.Row(t, y); got == "" {
+					t.Errorf("the erase reached row %d, above the frame", y)
+				}
+			}
+		})
+	}
+}

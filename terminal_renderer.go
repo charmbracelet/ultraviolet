@@ -1493,19 +1493,11 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		curHeight > newHeight
 
 	if !s.clear && partialClear {
-		// Clamped, because a frame can collapse to no rows at all and the erase
-		// has to start at the frame's first row rather than the one above it.
-		// Everything above belongs to whatever shared the screen first, and
-		// erasing from there would take a row the renderer never wrote.
-		eraseRow := max(newHeight-1, 0)
-		s.clearBelow(newbuf, nil, eraseRow)
-
-		// The erase starts at the last row of the new frame, so it takes that
-		// row with it on the way down. The diff loop only visits rows the
-		// application drew into, and the application has no reason to draw into
-		// a row it did not change, so mark it here or the erase is the last
-		// thing that happens to it.
-		s.touchLine(newbuf, eraseRow, 1, true)
+		// From the first row the frame gave up, so the frame's own rows are left
+		// alone: nothing it still owns needs putting back, and a frame that
+		// collapsed to nothing starts at its own first row rather than the one
+		// above, which belongs to whatever shared the screen first.
+		s.clearBelow(newbuf, nil, newHeight)
 	}
 
 	// Resize the model before diffing so the loop below walks every row
