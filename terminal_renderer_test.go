@@ -1913,3 +1913,30 @@ func TestRendererScrollRepaintsRowsItMoved(t *testing.T) {
 		t.Errorf("scrolled rows painted %d times, want 2 (rows 1 and 2): %q", n, out)
 	}
 }
+
+func TestRendererInlineNarrowRepaints(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, "a") {
+		t.Errorf("a terminal that narrowed and grew back rewrapped the frame, so it has to be repainted, got: %q", out)
+	}
+}

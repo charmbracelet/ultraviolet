@@ -149,7 +149,8 @@ type TerminalRenderer struct {
 	lineDrifted      bool         // whether the line currently being transformed may have left the cursor adrift
 	noWrapLine       bool         // whether autowrap is off for the line currently being transformed
 	driftRows        []bool       // rows holding a cell the terminal may measure differently
-	lastW, lastH     int          // the size [TerminalRenderer.Resize] was last told
+	termW, termH     int          // the size [TerminalRenderer.Resize] was last told
+	termResized      bool         // whether the terminal changed size since the last render
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -1375,8 +1376,10 @@ func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
 // [terminalWriter.Flush] to flush pending changes to the screen.
 func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	// Do we need to render anything?
+	// A latched resize counts: the terminal moved content the application cannot
+	// know about, so a frame it considers unchanged still has to be put back.
 	touchedLines := newbuf.TouchedLines()
-	if !s.clear && touchedLines == 0 {
+	if !s.clear && !s.termResized && touchedLines == 0 {
 		return
 	}
 
@@ -1395,10 +1398,25 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	// application touched it. Rows of plain cells are measured the same by
 	// everyone and are left alone, so an ASCII screen pays nothing.
 	//
-	// Cloned because the diff loop below updates driftRows as it goes.
+	// Inline only: fullscreen clears on any change of size, so it never reaches
+	// the row-by-row loop that reads this. Cloned because the diff loop below
+	// updates driftRows as it goes.
 	var repaintRows []bool
-	if curWidth != newWidth {
+	if !s.flags.Contains(tFullscreen) && curWidth != newWidth {
 		repaintRows = slices.Clone(s.driftRows)
+	}
+
+	// A terminal that changed size rewrapped what was on it, so no row keeps its
+	// meaning. Fullscreen owns every cell and clears; an inline frame shares the
+	// screen with whatever came before, so it repaints its own rows.
+	repaintAll := false
+	if s.termResized {
+		if s.flags.Contains(tFullscreen) {
+			s.clear = true
+		} else {
+			repaintAll = true
+		}
+		s.termResized = false
 	}
 
 	if curWidth != newWidth || curHeight != newHeight {
@@ -1453,7 +1471,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	if s.clear { //nolint:nestif
 		s.clearUpdate(newbuf)
 		s.clear = false
-	} else if touchedLines > 0 {
+	} else if touchedLines > 0 || repaintAll {
 		// On Windows, there's a bug with Windows Terminal where [ansi.DECSTBM]
 		// misbehaves and moves the cursor outside of the scrolling region. For
 		// now, we disable the optimizations completely on Windows.
@@ -1472,7 +1490,12 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
-			if (i < len(repaintRows) && repaintRows[i]) ||
+			if repaintAll {
+				// The model still matches the frame, so a diff would emit
+				// nothing; the row has to be put back whatever the model says.
+				s.repaintLine(newbuf, i)
+				changedLines++
+			} else if (i < len(repaintRows) && repaintRows[i]) ||
 				newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
@@ -1531,39 +1554,21 @@ func (s *TerminalRenderer) Erase() {
 // old model in that mode and let the next render diff against it.
 //
 // A resize also forces the next render to repaint, since the screen moves
-// content around to fit and the model cannot see where it went.
+// content around to fit and the model cannot see where it went. Whether that
+// means the whole screen or only the frame's own rows is decided in
+// [TerminalRenderer.Render].
 func (s *TerminalRenderer) Resize(width, height int) {
 	if s.tabs != nil {
 		s.tabs.Resize(width)
 	}
 
-	// A resize moves content the model cannot follow, so the next render has to
-	// repaint rather than diff. [TerminalRenderer.Render] says the same thing
-	// about the frame it is handed, but it only sees the size the application
-	// draws at: a screen that shrinks and grows back between two frames looks
-	// unchanged by the time it gets there, and the content the terminal moved
-	// in the meantime would never be repainted. So the change is latched here,
-	// where every size the terminal passed through is visible.
-	//
-	// Against the size last reported, not against the model. An application is
-	// free to draw a frame smaller than the screen, and one that does would
-	// differ from the model on every call and repaint the screen each time it
-	// was told a size it already knew.
-	//
-	// Only in fullscreen mode, where a resize moves content the renderer is
-	// responsible for. An inline frame is shorter than the terminal by design,
-	// and what a resize does to the rows around it is not the renderer's to
-	// repaint.
-	if s.flags.Contains(tFullscreen) && s.lastW > 0 && s.lastH > 0 &&
-		((width > 0 && width != s.lastW) || (height > 0 && height != s.lastH)) {
-		s.clear = true
-	}
-
-	if width > 0 {
-		s.lastW = width
-	}
-	if height > 0 {
-		s.lastH = height
+	// Latched against the size last reported, not against the model, because
+	// Render sees only the size the application draws at: a screen that shrinks
+	// and grows back between two frames looks unchanged by the time it gets
+	// there. What the resize costs is decided in Render, which knows the mode.
+	if width > 0 && height > 0 {
+		s.termResized = s.termResized || (s.termW > 0 && (width != s.termW || height != s.termH))
+		s.termW, s.termH = width, height
 	}
 
 	if !s.flags.Contains(tRelativeCursor) {
