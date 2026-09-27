@@ -601,14 +601,7 @@ func (s *TerminalRenderer) putCellLR(newbuf *RenderBuffer, cell *Cell) {
 // updatePen updates the cursor pen styles.
 func (s *TerminalRenderer) updatePen(cell *Cell) {
 	if cell == nil {
-		if !s.cur.Style.IsZero() {
-			_, _ = s.buf.WriteString(ansi.ResetStyle)
-			s.cur.Style = Style{} // Reset style
-		}
-		if !s.cur.Link.IsZero() {
-			_, _ = s.buf.WriteString(ansi.ResetHyperlink())
-		}
-		return
+		cell = &EmptyCell
 	}
 
 	// Downsample pen when we don't have a [colorprofile.TrueColor],
@@ -1580,7 +1573,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	newbuf.growTouched()
 	resetTouched(newbuf.Touched)
 
-	s.updatePen(nil) // nil indicates a blank cell with no styles
+	s.updatePen(nil)
 }
 
 // Erase marks the screen to be fully erased on the next render.

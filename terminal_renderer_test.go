@@ -601,6 +601,34 @@ func TestRendererHyperlinks(t *testing.T) {
 	}
 }
 
+// Moving between rows resets the pen, which closes any open hyperlink. Every
+// row the link covers has to reopen it, or only the first row stays clickable.
+func TestRendererHyperlinkReopensOnEachRow(t *testing.T) {
+	const w, h = 4, 2
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetColorProfile(colorprofile.TrueColor)
+
+	cellbuf := NewRenderBuffer(w, h)
+	link := NewLink("https://example.com")
+	for y := range h {
+		for x := range w {
+			cellbuf.SetCell(x, y, &Cell{Content: "a", Width: 1, Link: link})
+		}
+	}
+
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	output := buf.String()
+	opens := strings.Count(output, ansi.SetHyperlink(link.URL, link.Params))
+	if opens != h {
+		t.Errorf("expected the link to open once per row (%d), got %d: %q", h, opens, output)
+	}
+}
+
 func TestRendererSwitchBuffer(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
