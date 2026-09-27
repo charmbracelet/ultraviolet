@@ -1374,6 +1374,70 @@ func (s *TerminalRenderer) Flush() (err error) {
 	return
 }
 
+// sizeChange is what a render owes to the screen or the frame having changed
+// shape since the last one.
+type sizeChange struct {
+	// frameResized reports that the frame is a different shape than the model,
+	// so the model has to be resized before anything is diffed against it.
+	frameResized bool
+
+	// repaintAll requires every row to be painted whatever the model says.
+	repaintAll bool
+
+	// repaintRows are rows that have to be painted whether or not the
+	// application touched them.
+	repaintRows []bool
+}
+
+// reconcileSize decides what a change of size costs, and is the only place that
+// decides it.
+//
+// A terminal that changed size rewrapped what was on it, and a frame that
+// changed shape leaves no row holding its old meaning. Either way the model
+// cannot be trusted. What differs is how much of the screen is the renderer's to
+// put right: fullscreen owns every cell and clears it, while an inline frame
+// shares the screen with whatever came before and so repaints its own rows and
+// leaves the rest alone.
+func (s *TerminalRenderer) reconcileSize(newbuf *RenderBuffer) sizeChange {
+	newWidth, newHeight := newbuf.Width(), newbuf.Height()
+	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
+	fullscreen := s.flags.Contains(tFullscreen)
+
+	change := sizeChange{
+		frameResized: curWidth != newWidth || curHeight != newHeight,
+	}
+
+	if s.termResized {
+		if fullscreen {
+			s.clear = true
+		} else {
+			change.repaintAll = true
+		}
+		s.termResized = false
+	}
+
+	if change.frameResized {
+		// No row keeps its meaning, so the hashes that describe them are worth
+		// nothing. Inline uses the narrower partial clear in Render instead.
+		s.oldhash, s.newhash = nil, nil
+		if fullscreen {
+			s.clear = true
+		}
+	}
+
+	// The terminal clips a row it measures wider than the model does, and the
+	// model believes it painted the whole row. Changing the width changes what
+	// fits, so a row holding a cell the two might measure differently has to be
+	// painted again. Rows of plain cells are measured the same by everyone, so an
+	// ASCII screen pays nothing. Cloned because the diff loop updates driftRows
+	// as it goes.
+	if !fullscreen && curWidth != newWidth {
+		change.repaintRows = slices.Clone(s.driftRows)
+	}
+
+	return change
+}
+
 // Redraw forces a full redraw of the screen. It's equivalent to calling
 // [TerminalRenderer.Erase] and [TerminalRenderer.Render].
 func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
@@ -1400,44 +1464,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
 	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
 
-	// A terminal that changed size rewrapped what was on it, so no row keeps its
-	// meaning. Fullscreen owns every cell and clears; an inline frame shares the
-	// screen with whatever came before, so it repaints its own rows and leaves
-	// the rest alone.
-	repaintAll := false
-	if s.termResized {
-		if s.flags.Contains(tFullscreen) {
-			s.clear = true
-		} else {
-			repaintAll = true
-		}
-		s.termResized = false
-	}
-
-	// The terminal clips a row it measures wider than the model does, and the
-	// model cannot see that happen: it believes it painted the whole row.
-	// Changing the width changes what fits, so every row holding a cell the two
-	// might measure differently has to be painted again, whether or not the
-	// application touched it. Rows of plain cells are measured the same by
-	// everyone and are left alone, so an ASCII screen pays nothing.
-	//
-	// Inline only: fullscreen clears on any change of size, so it never reaches
-	// the row-by-row loop that reads this. Cloned because the diff loop below
-	// updates driftRows as it goes.
-	var repaintRows []bool
-	if !s.flags.Contains(tFullscreen) && curWidth != newWidth {
-		repaintRows = slices.Clone(s.driftRows)
-	}
-
-	if curWidth != newWidth || curHeight != newHeight {
-		s.oldhash, s.newhash = nil, nil
-		// A frame that changed shape leaves no row with its old meaning, so
-		// there is nothing to diff against. Fullscreen owns every cell and
-		// clears; inline uses the narrower partial clear below.
-		if s.flags.Contains(tFullscreen) {
-			s.clear = true
-		}
-	}
+	size := s.reconcileSize(newbuf)
 
 	// TODO: Investigate whether this is necessary. Theoretically, terminals
 	// can add/remove tab stops and we should be able to handle that. We could
@@ -1467,14 +1494,14 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	// Resize the model before diffing so the loop below walks every row
 	// of the new screen, including rows added by a grow.
-	if curWidth != newWidth || curHeight != newHeight {
+	if size.frameResized {
 		s.curbuf.Resize(newWidth, newHeight)
 	}
 
 	if s.clear { //nolint:nestif
 		s.clearUpdate(newbuf)
 		s.clear = false
-	} else if touchedLines > 0 || repaintAll {
+	} else if touchedLines > 0 || size.repaintAll {
 		// On Windows, there's a bug with Windows Terminal where [ansi.DECSTBM]
 		// misbehaves and moves the cursor outside of the scrolling region. For
 		// now, we disable the optimizations completely on Windows.
@@ -1493,12 +1520,12 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
 		for i = 0; i < nonEmpty; i++ {
-			if repaintAll {
+			if size.repaintAll {
 				// The model still matches the frame, so a diff would emit
 				// nothing; the row has to be put back whatever the model says.
 				s.repaintLine(newbuf, i)
 				changedLines++
-			} else if (i < len(repaintRows) && repaintRows[i]) ||
+			} else if (i < len(size.repaintRows) && size.repaintRows[i]) ||
 				newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
 				s.transformLine(newbuf, i)
@@ -1519,7 +1546,7 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		}
 	}
 
-	if !s.flags.Contains(tFullscreen) && (curWidth != newWidth || curHeight != newHeight) {
+	if !s.flags.Contains(tFullscreen) && size.frameResized {
 		s.move(newbuf, 0, newHeight-1)
 	}
 
