@@ -1940,3 +1940,24 @@ func TestRendererInlineNarrowRepaints(t *testing.T) {
 		t.Errorf("a terminal that narrowed and grew back rewrapped the frame, so it has to be repainted, got: %q", out)
 	}
 }
+
+func TestRendererCornerClusterLeavesNoPendingWrap(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(6, 2)
+
+	cellbuf := NewRenderBuffer(6, 2)
+	for x := range 6 {
+		cellbuf.SetCell(x, 1, &Cell{Content: "#", Width: 1})
+	}
+	cellbuf.SetCell(5, 1, &Cell{Content: "e\u0301", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if x, _ := r.Position(); x >= cellbuf.Width() {
+		t.Errorf("a frame that ends in pending wrap on the last row scrolls the screen on the next print: cursor x=%d, width=%d", x, cellbuf.Width())
+	}
+}
