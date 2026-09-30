@@ -2744,3 +2744,47 @@ func TestKeyStringMore(t *testing.T) {
 		})
 	}
 }
+
+// chunkedReader returns its chunks one Read at a time, the way a terminal's
+// input arrives in pieces that needn't line up with the sequences in it.
+type chunkedReader struct{ chunks [][]byte }
+
+func (r *chunkedReader) Read(p []byte) (int, error) {
+	if len(r.chunks) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, r.chunks[0])
+	if n < len(r.chunks[0]) {
+		r.chunks[0] = r.chunks[0][n:]
+	} else {
+		r.chunks = r.chunks[1:]
+	}
+	return n, nil
+}
+
+// A read that ends between the ESC and the backslash of a sequence's ST
+// terminator leaves the sequence incomplete, not cancelled. It must come
+// out whole once the backslash arrives, rather than be dropped with the
+// backslash reported as a key. Large OSC replies, such as kitty's OSC 5522
+// clipboard data sent in thousands of 5 KiB packets, cross read boundaries
+// constantly, so this isn't rare in practice.
+func TestReadInputSplitTerminator(t *testing.T) {
+	for _, seq := range []string{
+		"\x1b]5522;type=read:status=DATA;QUJD\x1b\\",
+		"\x1b_hello\x1b\\",
+	} {
+		cut := len(seq) - 1 // the first read ends on the terminator's ESC
+		in := &chunkedReader{chunks: [][]byte{[]byte(seq[:cut]), []byte(seq[cut:] + "a")}}
+		events := testReadInputs(t, in)
+		var want []Event
+		switch seq[1] {
+		case ']':
+			want = []Event{UnknownOscEvent(seq), KeyPressEvent{Code: 'a', Text: "a"}}
+		case '_':
+			want = []Event{UnknownApcEvent(seq), KeyPressEvent{Code: 'a', Text: "a"}}
+		}
+		if !reflect.DeepEqual(events, want) {
+			t.Errorf("%q split before its final backslash:\n got %#v\nwant %#v", seq, events, want)
+		}
+	}
+}

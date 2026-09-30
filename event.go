@@ -565,3 +565,10 @@ func (e ClipboardEvent) Clipboard() ClipboardSelection {
 // ignoredEvent represents a sequence event that is ignored by the terminal
 // reader. This is used to ignore certain sequences that can be canceled.
 type ignoredEvent string
+
+// incompleteEvent represents a string sequence (OSC, APC, and the like) cut
+// off between the ESC and the backslash of its ST terminator, which is
+// where the input ends. The terminal reader waits for more input. If none
+// comes before the escape timeout, the lone ESC cancelled the sequence
+// after all, and it's ignored.
+type incompleteEvent string
