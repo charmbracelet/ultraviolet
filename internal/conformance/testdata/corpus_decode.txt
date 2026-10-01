@@ -1,8 +1,10 @@
+FuzzRedrawResyncs/c3d2d6f0b8daa6ee	Render,Resize,DrawLine,Render
 FuzzRenderer/01e4c2e5d0a0a18a	DrawLine,Clear,Render,DrawLine,Redraw,Redraw
 FuzzRenderer/03c1c2969136ac42	Clear,DrawLine,DrawLine
 FuzzRenderer/0ba7b0cf2253d771	DrawLine,Render,Clear
 FuzzRenderer/0ebe6c4dfe2dc334	Clear,DrawLine,Render,DrawLine,Render,DrawLine
 FuzzRenderer/25e2f9b3d67061b5	DrawLine,Render,Clear,Clear
+FuzzRenderer/283ac3f2515b925b	Resize,DrawLine,Render,Render,Render,Resize
 FuzzRenderer/2da5813835c7c50b	DrawLine,Render,Clear,DrawLine
 FuzzRenderer/31d50934f50a96eb	DrawLine,Clear
 FuzzRenderer/527a4b961803b7bb	DrawLine,Render,Resize
@@ -27,5 +29,6 @@ FuzzScreenShowsContent/29f3127566cae9d7	DrawLine
 FuzzScreenShowsContent/3faf7cde87650021	DrawLine
 FuzzScreenShowsContent/7aa0f1249a1da7ac	DrawLine,Clear
 FuzzScreenShowsContent/81382bf65b85f230	DrawLine,DrawLine
+FuzzScreenShowsContent/a25c3f7ff5876815	DrawLine,Clear,Clear,Clear,Clear,Render,Resize,DrawLine,Render,Redraw
 FuzzScreenShowsContent/d4ca82d1cf41dd0d	DrawLine,Render,Clear,Clear
 FuzzScreenShowsContent/dc64a8711a734337	DrawLine,Clear
