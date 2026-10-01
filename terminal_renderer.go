@@ -145,7 +145,7 @@ type TerminalRenderer struct {
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
-	noWrapLine       bool         // whether autowrap is off for the line currently being transformed
+	noWrapLine       bool         // whether autowrap is off for the line currently being repainted
 	driftRows        []bool       // rows holding a cell the terminal may measure differently
 	termW, termH     int          // the size [TerminalRenderer.Resize] was last told
 	termResized      bool         // whether the terminal changed size since the last render
@@ -866,32 +866,28 @@ func lineHasDrift(m ansi.Method, line Line) bool {
 func (s *TerminalRenderer) paintLine(newbuf *RenderBuffer, y int, force bool) {
 	drift := lineHasDrift(s.method, s.curbuf.Line(y)) || lineHasDrift(s.method, newbuf.Line(y))
 	s.markDrift(y, newbuf.Height(), drift)
-	if drift || force {
-		s.repaintLine(newbuf, y, drift)
-	} else {
+	switch {
+	case drift && !s.flags.Contains(tGraphemeWidth):
+		// Clip a cluster the terminal measures wider than the model instead of
+		// letting it spill onto the next row, then put the cursor back.
+		s.noWrapLine = true
+		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
+		s.repaintLine(newbuf, y)
+		s.noWrapLine = false
+		_, _ = s.buf.WriteString(ansi.SetModeAutoWrap)
+		s.reanchorWideLine(newbuf)
+	case drift || force:
+		s.repaintLine(newbuf, y)
+	default:
 		s.transformLine(newbuf, y)
 	}
 }
 
 // repaintLine erases row y from column 0 and writes newbuf's cells, so the
 // result does not depend on what the model believes is on screen.
-//
-// A drift-prone row is written with autowrap off, so a cluster the terminal
-// measures wider than the model is clipped instead of spilling onto the next
-// row, and the cursor is re-anchored afterwards.
-func (s *TerminalRenderer) repaintLine(newbuf *RenderBuffer, y int, drift bool) {
+func (s *TerminalRenderer) repaintLine(newbuf *RenderBuffer, y int) {
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
-
-	if drift && !s.flags.Contains(tGraphemeWidth) {
-		s.noWrapLine = true
-		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
-		defer func() {
-			s.noWrapLine = false
-			_, _ = s.buf.WriteString(ansi.SetModeAutoWrap)
-			s.reanchorWideLine(newbuf)
-		}()
-	}
 
 	s.move(newbuf, 0, y)
 	blank := s.clearBlank()
@@ -1373,6 +1369,9 @@ func (s *TerminalRenderer) reconcileSize(newbuf *RenderBuffer) sizeChange {
 		if fullscreen {
 			s.clear = true
 		}
+		// Nor does the application's touch list, which never saw rows that
+		// vanished and came back between two frames.
+		s.damage(0, newHeight)
 	}
 
 	// The terminal clips a row it measures wider than the model does, and the

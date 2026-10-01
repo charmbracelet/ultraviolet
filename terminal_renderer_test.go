@@ -653,8 +653,9 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	output := buf.String()
-	// Home, draw X at (0,0); newline, draw X at (0,1); pad cursor to row 5.
-	expected := "\x1b[HX\r\nX\r\n\n\n\n"
+	// Home, draw X at (0,0); erase it, since the new frame's row 0 is blank;
+	// newline, draw X at (0,1); pad cursor to row 5.
+	expected := "\x1b[HX\r\x1b[K\nX\r\n\n\n\n"
 	if output != expected {
 		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
 	}
@@ -2291,5 +2292,35 @@ func TestRendererRepaintsAResizeWithNoTouches(t *testing.T) {
 
 	if out := buf.String(); !strings.Contains(out, "a") {
 		t.Errorf("a resize has to repaint even a frame reporting no touches, got: %q", out)
+	}
+}
+
+// A frame that collapses and grows back to its old size between renders must
+// erase what it last drew. The renderer sees no size change, so only the
+// buffer can say those rows changed.
+func TestRendererClearsRowsAFrameGotBack(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 2)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	cellbuf.Resize(6, 0)
+	cellbuf.Resize(6, 2)
+	cellbuf.SetCell(0, 1, &Cell{Content: "b", Width: 1})
+	buf.Reset()
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseLineRight) {
+		t.Errorf("row 0 was never erased, wrote %q", out)
 	}
 }

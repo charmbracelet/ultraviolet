@@ -3,6 +3,7 @@ FuzzRenderer/01e4c2e5d0a0a18a	DrawLine,Clear,Render,DrawLine,Redraw,Redraw
 FuzzRenderer/03c1c2969136ac42	Clear,DrawLine,DrawLine
 FuzzRenderer/0ba7b0cf2253d771	DrawLine,Render,Clear
 FuzzRenderer/0ebe6c4dfe2dc334	Clear,DrawLine,Render,DrawLine,Render,DrawLine
+FuzzRenderer/1304d095dc75690d	DrawLine,Render,Resize,Resize,DrawLine
 FuzzRenderer/25e2f9b3d67061b5	DrawLine,Render,Clear,Clear
 FuzzRenderer/283ac3f2515b925b	Resize,DrawLine,Render,Render,Render,Resize
 FuzzRenderer/2da5813835c7c50b	DrawLine,Render,Clear,DrawLine
@@ -22,6 +23,7 @@ FuzzRenderer/c46a50f901957d97	Clear,DrawLine,DrawLine,DrawLine,DrawLine,Render,C
 FuzzRenderer/cb55857874c7c38e	Clear,Render
 FuzzRenderer/d5e5470b806d58a6	Render,DrawLine,Render
 FuzzRenderer/ddb2994fe8f02ad1	DrawLine,DrawLine,Render,DrawLine
+FuzzRenderer/e829bd1fab170bdc	DrawLine,Render,Resize,Resize,DrawLine
 FuzzRenderer/ea477bf024ae0883	Clear,DrawLine,DrawLine,Render,DrawLine,Render,Clear
 FuzzRendererIdempotent/7ce35d739e3b1b1f	DrawLine,Render,Clear,Clear
 FuzzRendererIdempotent/8458bb5e60f055df	Clear,DrawLine,Clear,Clear,Clear,Clear,Clear,Clear,Clear,Redraw,Clear,DrawLine,Clear,Clear,DrawLine,Clear,Clear,DrawLine,DrawLine,Render,Clear,Clear
