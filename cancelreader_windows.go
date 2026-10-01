@@ -6,7 +6,6 @@ package uv
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	xwindows "github.com/charmbracelet/x/windows"
@@ -30,17 +29,21 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 		return cancelreader.NewReader(r)
 	}
 
-	var dummy uint32
-	if f, ok := r.(cancelreader.File); !ok || f.Fd() != os.Stdin.Fd() ||
-		// If data was piped to the standard input, it does not emit events
-		// anymore. We can detect this if the console mode cannot be set anymore,
-		// in this case, we fallback to the default cancelreader implementation.
-		windows.GetConsoleMode(windows.Handle(f.Fd()), &dummy) != nil {
+	f, ok := r.(cancelreader.File)
+	if !ok {
 		return fallback(r)
 	}
 
-	conin, err := windows.GetStdHandle(windows.STD_INPUT_HANDLE)
-	if err != nil {
+	// Read from the handle we were handed rather than assuming standard input. A
+	// caller whose stdio is redirected opens CONIN$ itself and passes it here: that
+	// handle is a console, even though it is not os.Stdin.
+	conin := windows.Handle(f.Fd())
+
+	// If data was piped in, the handle does not emit console events. GetConsoleMode
+	// fails on a handle that is not a console, so fall back to the default
+	// cancelreader implementation in that case.
+	var dummy uint32
+	if windows.GetConsoleMode(conin, &dummy) != nil {
 		return fallback(r)
 	}
 
