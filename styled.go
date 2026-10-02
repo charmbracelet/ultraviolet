@@ -12,7 +12,8 @@ import (
 // lines and cells. It is used to disassemble a rendered string with ANSI
 // escape codes into a series of cells that can be used in a [Buffer].
 // A StyledString supports reading [ansi.SGR] and [ansi.Hyperlink] escape
-// codes.
+// codes. Tabs expand to spaces at [DefaultTabInterval] column intervals from
+// the start of each logical line, before wrapping or truncation.
 type StyledString struct {
 	// Text is the original string that was used to create the styled string.
 	Text string
@@ -82,6 +83,11 @@ func (s *StyledString) WcWidth() int {
 }
 
 func (s *StyledString) widthHeight(m ansi.Method) (w, h int) {
+	if strings.ContainsRune(s.Text, '\t') {
+		if width, tabs := styledTabsWidth(s.Text, m); tabs {
+			return width, s.Height()
+		}
+	}
 	lines := strings.Split(s.Text, "\n")
 	h = len(lines)
 	for _, l := range lines {
@@ -94,6 +100,104 @@ func (s *StyledString) widthHeight(m ansi.Method) (w, h int) {
 func (s *StyledString) Bounds() Rectangle {
 	w, h := s.widthHeight(ansi.GraphemeWidth)
 	return Rect(0, 0, w, h)
+}
+
+// styledTabsWidth measures tab-containing text using the same tokens and logical
+// columns as printString. Tabs inside escape sequence payloads are not expanded.
+func styledTabsWidth(str string, method ansi.Method) (w int, tabs bool) {
+	decoder := ansi.DecodeSequenceWc[string]
+	if method == ansi.GraphemeWidth {
+		decoder = ansi.DecodeSequence[string]
+	}
+	var state byte
+	var column, lineWidth int
+	for len(str) > 0 {
+		seq, width, n, newState := decoder(str, state, nil)
+		// Match printString's full-cluster handling after the decoder's ASCII
+		// fast path, so a keycap or combining sequence uses the same width.
+		if n == 1 && seq[0] > 0x1f && seq[0] < 0x7f && len(str) > 1 && str[1] >= 0xc0 {
+			if cluster, cw := ansi.FirstGraphemeCluster(str, method); len(cluster) > 1 {
+				seq, width, n = cluster, cw, len(cluster)
+			}
+		}
+		switch seq {
+		case "\t":
+			spaces := DefaultTabInterval - column%DefaultTabInterval
+			_, lastWidth, following := tabSpace(str[n:], method)
+			spaces += lastWidth - 1
+			n += following
+			tabs = true
+			column += spaces
+			lineWidth += spaces
+		case "\n":
+			w = max(w, lineWidth)
+			lineWidth = 0
+			column = 0
+		case "\r":
+			// Like the existing width calculation, keep counting text before
+			// a CR, while restarting the origin for any subsequent tabs.
+			column = 0
+		default:
+			column += width
+			lineWidth += width
+		}
+		state = newState
+		str = str[n:]
+	}
+	return max(w, lineWidth), tabs
+}
+
+// tabSpace joins the last expanded space with any following combining sequence,
+// just as printString would for an explicit space in the input.
+func tabSpace[T []byte | string](str T, method ansi.Method) (seq T, width, n int) {
+	seq, width = T(" "), 1
+	if len(str) > 0 && str[0] >= 0xc0 {
+		following, _ := ansi.FirstGraphemeCluster(str, method)
+		cluster, cw := ansi.FirstGraphemeCluster(" "+string(following), method)
+		seq, width, n = T(cluster), cw, len(cluster)-1
+	}
+	return
+}
+
+// styledTabDecoder expands text tabs without joining adjacent ANSI tokens. It
+// delays consuming the tab until the last space, including for a trailing tab.
+func styledTabDecoder[T []byte | string](
+	decode func(T, byte, *ansi.Parser) (T, int, int, byte),
+	method ansi.Method,
+) func(T, byte, *ansi.Parser) (T, int, int, byte) {
+	var column, spaces, tabSize int
+	return func(str T, state byte, p *ansi.Parser) (seq T, width, n int, newState byte) {
+		newState = state
+		if spaces == 0 {
+			seq, width, n, newState = decode(str, state, p)
+			// Count the full cluster, matching printString's ASCII repair.
+			if n == 1 && seq[0] > 0x1f && seq[0] < 0x7f && len(str) > 1 && str[1] >= 0xc0 {
+				if cluster, cw := ansi.FirstGraphemeCluster(str, method); len(cluster) > 1 {
+					seq, width, n = cluster, cw, len(cluster)
+				}
+			}
+			switch {
+			case ansi.Equal(seq, T("\t")):
+				spaces = DefaultTabInterval - column%DefaultTabInterval
+				column += spaces
+				tabSize = n
+			case ansi.Equal(seq, T("\n")), ansi.Equal(seq, T("\r")):
+				column = 0
+				return
+			default:
+				column += width
+				return
+			}
+		}
+		spaces--
+		seq, width, n = T(" "), 1, 0
+		if spaces == 0 {
+			seq, width, n = tabSpace(str[tabSize:], method)
+			column += width - 1
+			n += tabSize
+		}
+		return
+	}
 }
 
 // printString draws a string starting at the given position. If s is nil, it
@@ -165,6 +269,9 @@ func printString[T []byte | string](
 	decoder, method := ansi.DecodeSequenceWc[T], ansi.WcWidth
 	if m == ansi.GraphemeWidth {
 		decoder, method = ansi.DecodeSequence[T], ansi.GraphemeWidth
+	}
+	if strings.ContainsRune(string(str), '\t') {
+		decoder = styledTabDecoder(decoder, method)
 	}
 
 	if s == nil {
