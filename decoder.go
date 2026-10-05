@@ -815,7 +815,13 @@ func (p *EventDecoder) parseOsc(b []byte) (int, Event) {
 	case ansi.CAN, ansi.SUB:
 		return i, ignoredEvent(b[:i])
 	case ansi.ESC:
-		if i >= len(b) || b[i] != '\\' {
+		if i >= len(b) {
+			// The input ends between the ESC and the backslash of an ST.
+			// A read boundary can fall there in any long sequence, so
+			// it's incomplete until more input says otherwise.
+			return i, incompleteEvent(b[:i])
+		}
+		if b[i] != '\\' {
 			if cmd == -1 || (start == 0 && end == 2) {
 				return 2, defaultKey()
 			}
@@ -905,7 +911,11 @@ func (p *EventDecoder) parseStTerminated(intro8, intro7 byte, fn func([]byte) Ev
 		case ansi.CAN, ansi.SUB:
 			return i, ignoredEvent(b[:i])
 		case ansi.ESC:
-			if i >= len(b) || b[i] != '\\' {
+			if i >= len(b) {
+				// Incomplete, as in parseOsc.
+				return i, incompleteEvent(b[:i])
+			}
+			if b[i] != '\\' {
 				if start == end {
 					return defaultKey(b)
 				}
