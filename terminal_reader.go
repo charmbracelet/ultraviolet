@@ -102,7 +102,7 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 	}
 	d.r = r
 	if d.table == nil {
-		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
+		d.table = sharedKeysTable(d.Legacy, d.term, d.UseTerminfo)
 	}
 	evs := newEventScanner()
 	evs.EventDecoder = d.EventDecoder
