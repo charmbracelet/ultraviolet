@@ -462,6 +462,11 @@ func (b *Buffer) InsertLine(y, n int, c *Cell) {
 // rectangle's horizontal bounds are affected. Lines are pushed out of the
 // rectangle bounds and lost. This follows terminal [ansi.IL] behavior.
 func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
+	// The caller's rectangle is clamped to the buffer, not trusted: a
+	// terminal's scroll region can outlive a shrink, and indexing past
+	// Lines here took down a whole daemon. Clamping (rather than
+	// returning) keeps the in-bounds part of the region scrolling.
+	area = area.Intersect(b.Bounds())
 	if n <= 0 || y < area.Min.Y || y >= area.Max.Y || y >= b.Height() {
 		return
 	}
@@ -518,6 +523,7 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 // new blank lines are created at the bottom. This follows terminal [ansi.DL]
 // behavior.
 func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
+	area = area.Intersect(b.Bounds()) // see InsertLineArea
 	if n <= 0 || y < area.Min.Y || y >= area.Max.Y || y >= b.Height() {
 		return
 	}
