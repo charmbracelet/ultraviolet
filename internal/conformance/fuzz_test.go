@@ -1,6 +1,7 @@
 package conformance_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -17,11 +18,17 @@ type runner struct {
 	term oracle
 	buf  uv.ScreenBuffer
 
-	// w and h track the live dimensions, which an OpResize changes. The buffer,
-	// the draw rectangle, and the screen readback all follow them so a line
-	// drawn after a resize is valid for the current screen, not the starting
-	// one.
+	// w and h track the live frame dimensions, which an OpResize changes. The
+	// buffer and the draw rectangle follow them so a line drawn after a resize
+	// is valid for the current frame, not the starting one.
 	w, h int
+
+	// termW and termH are the terminal's own dimensions, which the screen
+	// readback follows. A fullscreen frame is the terminal, so they match w and
+	// h. An inline frame is shorter, and the rows below it belong to the
+	// terminal rather than the frame: reading them back is what catches a
+	// shrink that leaves the tail of a taller frame behind.
+	termW, termH int
 }
 
 // newRunner wires a renderer to a fresh emulator sized for the program. The
@@ -30,12 +37,42 @@ type runner struct {
 func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int, bool) oracle) *runner {
 	t.Helper()
 
-	term := mk(t, p.Width, p.Height, p.GraphemeWidth)
+	// An inline frame shares the terminal with whatever came before it, so the
+	// terminal is taller than the frame and the extra rows are part of what is
+	// under test. A fullscreen frame is the terminal.
+	termH := p.Height
+	if p.Inline {
+		termH = conformance.InlineTermHeight
+	}
+
+	term := mk(t, p.Width, termH, p.GraphemeWidth)
+
+	// An inline frame shares the screen, so put something on it first and leave
+	// the cursor below. Written straight to the emulator, since the renderer must
+	// not know these rows exist, and kept inside the narrowest screen a program
+	// can ask for: text that wraps takes more rows than it was given and puts the
+	// frame below where frameTop says it is.
+	if p.Inline {
+		for y := range conformance.InlineRowsAbove {
+			if _, err := fmt.Fprintf(term, "%0*d\r\n", conformance.InlineSeedWidth, y); err != nil {
+				t.Fatalf("seeding the rows above the frame: %v", err)
+			}
+		}
+	}
+
 	rend := uv.NewTerminalRenderer(term, []string{
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 	})
-	rend.SetFullscreen(true)
+	if p.Inline {
+		rend.SetRelativeCursor(true)
+		// An inline renderer is told the terminal size, not the frame size; it
+		// learns the frame from the buffer it is handed. Without this it has no
+		// idea how much room it has below the frame.
+		rend.Resize(p.Width, termH)
+	} else {
+		rend.SetFullscreen(true)
+	}
 	rend.SetGraphemeWidth(p.GraphemeWidth)
 	rend.SetScrollOptim(p.ScrollOptim)
 	rend.Erase()
@@ -49,12 +86,14 @@ func newRunner(t *testing.T, p conformance.Program, mk func(*testing.T, int, int
 	}
 
 	return &runner{
-		prog: p,
-		rend: rend,
-		term: term,
-		buf:  buf,
-		w:    p.Width,
-		h:    p.Height,
+		prog:  p,
+		rend:  rend,
+		term:  term,
+		buf:   buf,
+		w:     p.Width,
+		h:     p.Height,
+		termW: p.Width,
+		termH: termH,
 	}
 }
 
@@ -90,18 +129,47 @@ func (r *runner) step(t *testing.T, op conformance.Op) {
 		// lockstep, the way a real SIGWINCH handler would. The renderer's model
 		// of the previous frame keeps its old dimensions, which is exactly the
 		// stale-geometry case under test.
+		//
+		// An inline frame changes height on its own, without the terminal
+		// moving underneath it: a view swaps for a taller or shorter one and
+		// the terminal never hears about it. So the terminal keeps its height
+		// here and only the frame changes, which also means a resize that keeps
+		// the width is a pure change of frame shape.
 		r.w, r.h = op.W, op.H
+		r.termW = op.W
+		if !r.prog.Inline {
+			r.termH = op.H
+		}
 		r.buf.Resize(op.W, op.H)
-		r.term.Resize(op.W, op.H)
-		r.rend.Resize(op.W, op.H)
+		r.term.Resize(r.termW, r.termH)
+		r.rend.Resize(r.termW, r.termH)
+	case conformance.OpErase:
+		r.rend.Erase()
 	}
 }
 
-// screen returns every row, for comparison against another runner.
+// frameTop is the terminal row the frame's first row sits on. A fullscreen frame
+// starts at the top of the screen; an inline one starts below the rows that were
+// already there, which is where the cursor was when the renderer first saw it.
+//
+// Anything comparing a frame row against a screen row has to go through this.
+// The differential targets do not, because both of their runs are offset
+// identically and the offset cancels.
+func (r *runner) frameTop() int {
+	if r.prog.Inline {
+		return conformance.InlineRowsAbove
+	}
+	return 0
+}
+
+// screen returns every row of the terminal, for comparison against another
+// runner. Every row, not every row of the frame: an inline frame that shrinks
+// has to clear what it no longer covers, and a row it abandoned is exactly
+// where the residue shows up.
 func (r *runner) screen(t *testing.T) []string {
 	t.Helper()
 
-	rows := make([]string, r.h)
+	rows := make([]string, r.termH)
 	for y := range rows {
 		rows[y] = r.term.Row(t, y)
 	}
@@ -447,6 +515,7 @@ func FuzzScreenShowsContent(f *testing.F) {
 			}
 
 			screen := r.screen(t)
+			screenY := lastY + r.frameTop()
 			drawn := drawnRow(r.buf, lastY, func(cluster string) int {
 				return clusterWidth(t, o, p.GraphemeWidth, cluster)
 			})
@@ -463,17 +532,94 @@ func FuzzScreenShowsContent(f *testing.F) {
 						continue
 					}
 					wantRune := strings.Count(drawn, string(r))
-					gotRune := strings.Count(screen[lastY], string(r))
+					gotRune := strings.Count(screen[screenY], string(r))
 					if gotRune < wantRune {
 						t.Errorf("%s: row %d shows %q of cluster %q %d times but at least %d were drawn\n"+
 							"  screen %q\n"+
 							"  drawn  %q\n"+
 							"program:\n%s",
-							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[lastY], drawn, p)
+							o.name, lastY, string(r), cluster, gotRune, wantRune, screen[screenY], drawn, p)
 						return
 					}
 				}
 			}
 		}
 	})
+}
+
+// TestInlineSeedOccupiesTheRowsItClaims measures where an inline frame starts
+// instead of trusting the arithmetic.
+//
+// frameTop reports InlineRowsAbove, and the content oracle reads screen rows
+// through it. That is only true while the seeded rows each occupy exactly one
+// row, so it is checked here against a real emulator at the narrowest width a
+// program can ask for: seven columns of "above %d" in a six-column screen used
+// to wrap into four rows, and the oracle then read a seeded row and reported the
+// renderer as having lost content it never drew.
+func TestInlineSeedOccupiesTheRowsItClaims(t *testing.T) {
+	for _, spec := range oracles {
+		t.Run(spec.name, func(t *testing.T) {
+			narrowest := conformance.DecodeProgram(nil)
+			p := conformance.Program{
+				Width:  narrowest.Width,
+				Height: 2,
+				Inline: true,
+			}
+			r := newRunner(t, p, spec.mk)
+			defer r.term.Close()
+
+			for y := range conformance.InlineRowsAbove {
+				if got := r.term.Row(t, y); got == "" {
+					t.Errorf("row %d is blank, so the seeded rows do not reach it", y)
+				}
+			}
+			if got := r.term.Row(t, r.frameTop()); got != "" {
+				t.Errorf("the frame starts at row %d, but the rows above spilled into it: %q",
+					r.frameTop(), got)
+			}
+		})
+	}
+}
+
+// TestInlineShrinkLeavesTheFramesOwnRows checks, against a real emulator, what an
+// inline frame that gives up rows looks like afterwards.
+//
+// The erase starts at the first row the frame gave up, so the rows it still owns
+// are left alone and nothing has to be painted back into them. Asserting on the
+// screen rather than on the escape sequence is the point: there is no single
+// correct sequence, and the byte-level tests in the root package could not tell
+// "left alone" from "erased and repainted".
+func TestInlineShrinkLeavesTheFramesOwnRows(t *testing.T) {
+	for _, spec := range oracles {
+		t.Run(spec.name, func(t *testing.T) {
+			p := conformance.Program{Width: 6, Height: 4, Inline: true}
+			r := newRunner(t, p, spec.mk)
+			defer r.term.Close()
+
+			r.step(t, conformance.Op{Kind: conformance.OpDrawLine, Y: 1, Text: "ab"})
+			r.step(t, conformance.Op{Kind: conformance.OpDrawLine, Y: 3, Text: "zz"})
+			r.step(t, conformance.Op{Kind: conformance.OpRender})
+
+			top := r.frameTop()
+			if got := r.term.Row(t, top+1); got != "ab" {
+				t.Fatalf("row 1 of the frame reads %q before the shrink", got)
+			}
+
+			// Give up the bottom two rows.
+			r.step(t, conformance.Op{Kind: conformance.OpResize, W: 6, H: 2})
+			r.step(t, conformance.Op{Kind: conformance.OpRender})
+
+			if got := r.term.Row(t, top+1); got != "ab" {
+				t.Errorf("the frame still owns row 1, but it reads %q after the shrink", got)
+			}
+			if got := r.term.Row(t, top+3); got != "" {
+				t.Errorf("row 3 was given up, so it should be blank, got %q", got)
+			}
+			for y := range conformance.InlineRowsAbove {
+				if got := r.term.Row(t, y); got == "" {
+					t.Errorf("the erase reached row %d, above the frame", y)
+				}
+			}
+		})
+	}
 }

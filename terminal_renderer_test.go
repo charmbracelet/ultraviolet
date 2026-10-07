@@ -2,6 +2,7 @@ package uv
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"io"
 	"strings"
@@ -600,6 +601,34 @@ func TestRendererHyperlinks(t *testing.T) {
 	}
 }
 
+// Moving between rows resets the pen, which closes any open hyperlink. Every
+// row the link covers has to reopen it, or only the first row stays clickable.
+func TestRendererHyperlinkReopensOnEachRow(t *testing.T) {
+	const w, h = 4, 2
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetColorProfile(colorprofile.TrueColor)
+
+	cellbuf := NewRenderBuffer(w, h)
+	link := NewLink("https://example.com")
+	for y := range h {
+		for x := range w {
+			cellbuf.SetCell(x, y, &Cell{Content: "a", Width: 1, Link: link})
+		}
+	}
+
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	output := buf.String()
+	opens := strings.Count(output, ansi.SetHyperlink(link.URL, link.Params))
+	if opens != h {
+		t.Errorf("expected the link to open once per row (%d), got %d: %q", h, opens, output)
+	}
+}
+
 func TestRendererSwitchBuffer(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
@@ -624,8 +653,9 @@ func TestRendererSwitchBuffer(t *testing.T) {
 	}
 
 	output := buf.String()
-	// Home, draw X at (0,0); newline, draw X at (0,1); pad cursor to row 5.
-	expected := "\x1b[HX\r\nX\r\n\n\n\n"
+	// Home, draw X at (0,0); erase it, since the new frame's row 0 is blank;
+	// newline, draw X at (0,1); pad cursor to row 5.
+	expected := "\x1b[HX\r\x1b[K\nX\r\n\n\n\n"
 	if output != expected {
 		t.Errorf("expected output after resize to be %q, got: %q", expected, output)
 	}
@@ -1381,6 +1411,39 @@ func BenchmarkRenderResize(b *testing.B) {
 	}
 }
 
+// Resizes that report the size the terminal already is, with a frame shorter
+// than the screen. Applications are told the size on a schedule rather than only
+// when it changes, so this is the steady state, not an edge case: a duplicate
+// SIGWINCH, or a handler that reports on every frame.
+//
+// The measurement is how little a resize that changed nothing costs. Comparing
+// the reported size against the model instead of against the last report makes
+// this repaint the whole screen every iteration, which the other resize
+// benchmark cannot see because it always resizes to exactly the frame size.
+func BenchmarkResizeSteadyShortFrame(b *testing.B) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(80, 24)
+
+	buf := NewScreenBuffer(80, 23) // one row shorter than the screen
+	text := NewStyledString(strings.Repeat("x", 40))
+	text.Draw(buf, Rect(0, 0, 80, 1))
+	r.Render(buf.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		b.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r.Resize(80, 24)
+		text.Draw(buf, Rect(0, i%23, 80, 1))
+		r.Render(buf.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			b.Fatalf("failed to flush renderer: %v", err)
+		}
+	}
+}
+
 // A resize invalidates the renderer's cursor model so the next move is
 // absolute. In relative cursor mode there is no absolute move, and -1 there
 // means "first move, assume the origin", so invalidating would assert a
@@ -1445,10 +1508,123 @@ func TestRendererInlineShrinkClearsPartially(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	// Up one row from row 2, erase the rest of the screen, redraw row 1.
-	expected := "\r\x1bM\x1b[Jb\r"
+	// Erase from row 2, the row the frame gave up, then up to row 1 to write the
+	// cell that changed. The erase no longer reaches into the frame, so row 1 is
+	// written because the application drew into it, not to put it back.
+	expected := "\r\x1b[J\x1bMb\r"
 	if output := buf.String(); output != expected {
 		t.Errorf("expected output after shrink to be %q, got: %q", expected, output)
+	}
+}
+
+// The rows an inline frame gives up have to be erased whether or not the width
+// moved at the same time. A terminal that changes width rewraps what it holds,
+// which spreads the abandoned rows further than the model can account for
+// rather than tidying them away, so a width change is the case that needs the
+// erase most.
+//
+// The fuzzer found this one the first time it was allowed to draw inline
+// frames: a row painted outside the new frame survived a resize that shrank the
+// screen and widened it in the same step.
+func TestRendererInlineShrinkErasesAcrossAWidthChange(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 4)
+	cellbuf.SetCell(0, 2, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Two rows shorter and much wider, the shape of a terminal resize the
+	// application reflowed its view for.
+	cellbuf.Resize(23, 2)
+	r.Resize(23, 10)
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseScreenBelow) {
+		t.Errorf("shrink should erase the rows the frame gave up, got: %q", out)
+	}
+}
+
+// That erase starts at the last row of the new frame, so it takes that row with
+// it on the way down. The row still belongs to the frame and still holds what
+// it held before, and the application has no reason to draw into a row it did
+// not change, so nothing marks it for the diff loop to visit.
+//
+// The result is residue in reverse: not old content surviving, but current
+// content erased and never put back.
+func TestRendererInlineShrinkLeavesItsOwnRowsAlone(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 8)
+	cellbuf.SetCell(0, 1, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Six rows shorter. Row 1 survives the shrink and is not drawn into.
+	cellbuf.Resize(6, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, ansi.EraseScreenBelow) {
+		t.Fatalf("expected the shrink to erase below the frame, got: %q", out)
+	}
+	if strings.Contains(out, "a") {
+		t.Errorf("row 1 survives the shrink, so the erase should have left it alone "+
+			"rather than taking it and painting it back: %q", out)
+	}
+}
+
+// A frame can collapse to nothing, and a buffer resized to zero rows reports
+// zero columns too, so the erase below it has no row of its own to start from.
+// Starting one row higher would reach above the frame, into rows that belong to
+// whatever shared the screen first: a shell's output, another frame, scrollback.
+// The renderer never wrote them and does not get to erase them.
+func TestRendererInlineCollapseStaysBelowItsOrigin(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(10, 20)
+
+	cellbuf := NewRenderBuffer(10, 4)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	cellbuf.Resize(10, 0)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// Cursor up from the frame's first row would leave the frame entirely, and
+	// the erase that follows would take the row above with it.
+	if out := buf.String(); strings.Contains(out, ansi.CUU1) || strings.Contains(out, "\x1b[1A") {
+		t.Errorf("collapsing the frame moved above its first row: %q", out)
+	}
+	if _, y := r.Position(); y < 0 {
+		t.Errorf("collapsing the frame left the cursor model at row %d", y)
 	}
 }
 
@@ -1561,6 +1737,87 @@ func TestRendererFullscreenShrinkRepaints(t *testing.T) {
 
 	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
 		t.Errorf("shrink should force a repaint, got: %q", out)
+	}
+}
+
+// Losing columns is the same story told sideways: the terminal clips or
+// rewraps every row to fit the narrower screen, and the model records none of
+// it. Widening back restores the columns but not the content, so the model
+// still claims cells the terminal no longer shows.
+//
+// The fuzzer found this one as residue: a row of clusters painted at the old
+// width, narrowed and widened with no render in between, and the tail of the
+// row still on screen afterwards.
+func TestRendererFullscreenNarrowRepaints(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("narrowing should force a repaint, got: %q", out)
+	}
+}
+
+// The repaint a resize forces belongs to resizes that changed something. An
+// application is free to draw a frame smaller than the screen, so comparing the
+// reported size against the model would differ on every call and repaint the
+// screen each time the renderer was told a size it already knew. A duplicate
+// SIGWINCH costs nothing and a steady screen stays quiet.
+func TestRendererResizeLatchesOnlyRealChanges(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(20, 8)
+
+	// A frame two rows shorter than the screen, so the model and the reported
+	// size disagree for as long as the application keeps drawing it.
+	scr := NewScreenBuffer(20, 6)
+	NewStyledString("hello").Draw(scr, Rect(0, 0, 20, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	for range 3 {
+		buf.Reset()
+		r.Resize(20, 8) // the size it already is
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		if out := buf.String(); strings.Contains(out, ansi.EraseEntireScreen) {
+			t.Fatalf("a resize that changed nothing repainted the screen: %q", out)
+		}
+	}
+
+	// A real change still latches, and still survives the grow back.
+	buf.Reset()
+	r.Resize(20, 4)
+	r.Resize(20, 8)
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	if out := buf.String(); !strings.Contains(out, ansi.EraseEntireScreen) {
+		t.Errorf("a shrink and grow back should repaint, got: %q", out)
 	}
 }
 
@@ -1718,5 +1975,352 @@ func TestDriftShortCircuitAgreesWithFullCheck(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A grapheme cluster at the right margin is written with autowrap on, even in
+// the lower right corner where a plain cell is not. With autowrap off the
+// terminal never advances past the margin, so it reads the combining
+// codepoints as part of the cell to the left: the mark moves one column back
+// and the base rune is left alone at the margin. Both reference emulators
+// place the cluster correctly when autowrap stays on.
+func TestRendererMarginClusterKeepsAutowrap(t *testing.T) {
+	paint := func(content string, y int) string {
+		var buf bytes.Buffer
+		r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		r.Resize(6, 2)
+
+		scr := NewScreenBuffer(6, 2)
+		NewStyledString(content).Draw(scr, Rect(0, y, 6, 1))
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		return buf.String()
+	}
+
+	// e + U+0301. Two codepoints, one column.
+	const cluster = "e\u0301"
+
+	for _, y := range []int{0, 1} {
+		out := paint("###"+cluster+cluster+cluster, y)
+		if strings.Contains(out, ansi.ResetModeAutoWrap) {
+			t.Errorf("row %d: cluster at the margin painted with autowrap off: %q", y, out)
+		}
+	}
+
+	// The corner still gets the autowrap dance when nothing can be split.
+	if out := paint("######", 1); !strings.Contains(out, ansi.ResetModeAutoWrap) {
+		t.Errorf("plain corner cell should paint with autowrap off, got: %q", out)
+	}
+}
+
+// A hardware scroll moves every row in its range, including rows the
+// application never drew into this frame. The diff loop only visits rows the
+// application touched, so without marking the range those rows keep the model's
+// old opinion of them and the content the scroll carried away never comes back.
+//
+// Here the scroll puts row 2 where row 0 belongs, which is what makes it worth
+// doing, and takes row 1 off the top of the screen on the way. Row 1 has to be
+// painted again even though nothing drew into it.
+func TestRendererScrollRepaintsRowsItMoved(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+	r.Resize(4, 8)
+
+	scr := NewScreenBuffer(4, 8)
+	NewStyledString("aa").Draw(scr, Rect(0, 1, 4, 1))
+	NewStyledString("bb").Draw(scr, Rect(0, 2, 4, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	// Row 1 keeps its "aa" from the frame before and is not drawn into.
+	NewStyledString("bb").Draw(scr, Rect(0, 0, 4, 1))
+	NewStyledString("aa").Draw(scr, Rect(0, 2, 4, 1))
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, ansi.ScrollUp(2)) {
+		t.Fatalf("expected a hardware scroll, got: %q", out)
+	}
+	if n := strings.Count(out, "aa"); n != 2 {
+		t.Errorf("scrolled rows painted %d times, want 2 (rows 1 and 2): %q", n, out)
+	}
+}
+
+func TestRendererInlineNarrowRepaints(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, "a") {
+		t.Errorf("a terminal that narrowed and grew back rewrapped the frame, so it has to be repainted, got: %q", out)
+	}
+}
+
+func TestRendererCornerClusterLeavesNoPendingWrap(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.Resize(6, 2)
+
+	cellbuf := NewRenderBuffer(6, 2)
+	for x := range 6 {
+		cellbuf.SetCell(x, 1, &Cell{Content: "#", Width: 1})
+	}
+	cellbuf.SetCell(5, 1, &Cell{Content: "e\u0301", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if x, _ := r.Position(); x >= cellbuf.Width() {
+		t.Errorf("a frame that ends in pending wrap on the last row scrolls the screen on the next print: cursor x=%d, width=%d", x, cellbuf.Width())
+	}
+}
+
+// The renderer's account of the rows it disturbed itself is sized to the screen
+// it is about to paint, so a row that cannot be painted cannot be damaged and no
+// reader has to bounds-check the record.
+func TestRendererDamageIsSizedToTheScreen(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+
+	tall := NewRenderBuffer(4, 6)
+	tall.SetCell(0, 5, &Cell{Content: "a", Width: 1})
+	r.Render(tall)
+	if got := len(r.damaged); got != 6 {
+		t.Errorf("record holds %d rows for a 6-row screen, want 6", got)
+	}
+
+	// Out of range either way is dropped, rather than growing the record to fit
+	// rows the screen does not have.
+	r.damage(-3, 2)
+	r.damage(6, 99)
+	if got := len(r.damaged); got != 6 {
+		t.Errorf("damage outside the screen resized the record to %d, want 6", got)
+	}
+	for y, damaged := range r.damaged {
+		if damaged {
+			t.Errorf("row %d is damaged, but every damage call was outside the screen", y)
+		}
+	}
+
+	// A shorter frame gets a shorter record, and carries nothing over from the
+	// taller frame it replaced.
+	r.damage(4, 2)
+	short := NewRenderBuffer(4, 2)
+	short.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(short)
+	if got := len(r.damaged); got != 2 {
+		t.Errorf("record holds %d rows for a 2-row screen, want 2", got)
+	}
+}
+
+// BenchmarkRenderFrameByHeight pins the shape of the win, not just its size.
+//
+// The cost of a frame used to scale with the height of the screen, because every
+// render replaced one touch record per row. Reusing the records made it flat, and
+// a benchmark at a single height cannot tell the two apart: run a few heights and
+// the allocations per frame should not follow them.
+func BenchmarkRenderFrameByHeight(b *testing.B) {
+	for _, height := range []int{24, 100, 400} {
+		b.Run(fmt.Sprintf("h%d", height), func(b *testing.B) {
+			r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+			r.SetFullscreen(true)
+			buf := NewScreenBuffer(80, height)
+			text := NewStyledString(strings.Repeat("x", 79))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				text.Draw(buf, Rect(0, i%height, 80, 1))
+				r.Render(buf.RenderBuffer)
+			}
+		})
+	}
+}
+
+// TestRenderAllocationsDoNotFollowScreenHeight guards the property the record
+// reuse bought, which a benchmark at one height cannot express.
+//
+// Every render used to replace one touch record per row, so the cost of a frame
+// grew with the screen. A tall screen and a short one should now allocate the
+// same amount per frame.
+func TestRenderAllocationsDoNotFollowScreenHeight(t *testing.T) {
+	perFrame := func(height int) float64 {
+		r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+		r.SetFullscreen(true)
+		buf := NewScreenBuffer(80, height)
+		text := NewStyledString(strings.Repeat("x", 79))
+
+		row := 0
+		draw := func() {
+			row = (row + 1) % height
+			text.Draw(buf, Rect(0, row, 80, 1))
+			r.Render(buf.RenderBuffer)
+		}
+
+		// Every row has to be drawn at least once first: a record is created on
+		// first touch, and counting that one-off as per-frame cost would make a
+		// tall screen look like it still scales.
+		for range height * 2 {
+			draw()
+		}
+		return testing.AllocsPerRun(256, draw)
+	}
+
+	short, tall := perFrame(24), perFrame(400)
+	if tall > short+8 {
+		t.Errorf("a 400-row screen allocates %.0f per frame against %.0f for 24 rows, so the cost still follows the height",
+			tall, short)
+	}
+}
+
+// A touch list shorter than the screen used to crash the scroll optimisation,
+// which walked every row of the screen through it. An application can reach that
+// state: the list is exported, so it can drop it and touch a single row.
+//
+// Enforced rather than tolerated, so the assertion is that the state cannot be
+// built, not that a bounds check catches it. Every reader indexes the list by
+// screen row, and there were five separate length checks standing in for this.
+func TestRenderBufferTouchedCoversEveryRow(t *testing.T) {
+	buf := NewRenderBuffer(5, 4)
+
+	if got := len(buf.Touched); got != buf.Height() {
+		t.Errorf("a new buffer has %d touch entries for %d rows", got, buf.Height())
+	}
+
+	// Dropping the list and touching one row restores the full length.
+	buf.Touched = nil
+	buf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	if got := len(buf.Touched); got != buf.Height() {
+		t.Errorf("after dropping the list and touching one row, %d entries for %d rows", got, buf.Height())
+	}
+
+	// And so does touching a row of a screen that has since grown.
+	buf.Touched = buf.Touched[:1]
+	buf.Resize(7, 9)
+	buf.SetCell(0, 8, &Cell{Content: "c", Width: 1})
+	if got := len(buf.Touched); got < buf.Height() {
+		t.Errorf("after growing to %d rows and touching the last one, %d touch entries", buf.Height(), got)
+	}
+}
+
+// The crash itself: a short list reaching the scroll optimisation, which indexed
+// it by screen row and ran off the end.
+func TestRendererSurvivesAShortTouchList(t *testing.T) {
+	r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	r.SetScrollOptim(true)
+
+	cellbuf := NewRenderBuffer(5, 4)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	cellbuf.Touched = nil
+	cellbuf.SetCell(0, 0, &Cell{Content: "b", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+}
+
+// A frame an application hands over with no touches recorded still has to be
+// repainted when the terminal resized under it.
+//
+// The touch list is exported, so an application is free to drop it, and a fresh
+// list records nothing. Both make TouchedLines report zero, which is otherwise
+// the renderer's signal that there is nothing to do. A resize latched in the
+// meantime has to override that, or the rows the terminal rewrapped stay put.
+func TestRendererRepaintsAResizeWithNoTouches(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.Resize(20, 2)
+
+	cellbuf := NewRenderBuffer(20, 2)
+	for x := range 20 {
+		cellbuf.SetCell(x, 0, &Cell{Content: "a", Width: 1})
+	}
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	// The application drops the list, so the next frame reports no touches.
+	cellbuf.Touched = nil
+	if got := cellbuf.TouchedLines(); got != 0 {
+		t.Fatalf("expected a frame reporting no touches, got %d", got)
+	}
+
+	buf.Reset()
+	r.Resize(8, 2)
+	r.Resize(20, 2)
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, "a") {
+		t.Errorf("a resize has to repaint even a frame reporting no touches, got: %q", out)
+	}
+}
+
+// A frame that collapses and grows back to its old size between renders must
+// erase what it last drew. The renderer sees no size change, so only the
+// buffer can say those rows changed.
+func TestRendererClearsRowsAFrameGotBack(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	r.SetRelativeCursor(true)
+	r.Resize(6, 10)
+
+	cellbuf := NewRenderBuffer(6, 2)
+	cellbuf.SetCell(0, 0, &Cell{Content: "a", Width: 1})
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	cellbuf.Resize(6, 0)
+	cellbuf.Resize(6, 2)
+	cellbuf.SetCell(0, 1, &Cell{Content: "b", Width: 1})
+	buf.Reset()
+	r.Render(cellbuf)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, ansi.EraseLineRight) {
+		t.Errorf("row 0 was never erased, wrote %q", out)
 	}
 }

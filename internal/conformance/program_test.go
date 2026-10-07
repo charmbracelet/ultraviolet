@@ -88,9 +88,20 @@ func TestDecodeProgramTotal(t *testing.T) {
 					t.Fatalf("DecodeProgram(%x) op %d resizes to width %d, outside [%d,%d]",
 						in, i, op.W, conformance.MinResizeW, conformance.MaxResizeW)
 				}
-				if op.H < conformance.MinResizeH || op.H > conformance.MaxResizeH {
+				// An inline frame may collapse to nothing; a fullscreen one
+				// may not, since the renderer owns every row of the screen.
+				minH := conformance.MinResizeH
+				if p.Inline {
+					minH = 0
+				}
+				if op.H < minH || op.H > conformance.MaxResizeH {
 					t.Fatalf("DecodeProgram(%x) op %d resizes to height %d, outside [%d,%d]",
-						in, i, op.H, conformance.MinResizeH, conformance.MaxResizeH)
+						in, i, op.H, minH, conformance.MaxResizeH)
+				}
+				if p.Inline && op.W < curW {
+					t.Fatalf("DecodeProgram(%x) op %d narrows an inline screen from %d to %d columns, "+
+						"which rewraps rows the renderer then has no way to find",
+						in, i, curW, op.W)
 				}
 				curW, curH = op.W, op.H
 			}
@@ -125,9 +136,11 @@ func TestSeedCorpusIsInteresting(t *testing.T) {
 	drift := conformance.DriftClusters()
 	seenDrift := map[string]bool{}
 	var withText int
+	seenMode := map[bool]bool{}
 
 	for i, seed := range seeds {
 		p := conformance.DecodeProgram(seed)
+		seenMode[p.Inline] = true
 
 		var renders, draws int
 		for _, op := range p.Ops {
@@ -166,6 +179,41 @@ func TestSeedCorpusIsInteresting(t *testing.T) {
 			t.Errorf("no seed draws %q, so the fuzzer does not start anywhere near it", c)
 		}
 	}
+	for _, inline := range []bool{false, true} {
+		if !seenMode[inline] {
+			t.Errorf("no seed runs with inline=%v, so half the renderer starts unreached", inline)
+		}
+	}
+}
+
+// An inline frame has to leave the terminal a row to spare. A frame that
+// reaches the last row scrolls the screen on the next newline, and content that
+// has scrolled sits at a different absolute row in every run, so the
+// differential targets would report the scroll as a disagreement.
+//
+// The decoder cannot produce a frame that tall today. This is here so that
+// widening the resize bounds fails loudly rather than turning the inline
+// targets into a source of false failures.
+func TestInlineFramesFitTheTerminal(t *testing.T) {
+	tallest := conformance.InlineRowsAbove + max(conformance.MaxResizeH, decodedMaxHeight(t))
+	if tallest >= conformance.InlineTermHeight {
+		t.Errorf("a program can reach %d rows in a terminal of %d, leaving no room below the frame",
+			tallest, conformance.InlineTermHeight)
+	}
+}
+
+// decodedMaxHeight is the tallest starting frame the decoder will produce, found
+// by asking it, since the size mapping lives in the decoder rather than in a
+// constant this test could read.
+func decodedMaxHeight(t *testing.T) int {
+	t.Helper()
+
+	var tallest int
+	for b := range 256 {
+		p := conformance.DecodeProgram([]byte{0, byte(b)})
+		tallest = max(tallest, p.Height)
+	}
+	return tallest
 }
 
 // TestFuzzTargetsRunSeeds runs every fuzz target over its seed corpus, which is
