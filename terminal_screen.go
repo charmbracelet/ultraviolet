@@ -623,13 +623,21 @@ func (s *TerminalScreen) ProgressBar() *ProgressBar {
 
 // SetProgramStatus reports the program status to the terminal using the
 // Program Status Protocol (OSC 7501). A nil status removes every program
-// status record on the terminal.
+// status record on the terminal. An invalid status is not sent, leaves the
+// current status unchanged, and returns the reason.
 //
 // The changes can be committed to the underlying writer by calling the
 // [TerminalScreen.Flush] method.
-func (s *TerminalScreen) SetProgramStatus(ps *ProgramStatus) {
-	EncodeProgramStatus(s.buf, ps) //nolint:errcheck
-	s.programStatus = ps
+func (s *TerminalScreen) SetProgramStatus(ps *ProgramStatus) error {
+	if err := EncodeProgramStatus(s.buf, ps); err != nil {
+		return err
+	}
+	s.programStatus = nil
+	if ps != nil {
+		cp := *ps
+		s.programStatus = &cp
+	}
+	return nil
 }
 
 // ProgramStatus returns the last program status reported to the terminal.
@@ -692,10 +700,10 @@ func (s *TerminalScreen) Reset() {
 	if s.progressBar != nil && s.progressBar.State != ProgressBarNone {
 		sb.WriteString(ansi.ResetProgressBar)
 	}
-	// The program status is deliberately left in place. The Program Status
-	// Protocol expects done and error records to outlive the program, and
-	// terminals drop working and blocked records on their own when the
-	// process exits or the next shell prompt starts.
+	// Done and error should outlive the program; anything else would go stale.
+	if ps := s.programStatus; ps != nil && ps.State != ProgramStateDone && ps.State != ProgramStateError {
+		sb.WriteString(ansi.ClearProgramStatus)
+	}
 
 	s.buf.WriteString(sb.String())
 

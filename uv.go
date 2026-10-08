@@ -382,10 +382,39 @@ func EncodeProgressBar(w io.Writer, pb *ProgressBar) error {
 	return nil
 }
 
-// ProgramStatus is a Program Status Protocol (OSC 7501) report.
+// ProgramStatus is a Program Status Protocol (OSC 7501) report about the
+// program itself, the terminal's root record. Programs that report child
+// records can use [ansi.ProgramStatus] directly.
 //
 // See: https://www.superlogical.com/rex/docs/build/program-status
-type ProgramStatus = ansi.ProgramStatus
+type ProgramStatus struct {
+	// State is the program state. Required.
+	State ProgramState
+	// App is a stable machine-readable program name matching
+	// [A-Za-z0-9_.+-]{1,32}. Invalid values are omitted.
+	App string
+	// Kind says what a blocked program waits for. Only used with
+	// [ProgramStateBlocked].
+	Kind ProgramStatusKind
+	// Progress is only used with [ProgramStateWorking] and
+	// [ProgramStateBlocked]. The zero value is indeterminate.
+	Progress ProgramProgress
+	// Title is a short human-readable label.
+	Title string
+	// Message is one human-readable line describing the status.
+	Message string
+}
+
+func (ps ProgramStatus) toANSI() ansi.ProgramStatus {
+	return ansi.ProgramStatus{
+		State:    ps.State,
+		App:      ps.App,
+		Kind:     ps.Kind,
+		Progress: ps.Progress,
+		Title:    ps.Title,
+		Message:  ps.Message,
+	}
+}
 
 // ProgramState is the state of a [ProgramStatus].
 type ProgramState = ansi.ProgramState
@@ -393,14 +422,20 @@ type ProgramState = ansi.ProgramState
 // ProgramStatusKind says what a blocked program waits for.
 type ProgramStatusKind = ansi.ProgramStatusKind
 
-// Program states.
+// ProgramProgress is the progress of a [ProgramStatus]. The zero value is
+// indeterminate.
+type ProgramProgress = ansi.ProgramProgress
+
+// Percent returns a determinate [ProgramProgress], clamped to 0-100.
+func Percent(p int) ProgramProgress { return ansi.Percent(p) }
+
+// Program states. Use a nil [ProgramStatus] to clear the status.
 const (
 	ProgramStateIdle    = ansi.ProgramStateIdle
 	ProgramStateWorking = ansi.ProgramStateWorking
 	ProgramStateDone    = ansi.ProgramStateDone
 	ProgramStateBlocked = ansi.ProgramStateBlocked
 	ProgramStateError   = ansi.ProgramStateError
-	ProgramStateClear   = ansi.ProgramStateClear
 )
 
 // Program status kinds.
@@ -411,14 +446,16 @@ const (
 )
 
 // EncodeProgramStatus encodes the program status to the given writer. A nil
-// status removes every program status record on the terminal.
+// status removes every program status record on the terminal. An invalid
+// status writes nothing and returns the reason.
 func EncodeProgramStatus(w io.Writer, ps *ProgramStatus) error {
 	seq := ansi.ClearProgramStatus
 	if ps != nil {
-		seq = ansi.SetProgramStatus(*ps)
-		if seq == "" {
-			return fmt.Errorf("invalid program status: state=%q id=%q", ps.State, ps.ID)
+		s := ps.toANSI()
+		if err := s.Validate(); err != nil {
+			return fmt.Errorf("invalid program status: %w", err)
 		}
+		seq = ansi.SetProgramStatus(s)
 	}
 
 	if _, err := io.WriteString(w, seq); err != nil {

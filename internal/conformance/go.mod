@@ -6,7 +6,7 @@ replace github.com/charmbracelet/ultraviolet => ../..
 
 require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20260303162955-0b88c25f3fff
-	github.com/charmbracelet/x/ansi v0.11.9-0.20261008082244-a4a2f9b961a0
+	github.com/charmbracelet/x/ansi v0.11.10-0.20261008200358-1dcb783ce7fa
 	github.com/charmbracelet/x/vt v0.0.0-20260901172002-a5dee49b2863
 	go.mitchellh.com/libghostty v0.0.0-20260727203050-ef0f8ce3daa7
 )
