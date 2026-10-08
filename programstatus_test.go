@@ -33,10 +33,6 @@ func TestEncodeProgramStatus(t *testing.T) {
 	if !errors.Is(err, ansi.ErrProgramStatusState) {
 		t.Errorf("got %v, want %v", err, ansi.ErrProgramStatusState)
 	}
-	err = EncodeProgramStatus(&buf, &ProgramStatus{State: ProgramStateIdle, ID: "a//b"})
-	if !errors.Is(err, ansi.ErrProgramStatusID) {
-		t.Errorf("got %v, want %v", err, ansi.ErrProgramStatusID)
-	}
 	if buf.Len() != 0 {
 		t.Errorf("invalid status wrote %q", buf.String())
 	}
@@ -52,7 +48,7 @@ func newProgramStatusScreen() (*TerminalScreen, *bytes.Buffer) {
 func TestTerminalScreenProgramStatus(t *testing.T) {
 	s, out := newProgramStatusScreen()
 	ps := &ProgramStatus{State: ProgramStateDone, App: "uv"}
-	want := ansi.SetProgramStatus(*ps)
+	want := ansi.SetProgramStatus(ps.toANSI())
 
 	if err := s.SetProgramStatus(ps); err != nil {
 		t.Fatal(err)
@@ -113,7 +109,7 @@ func TestTerminalScreenResetClearsStaleProgramStatus(t *testing.T) {
 	for _, state := range []ProgramState{ProgramStateIdle, ProgramStateWorking, ProgramStateBlocked} {
 		t.Run(string(state), func(t *testing.T) {
 			s, out := newProgramStatusScreen()
-			ps := &ProgramStatus{State: state, ID: "job"}
+			ps := &ProgramStatus{State: state, App: "uv"}
 			if err := s.SetProgramStatus(ps); err != nil {
 				t.Fatal(err)
 			}
@@ -122,14 +118,14 @@ func TestTerminalScreenResetClearsStaleProgramStatus(t *testing.T) {
 			out.Reset()
 			s.Reset()
 			_ = s.Flush()
-			if !strings.Contains(out.String(), ansi.ClearProgramStatusID("job")) {
+			if !strings.Contains(out.String(), ansi.ClearProgramStatus) {
 				t.Errorf("Reset should clear a %s status, got %q", state, out.String())
 			}
 
 			out.Reset()
 			s.Restore()
 			_ = s.Flush()
-			if !strings.Contains(out.String(), ansi.SetProgramStatus(*ps)) {
+			if !strings.Contains(out.String(), ansi.SetProgramStatus(ps.toANSI())) {
 				t.Errorf("Restore should re-send the status, got %q", out.String())
 			}
 		})

@@ -702,7 +702,7 @@ func (s *TerminalScreen) Reset() {
 	}
 	// Done and error should outlive the program; anything else would go stale.
 	if ps := s.programStatus; ps != nil && ps.State != ProgramStateDone && ps.State != ProgramStateError {
-		sb.WriteString(ansi.ClearProgramStatusID(ps.ID))
+		sb.WriteString(ansi.ClearProgramStatus)
 	}
 
 	s.buf.WriteString(sb.String())
