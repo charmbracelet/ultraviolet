@@ -393,6 +393,13 @@ type ProgramState = ansi.ProgramState
 // ProgramStatusKind says what a blocked program waits for.
 type ProgramStatusKind = ansi.ProgramStatusKind
 
+// ProgramProgress is the progress of a [ProgramStatus]. The zero value is
+// indeterminate.
+type ProgramProgress = ansi.ProgramProgress
+
+// Percent returns a determinate [ProgramProgress], clamped to 0-100.
+func Percent(p int) ProgramProgress { return ansi.Percent(p) }
+
 // Program states.
 const (
 	ProgramStateIdle    = ansi.ProgramStateIdle
@@ -411,14 +418,15 @@ const (
 )
 
 // EncodeProgramStatus encodes the program status to the given writer. A nil
-// status removes every program status record on the terminal.
+// status removes every program status record on the terminal. An invalid
+// status writes nothing and returns the reason.
 func EncodeProgramStatus(w io.Writer, ps *ProgramStatus) error {
 	seq := ansi.ClearProgramStatus
 	if ps != nil {
-		seq = ansi.SetProgramStatus(*ps)
-		if seq == "" {
-			return fmt.Errorf("invalid program status: state=%q id=%q", ps.State, ps.ID)
+		if err := ps.Validate(); err != nil {
+			return fmt.Errorf("invalid program status: %w", err)
 		}
+		seq = ansi.SetProgramStatus(*ps)
 	}
 
 	if _, err := io.WriteString(w, seq); err != nil {

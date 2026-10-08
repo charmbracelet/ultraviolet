@@ -4,8 +4,8 @@ github.com/bits-and-blooms/bitset v1.25.0 h1:0Ro0qF4abCkM6SqWPVj29sFhAbMPAZpaDD7
 github.com/bits-and-blooms/bitset v1.25.0/go.mod h1:7hO7Gc7Pp1vODcmWvKMRA9BNmbv6a/7QIWpPxHddWR8=
 github.com/charmbracelet/colorprofile v0.4.3 h1:QPa1IWkYI+AOB+fE+mg/5/4HRMZcaXex9t5KX76i20Q=
 github.com/charmbracelet/colorprofile v0.4.3/go.mod h1:/zT4BhpD5aGFpqQQqw7a+VtHCzu+zrQtt1zhMt9mR4Q=
-github.com/charmbracelet/x/ansi v0.11.9-0.20261008082244-a4a2f9b961a0 h1:S2rX7/fXbupwo7ViWOi/yQrgCbJUqXeXTRjo6DtsDUw=
-github.com/charmbracelet/x/ansi v0.11.9-0.20261008082244-a4a2f9b961a0/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
+github.com/charmbracelet/x/ansi v0.11.10-0.20261008200358-1dcb783ce7fa h1:ufMLERkOla1NUDFu88rgQabjh0U4pCk+TIfeYjjsvaE=
+github.com/charmbracelet/x/ansi v0.11.10-0.20261008200358-1dcb783ce7fa/go.mod h1:DG/hpOnaI2QJ/KMMqLL2h0KVhluuJLazf8973P+Vy5w=
 github.com/charmbracelet/x/mosaic v0.0.0-20260906004030-3986e9119cf9 h1:Q00HUjtVnAJIrOdDYtL12ZUpawGiWtVB/Ew0ufxIc2c=
 github.com/charmbracelet/x/mosaic v0.0.0-20260906004030-3986e9119cf9/go.mod h1:vlV/MyqoZMen/tW97GwMMOeUPQpW/+AF1CVJuYKZQrw=
 github.com/charmbracelet/x/term v0.2.2 h1:xVRT/S2ZcKdhhOuSP4t5cLi5o+JxklsoEObBSgfgZRk=
