@@ -11,9 +11,9 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0
 	github.com/muesli/cancelreader v0.2.2
 	github.com/rivo/uniseg v0.4.7
-	github.com/xo/terminfo v1.0.0
-	golang.org/x/sync v0.22.0
-	golang.org/x/sys v0.47.0
+	github.com/xo/terminfo v1.2.0
+	golang.org/x/sync v0.23.0
+	golang.org/x/sys v0.48.0
 )
 
 require (
