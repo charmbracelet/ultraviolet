@@ -168,6 +168,20 @@ func TestParseSequence(t *testing.T) {
 			},
 		},
 
+		// OSC 7501 program status support reply
+		seqTest{
+			[]byte("\x1b]7501;?\x07\x1b]7501;?\x1b\\\x1b]7501;?foo=1\x07"),
+			[]Event{
+				ProgramStatusSupportEvent{},
+				ProgramStatusSupportEvent{},
+				ProgramStatusSupportEvent{},
+			},
+		},
+		seqTest{
+			[]byte("\x1b]7501;state=idle\x07"),
+			[]Event{UnknownOscEvent("\x1b]7501;state=idle\x07")},
+		},
+
 		// Invalid Xterm modifyOtherKeys key sequence
 		seqTest{
 			[]byte("\x1b[27;3~"),
@@ -1354,6 +1368,7 @@ func FuzzParseSequence(f *testing.F) {
 		f.Add(seq)
 	}
 	f.Add("\x1b]52;?\x07")                      // OSC 52
+	f.Add("\x1b]7501;?\x1b\\")                  // OSC 7501
 	f.Add("\x1b]11;rgb:0000/0000/0000\x1b\\")   // OSC 11
 	f.Add("\x1bP>|charm terminal(0.1.2)\x1b\\") // DCS (XTVERSION)
 	f.Add("\x1b_Gi=123\x1b\\")                  // APC
