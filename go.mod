@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/charmbracelet/colorprofile v0.4.3
-	github.com/charmbracelet/x/ansi v0.11.8
+	github.com/charmbracelet/x/ansi v0.11.9-0.20261008082244-a4a2f9b961a0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/termios v0.1.1
 	github.com/charmbracelet/x/windows v0.2.2
