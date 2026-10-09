@@ -87,6 +87,13 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 				kd = 1
 			}
 			if d.vtInput { //nolint:nestif
+				// Standalone modifiers have no character. They must neither
+				// emit NUL nor consume a pending UTF-16 half. NUL on an
+				// actual character key (such as Ctrl+Space) must survive.
+				if kevent.Char == 0 && isModifierVirtualKeyCode(kevent.VirtualKeyCode) {
+					continue
+				}
+
 				// In VT Input Mode, we only capture the Unicode characters
 				// decoding them along the way.
 				// This is similar to [TerminalReader.storeGraphemeRune] except
@@ -201,6 +208,20 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 
 	// Flush any remaining grapheme buffers.
 	buf.Write(d.eventScanner.encodeGraphemeBufs())
+}
+
+// isModifierVirtualKeyCode recognizes the standalone modifiers represented by
+// generic or left/right-specific Windows virtual-key codes.
+func isModifierVirtualKeyCode(vkc uint16) bool {
+	switch vkc {
+	case xwindows.VK_SHIFT, xwindows.VK_LSHIFT, xwindows.VK_RSHIFT,
+		xwindows.VK_CONTROL, xwindows.VK_LCONTROL, xwindows.VK_RCONTROL,
+		xwindows.VK_MENU, xwindows.VK_LMENU, xwindows.VK_RMENU,
+		xwindows.VK_LWIN, xwindows.VK_RWIN:
+		return true
+	default:
+		return false
+	}
 }
 
 func mouseEventButton(p, s uint32) (MouseButton, bool) {
