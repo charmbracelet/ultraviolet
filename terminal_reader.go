@@ -198,8 +198,10 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 
 		case read := <-readc:
 			d.logf("input: %q", read)
+			if buf.Len() == 0 {
+				ttimeout = time.Now().Add(d.EscTimeout)
+			}
 			buf.Write(read)
-			ttimeout = time.Now().Add(d.EscTimeout)
 			n := d.sendEvents(eventc, buf.Bytes(), false)
 			if !timeout.Stop() {
 				// drain the channel if it was already running
@@ -212,11 +214,12 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			if n > 0 {
 				d.logf("processed %d bytes from buffer", n)
 				buf.Next(n)
+				ttimeout = time.Now().Add(d.EscTimeout)
 			}
 
 			if buf.Len() > 0 {
 				d.logf("resetting timeout for remaining buffer after parse")
-				timeout.Reset(d.EscTimeout)
+				timeout.Reset(max(time.Until(ttimeout), 0))
 			}
 		}
 	}
