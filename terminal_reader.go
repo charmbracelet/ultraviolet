@@ -84,6 +84,7 @@ type TerminalReader struct {
 //
 // Use [TerminalReader.UseTerminfo] to use Terminfo defined key sequences.
 // Use [TerminalReader.Legacy] to control legacy key encoding behavior.
+// Set them, and any logger, before calling [TerminalReader.StreamEvents].
 //
 // Example:
 //
@@ -137,6 +138,8 @@ func (d *TerminalReader) sendBytes(ctx context.Context, readc chan []byte) error
 // StreamEvents sends events to the provided channel. It stops when the context
 // is closed or when an error occurs.
 func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) error {
+	d.configureScanner()
+
 	var buf bytes.Buffer
 	errc := make(chan error, 1)
 	readc := make(chan []byte)
@@ -226,6 +229,20 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 // performed.
 func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
+}
+
+// configureScanner hands the event scanner the reader's options as they are
+// now. [NewTerminalReader] sets the scanner up before the caller can set
+// Legacy, UseTerminfo or a logger, so its copies would ignore them.
+func (d *TerminalReader) configureScanner() {
+	evs := d.eventScanner
+	if evs.Legacy != d.Legacy || evs.UseTerminfo != d.UseTerminfo {
+		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
+		evs.table = d.table
+	}
+	evs.Legacy = d.Legacy
+	evs.UseTerminfo = d.UseTerminfo
+	evs.setLogger(d.logger)
 }
 
 func (d *TerminalReader) sendEvents(eventc chan<- Event, buf []byte, expired bool) int {
