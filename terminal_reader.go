@@ -267,6 +267,22 @@ func (d *eventScanner) logf(format string, v ...interface{}) {
 	logf(d.logger, format, v...)
 }
 
+// mayStartSequence reports whether buf, which starts with ESC and decoded to
+// n <= 2 bytes, could still grow into a longer escape sequence. A lone ESC can,
+// and so can ESC followed by a byte that introduces CSI, SS3, DCS, OSC and the
+// like. ESC followed by anything else is Alt plus that key, and waiting for
+// more input would only delay it.
+func mayStartSequence(buf []byte, n int) bool {
+	if n < 2 || len(buf) < 2 {
+		return true
+	}
+	switch buf[1] {
+	case '[', 'O', 'P', ']', 'X', '^', '_', 'N', ansi.ESC:
+		return true
+	}
+	return false
+}
+
 func (d *eventScanner) scanEvents(buf []byte, expired bool) (total int, events []Event) {
 	if len(buf) == 0 {
 		return 0, nil
@@ -311,7 +327,7 @@ func (d *eventScanner) scanEvents(buf []byte, expired bool) (total int, events [
 							d.paste = append(d.paste, string(event.Code)...)
 						case !isWin32:
 							// We ignore all other non-text win32-input-mode events.
-							if esc && n <= 2 && !expired {
+							if esc && n <= 2 && !expired && mayStartSequence(buf, n) {
 								// If the event is an escape sequence and we
 								// are not expired, we need to wait for more
 								// input.
@@ -369,7 +385,7 @@ func (d *eventScanner) scanEvents(buf []byte, expired bool) (total int, events [
 		}
 
 		if !isUnknown && event != nil {
-			if esc && n <= 2 && !expired {
+			if esc && n <= 2 && !expired && mayStartSequence(buf, n) {
 				// Wait for more input
 				return total, events
 			}

@@ -51,3 +51,63 @@ func TestStreamEventsDeliversHeldAltKeysWhileHeld(t *testing.T) {
 		}
 	}
 }
+
+func streamFrom(t *testing.T, timeout time.Duration) (*io.PipeWriter, <-chan Event) {
+	t.Helper()
+	pr, pw := io.Pipe()
+	tr := NewTerminalReader(pr, "xterm-256color")
+	tr.EscTimeout = timeout
+	events := make(chan Event, 16)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() { cancel(); _ = pw.Close() })
+	go func() { _ = tr.StreamEvents(ctx, events) }()
+	return pw, events
+}
+
+func nextEvent(t *testing.T, events <-chan Event, within time.Duration) Event {
+	t.Helper()
+	select {
+	case ev := <-events:
+		return ev
+	case <-time.After(within):
+		t.Fatalf("no event within %v", within)
+		return nil
+	}
+}
+
+// ESC followed by a letter can only be Alt+letter: no escape sequence starts
+// that way, so there is nothing to wait for.
+func TestStreamEventsDeliversAltLetterWithoutWaitingForTimeout(t *testing.T) {
+	pw, events := streamFrom(t, 500*time.Millisecond)
+	if _, err := pw.Write([]byte("\x1bf")); err != nil {
+		t.Fatal(err)
+	}
+	ev := nextEvent(t, events, 200*time.Millisecond)
+	k, ok := ev.(KeyPressEvent)
+	if !ok || k.Code != 'f' || k.Mod&ModAlt == 0 {
+		t.Fatalf("got %#v, want Alt+f", ev)
+	}
+}
+
+// ESC followed by a byte that opens a longer sequence must still wait for the
+// rest, even when the rest arrives in a later read.
+func TestStreamEventsStillWaitsWhenAnEscapeSequenceMayFollow(t *testing.T) {
+	for name, parts := range map[string][2]string{
+		"CSI arrow": {"\x1b[", "C"},
+		"SS3 arrow": {"\x1bO", "C"},
+	} {
+		pw, events := streamFrom(t, 500*time.Millisecond)
+		if _, err := pw.Write([]byte(parts[0])); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+		if _, err := pw.Write([]byte(parts[1])); err != nil {
+			t.Fatal(err)
+		}
+		ev := nextEvent(t, events, 200*time.Millisecond)
+		k, ok := ev.(KeyPressEvent)
+		if !ok || k.Code != KeyRight || k.Mod != 0 {
+			t.Errorf("%s: got %#v, want a plain Right arrow", name, ev)
+		}
+	}
+}
