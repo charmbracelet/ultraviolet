@@ -1,0 +1,87 @@
+name: libghostty-vt
+description: Build or restore libghostty-vt and point pkg-config at it.
+
+# libghostty-vt is the C library go-libghostty links against, and the
+# conformance module needs it to build at all. Three jobs across two workflows
+# need the same thing, so it lives here once rather than being copied into each
+# of them and drifting.
+
+runs:
+  using: composite
+  steps:
+    # The library has to be built from the go-libghostty commit the module
+    # already depends on. That commit's CMakeLists pins the ghostty revision it
+    # fetches, and a different revision exports a different set of symbols than
+    # these bindings call, so a mismatch fails at link time with undefined
+    # symbols. Reading the commit out of go.mod is what keeps the two in step:
+    # bumping the dependency moves the build with it, and there is no second
+    # place to remember to update.
+    - name: Resolve the go-libghostty pin
+      id: pin
+      shell: bash
+      run: |
+        mod=internal/conformance/go.mod
+
+        # Exactly one line may mention the module. A replace directive, in
+        # either spelling, adds another, and picking one silently builds a
+        # revision the module does not use.
+        matches=$(grep -c 'go\.mitchellh\.com/libghostty' "$mod" || true)
+        if [ "$matches" -ne 1 ]; then
+          echo "::error::expected one go.mitchellh.com/libghostty line in $mod, found $matches"
+          exit 1
+        fi
+        version=$(awk '$1 == "go.mitchellh.com/libghostty" { print $2 }' "$mod")
+
+        # A pseudo-version ends in the twelve-digit commit it was built from,
+        # and that commit is the ref. Anything else is a tag, already a ref.
+        rev=${version%+incompatible}
+        if [[ $rev =~ -([0-9a-f]{12})$ ]]; then
+          rev=${BASH_REMATCH[1]}
+        fi
+        echo "rev=$rev" >> "$GITHUB_OUTPUT"
+
+    - uses: mlugg/setup-zig@v2
+      with:
+        version: "0.16.0"
+
+    # Building from source takes a couple of minutes, so cache the result. The
+    # key carries the pin, so the build happens again exactly when the
+    # dependency moves and not otherwise.
+    #
+    # The cpu suffix is in the key so entries cached before the build below
+    # pinned a baseline CPU are not reused. Those were tuned for whichever
+    # runner produced them, and crash on a runner that lacks the instructions.
+    - name: Cache libghostty-vt
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ github.workspace }}/.cache/libghostty-vt
+        key: libghostty-vt-${{ steps.pin.outputs.rev }}-${{ runner.os }}-${{ runner.arch }}-cpu-baseline
+
+    - name: Build libghostty-vt
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        git clone https://github.com/mitchellh/go-libghostty /tmp/go-libghostty
+        git -C /tmp/go-libghostty checkout --detach "${{ steps.pin.outputs.rev }}"
+        # Zig builds for the host CPU unless told otherwise, so the library
+        # picks up whatever instructions the runner that built it happened to
+        # support. Every runner then shares that binary through the cache, and
+        # one without those instructions dies on the first call into it. A
+        # baseline CPU is what makes the artifact portable enough to cache.
+        cmake -B /tmp/go-libghostty/build -S /tmp/go-libghostty \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DGHOSTTY_ZIG_BUILD_FLAGS=-Dcpu=baseline
+        cmake --build /tmp/go-libghostty/build
+        mkdir -p .cache
+        cp -r /tmp/go-libghostty/build/_deps/ghostty-src/zig-out .cache/libghostty-vt
+
+    # The .pc file records the absolute path it was built at. Rewrite it to
+    # point at this workspace so a restored cache resolves correctly, then put
+    # it on PKG_CONFIG_PATH for every step that follows.
+    - name: Configure pkg-config
+      shell: bash
+      run: |
+        prefix="${{ github.workspace }}/.cache/libghostty-vt"
+        sed -i "s|^prefix=.*|prefix=$prefix|" "$prefix/share/pkgconfig/libghostty-vt-static.pc"
+        echo "PKG_CONFIG_PATH=$prefix/share/pkgconfig" >> "$GITHUB_ENV"
