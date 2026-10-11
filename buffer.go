@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -471,6 +472,19 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
+	if b.spansWidth(area) {
+		// Rotate whole rows rather than copy every cell, and reuse the rows
+		// pushed out of the area as the inserted ones.
+		seg := b.Lines[y:min(area.Max.Y, b.Height())]
+		rotateLines(seg, len(seg)-n)
+		for i := y; i < y+n; i++ {
+			for x := area.Min.X; x < area.Max.X; x++ {
+				b.SetCell(x, i, c)
+			}
+		}
+		return
+	}
+
 	// Move existing lines down within the bounds
 	for i := area.Max.Y - 1; i >= y+n; i-- {
 		for x := area.Min.X; x < area.Max.X; x++ {
@@ -502,6 +516,22 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
+	if b.spansWidth(area) {
+		// Rotate whole rows rather than copy every cell, so a line feed at
+		// the bottom of the screen costs O(width) rather than
+		// O(width*height). The deleted rows become the blank ones at the
+		// bottom.
+		end := min(area.Max.Y, b.Height())
+		seg := b.Lines[y:end]
+		rotateLines(seg, n)
+		for i := max(end-n, y); i < end; i++ {
+			for x := area.Min.X; x < area.Max.X; x++ {
+				b.SetCell(x, i, c)
+			}
+		}
+		return
+	}
+
 	// Shift cells up within the bounds
 	for dst := y; dst < area.Max.Y-n; dst++ {
 		src := dst + n
@@ -517,6 +547,22 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 			b.SetCell(x, i, c)
 		}
 	}
+}
+
+// spansWidth reports whether area covers every column of the buffer, so that
+// moving lines within it can move whole rows.
+func (b *Buffer) spansWidth(area Rectangle) bool {
+	return area.Min.X <= 0 && area.Max.X >= b.Width()
+}
+
+// rotateLines rotates ls left by k rows.
+func rotateLines(ls []Line, k int) {
+	if k <= 0 || k >= len(ls) {
+		return
+	}
+	slices.Reverse(ls[:k])
+	slices.Reverse(ls[k:])
+	slices.Reverse(ls)
 }
 
 // DeleteLine deletes n lines at the given line position, with the given

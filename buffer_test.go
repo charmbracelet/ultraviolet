@@ -511,6 +511,129 @@ func TestBufferLineOperations(t *testing.T) {
 	})
 }
 
+// rowContents returns the first cell's content of every row.
+func rowContents(b *Buffer) []string {
+	rows := make([]string, b.Height())
+	for y := range rows {
+		rows[y] = b.CellAt(0, y).Content
+	}
+	return rows
+}
+
+// TestBufferLineOperationsFullWidth covers line insertion and deletion over
+// areas that span every column, which move whole rows rather than cells.
+func TestBufferLineOperationsFullWidth(t *testing.T) {
+	blank := &Cell{Content: " ", Width: 1, Style: Style{Bg: ansi.Red}}
+	tests := []struct {
+		name string
+		op   func(b *Buffer)
+		want []string
+	}{{
+		name: "DeleteLine at the top scrolls up",
+		op:   func(b *Buffer) { b.DeleteLine(0, 1, blank) },
+		want: []string{"B", "C", "D", "E", " "},
+	}, {
+		name: "DeleteLineArea within a region",
+		op:   func(b *Buffer) { b.DeleteLineArea(1, 2, blank, Rect(0, 1, 5, 3)) },
+		want: []string{"A", "D", " ", " ", "E"},
+	}, {
+		name: "InsertLine at the top scrolls down",
+		op:   func(b *Buffer) { b.InsertLine(0, 2, blank) },
+		want: []string{" ", " ", "A", "B", "C"},
+	}, {
+		name: "InsertLineArea within a region",
+		op:   func(b *Buffer) { b.InsertLineArea(1, 1, blank, Rect(0, 1, 5, 3)) },
+		want: []string{"A", " ", "B", "C", "E"},
+	}, {
+		name: "deleting more lines than the area holds clears it",
+		op:   func(b *Buffer) { b.DeleteLineArea(3, 9, blank, Rect(0, 0, 5, 5)) },
+		want: []string{"A", "B", "C", " ", " "},
+	}, {
+		name: "inserting more lines than the area holds clears it",
+		op:   func(b *Buffer) { b.InsertLineArea(3, 9, blank, Rect(0, 0, 5, 5)) },
+		want: []string{"A", "B", "C", " ", " "},
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			b := NewBuffer(5, 5)
+			for y, s := range []string{"A", "B", "C", "D", "E"} {
+				b.SetCell(0, y, &Cell{Content: s, Width: 1})
+			}
+			tc.op(b)
+			if got := rowContents(b); strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("rows: got = %q, want = %q", got, tc.want)
+			}
+			for y, s := range tc.want {
+				if s != " " {
+					continue
+				}
+				for x := range b.Width() {
+					if c := b.CellAt(x, y); !c.Equal(blank) {
+						t.Errorf("blank row %d cell %d: got = %+v, want = %+v", y, x, c, blank)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("rows stay distinct", func(t *testing.T) {
+		b := NewBuffer(5, 3)
+		for y, s := range []string{"A", "B", "C"} {
+			b.SetCell(0, y, &Cell{Content: s, Width: 1})
+		}
+		b.DeleteLine(0, 1, nil)
+		b.SetCell(0, 2, &Cell{Content: "X", Width: 1})
+		if got, want := rowContents(b), []string{"B", "C", "X"}; strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("rows: got = %q, want = %q; rows share storage", got, want)
+		}
+	})
+}
+
+// TestBufferLineOperationsMatchCellCopy checks that moving whole rows leaves
+// the same buffer as moving the cells one at a time, which is what an area
+// narrower than the buffer still does.
+func TestBufferLineOperationsMatchCellCopy(t *testing.T) {
+	const w, h = 4, 6
+	fill := func(b *Buffer) {
+		for y := range h {
+			for x := range w {
+				b.SetCell(x, y, &Cell{Content: string(rune('a' + y*w + x)), Width: 1})
+			}
+		}
+	}
+	blank := &Cell{Content: " ", Width: 1, Style: Style{Bg: ansi.Blue}}
+	for top := range h {
+		for bottom := top + 1; bottom <= h; bottom++ {
+			for y := top; y < bottom; y++ {
+				for n := 1; n <= bottom-top+1; n++ {
+					for _, insert := range []bool{false, true} {
+						got, want := NewBuffer(w, h), NewBuffer(w+1, h)
+						fill(got)
+						fill(want)
+						// The same area, but one column short of the
+						// wider buffer, so it takes the cell-copy path.
+						if insert {
+							got.InsertLineArea(y, n, blank, Rect(0, top, w, bottom-top))
+							want.InsertLineArea(y, n, blank, Rect(0, top, w, bottom-top))
+						} else {
+							got.DeleteLineArea(y, n, blank, Rect(0, top, w, bottom-top))
+							want.DeleteLineArea(y, n, blank, Rect(0, top, w, bottom-top))
+						}
+						for row := range h {
+							for x := range w {
+								if g, ww := got.CellAt(x, row), want.CellAt(x, row); !g.Equal(ww) {
+									t.Fatalf("insert=%v y=%d n=%d region=%d-%d: cell (%d,%d): got = %+v, want = %+v",
+										insert, y, n, top, bottom, x, row, g, ww)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // TestBufferCellOperations tests cell insertion and deletion
 func TestBufferCellOperations(t *testing.T) {
 	t.Run("InsertCell", func(t *testing.T) {
@@ -760,4 +883,32 @@ func width(s string) int {
 
 func height(s string) int {
 	return strings.Count(s, "\n") + 1
+}
+
+// BenchmarkBufferDeleteLine scrolls a 200x60 screen up by one line, as a line
+// feed at the bottom of the screen does.
+func BenchmarkBufferDeleteLine(b *testing.B) {
+	buf := NewBuffer(200, 60)
+	for b.Loop() {
+		buf.DeleteLine(0, 1, nil)
+	}
+}
+
+// BenchmarkBufferInsertLine scrolls a 200x60 screen down by one line, as a
+// reverse index at the top of the screen does.
+func BenchmarkBufferInsertLine(b *testing.B) {
+	buf := NewBuffer(200, 60)
+	for b.Loop() {
+		buf.InsertLine(0, 1, nil)
+	}
+}
+
+// BenchmarkBufferDeleteLineArea scrolls a region narrower than the screen,
+// which still moves cells one at a time.
+func BenchmarkBufferDeleteLineArea(b *testing.B) {
+	buf := NewBuffer(200, 60)
+	area := Rect(0, 0, 199, 60)
+	for b.Loop() {
+		buf.DeleteLineArea(0, 1, nil, area)
+	}
 }
