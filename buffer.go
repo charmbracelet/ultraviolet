@@ -92,6 +92,15 @@ func (l Line) Set(x int, c *Cell) {
 	if cw > 1 {
 		// Mark wide cells with zero-width placeholder cells.
 		for j := 1; j < cw && x+j < lineWidth; j++ {
+			// A wide cell whose head this one covers loses its tail too,
+			// which would otherwise be left as placeholders belonging to
+			// nothing.
+			if ow := l[x+j].Width; ow > 1 {
+				for k := cw - j; k < ow && x+j+k < lineWidth; k++ {
+					l[x+j+k] = l[x+j]
+					l[x+j+k].Empty()
+				}
+			}
 			l[x+j] = Cell{}
 		}
 	}

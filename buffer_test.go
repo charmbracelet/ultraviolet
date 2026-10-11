@@ -154,6 +154,55 @@ func TestLineSet(t *testing.T) {
 }
 
 // TestLineString tests the String method of Line
+// TestLineSetWideOverWideHead covers a wide cell written so that its tail
+// lands on the head of another wide cell.
+func TestLineSetWideOverWideHead(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(l Line)
+		want []Cell
+	}{{
+		name: "two-column cell over a two-column head",
+		set: func(l Line) {
+			l.Set(1, &Cell{Content: "日", Width: 2})
+			l.Set(0, &Cell{Content: "本", Width: 2})
+		},
+		want: []Cell{{Content: "本", Width: 2}, {}, EmptyCell, EmptyCell},
+	}, {
+		name: "the covered cell's style stays on its blanked tail",
+		set: func(l Line) {
+			l.Set(1, &Cell{Content: "日", Width: 2, Style: Style{Bg: ansi.Red}})
+			l.Set(0, &Cell{Content: "本", Width: 2})
+		},
+		want: []Cell{{Content: "本", Width: 2}, {}, {Content: " ", Width: 1, Style: Style{Bg: ansi.Red}}, EmptyCell},
+	}, {
+		name: "three-column cell over a two-column head",
+		set: func(l Line) {
+			l.Set(2, &Cell{Content: "日", Width: 2})
+			l.Set(0, &Cell{Content: "x", Width: 3})
+		},
+		want: []Cell{{Content: "x", Width: 3}, {}, {}, EmptyCell},
+	}, {
+		name: "covered cell ending at the end of the line",
+		set: func(l Line) {
+			l.Set(2, &Cell{Content: "日", Width: 2})
+			l.Set(1, &Cell{Content: "本", Width: 2})
+		},
+		want: []Cell{EmptyCell, {Content: "本", Width: 2}, {}, EmptyCell},
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			l := NewLine(4)
+			tc.set(l)
+			for x, want := range tc.want {
+				if !l[x].Equal(&want) || l[x].Width != want.Width {
+					t.Errorf("cell %d: got = %+v, want = %+v", x, l[x], want)
+				}
+			}
+		})
+	}
+}
+
 func TestLineString(t *testing.T) {
 	tests := []struct {
 		name     string
