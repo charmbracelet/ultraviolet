@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 	"unicode/utf16"
 
 	"github.com/charmbracelet/x/ansi"
@@ -44,8 +43,16 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 				break
 			}
 
-			// Sleep for a bit to avoid busy waiting.
-			time.Sleep(10 * time.Millisecond)
+			// Block until the console has input or the reader is canceled.
+			// If the wait returns with nothing to read, which can happen on
+			// Windows Terminal, we just peek again.
+			_, err = windows.WaitForMultipleObjects([]windows.Handle{cc.conin, cc.cancelEvent}, false, windows.INFINITE)
+			if cc.isCanceled() {
+				return cancelreader.ErrCanceled
+			}
+			if err != nil {
+				return fmt.Errorf("wait for console input: %w", err)
+			}
 		}
 
 		records, err = readNConsoleInputs(cc.conin, uint32(len(records))) //nolint:gosec

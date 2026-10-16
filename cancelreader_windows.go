@@ -17,6 +17,7 @@ import (
 type conInputReader struct {
 	cancelMixin
 	conin        windows.Handle
+	cancelEvent  windows.Handle
 	originalMode uint32
 	newMode      uint32
 }
@@ -60,8 +61,16 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 		return nil, fmt.Errorf("failed to prepare console input: %w", err)
 	}
 
+	// Manual reset, so the event stays signaled once canceled.
+	cancelEvent, err := windows.CreateEvent(nil, 1, 0, nil)
+	if err != nil {
+		_ = windows.SetConsoleMode(conin, originalMode)
+		return nil, fmt.Errorf("create cancel event: %w", err)
+	}
+
 	return &conInputReader{
 		conin:        conin,
+		cancelEvent:  cancelEvent,
 		originalMode: originalMode,
 		newMode:      newMode,
 	}, nil
@@ -70,12 +79,17 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 // Cancel implements cancelreader.CancelReader.
 func (r *conInputReader) Cancel() bool {
 	r.setCanceled()
+	_ = windows.SetEvent(r.cancelEvent)
 
 	return windows.CancelIoEx(r.conin, nil) == nil || windows.CancelIo(r.conin) == nil
 }
 
 // Close implements cancelreader.CancelReader.
 func (r *conInputReader) Close() error {
+	if err := windows.CloseHandle(r.cancelEvent); err != nil {
+		return fmt.Errorf("close cancel event: %w", err)
+	}
+
 	if r.originalMode != 0 {
 		err := windows.SetConsoleMode(r.conin, r.originalMode)
 		if err != nil {
