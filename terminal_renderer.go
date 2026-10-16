@@ -739,7 +739,7 @@ func (s *TerminalRenderer) putRange(newbuf *RenderBuffer, oldLine, newLine Line,
 			if cellEqual(oldCell, newCell) {
 				same++
 			} else {
-				if same > end-start {
+				if same > inline {
 					s.emitRange(newbuf, newLine[start:], j-same-start)
 					s.move(newbuf, j, y)
 					start = j
