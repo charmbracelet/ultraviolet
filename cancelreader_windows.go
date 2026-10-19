@@ -4,6 +4,7 @@
 package uv
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -86,18 +87,23 @@ func (r *conInputReader) Cancel() bool {
 
 // Close implements cancelreader.CancelReader.
 func (r *conInputReader) Close() error {
-	if err := windows.CloseHandle(r.cancelEvent); err != nil {
-		return fmt.Errorf("close cancel event: %w", err)
-	}
+	// Wake a reader that may still wait on the cancel event before the
+	// handle goes away. Close can be called without Cancel.
+	r.setCanceled()
+	_ = windows.SetEvent(r.cancelEvent)
 
+	var errs []error
 	if r.originalMode != 0 {
-		err := windows.SetConsoleMode(r.conin, r.originalMode)
-		if err != nil {
-			return fmt.Errorf("reset console mode: %w", err)
+		if err := windows.SetConsoleMode(r.conin, r.originalMode); err != nil {
+			errs = append(errs, fmt.Errorf("reset console mode: %w", err))
 		}
 	}
 
-	return nil
+	if err := windows.CloseHandle(r.cancelEvent); err != nil {
+		errs = append(errs, fmt.Errorf("close cancel event: %w", err))
+	}
+
+	return errors.Join(errs...)
 }
 
 // Read implements cancelreader.CancelReader.
