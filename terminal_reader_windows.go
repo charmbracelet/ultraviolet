@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"github.com/charmbracelet/x/ansi"
@@ -15,6 +16,10 @@ import (
 	"github.com/muesli/cancelreader"
 	"golang.org/x/sys/windows"
 )
+
+// emptyWakeBackoff is how long streamData sleeps when the console handle wakes
+// it again with nothing to read.
+const emptyWakeBackoff = 10 * time.Millisecond
 
 // streamData sends data from the input stream to the event channel.
 func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) error {
@@ -31,6 +36,7 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 	var records []xwindows.InputRecord
 	var err error
 	for {
+		var woke bool
 		for {
 			records, err = peekNConsoleInputs(cc.conin, readBufSize)
 			if cc.isCanceled() {
@@ -43,9 +49,23 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 				break
 			}
 
+			// When woke is set, the console handle was signaled and the buffer
+			// is still empty. Peek does not filter records: focus, menu,
+			// buffer-size, key-up and mouse records all come back from it and
+			// the read below consumes them, so no record is left behind to keep
+			// the handle signaled. This is a wake with nothing behind it, which
+			// Windows Terminal can do, and nothing promises the handle is
+			// unsignaled afterwards. Back off for the old poll interval before
+			// waiting again, so a handle that stays signaled costs what polling
+			// did instead of a full core.
+			if woke {
+				time.Sleep(emptyWakeBackoff)
+				if cc.isCanceled() {
+					return cancelreader.ErrCanceled
+				}
+			}
+
 			// Block until the console has input or the reader is canceled.
-			// If the wait returns with nothing to read, which can happen on
-			// Windows Terminal, we just peek again.
 			_, err = windows.WaitForMultipleObjects([]windows.Handle{cc.conin, cc.cancelEvent}, false, windows.INFINITE)
 			if cc.isCanceled() {
 				return cancelreader.ErrCanceled
@@ -53,6 +73,7 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 			if err != nil {
 				return fmt.Errorf("wait for console input: %w", err)
 			}
+			woke = true
 		}
 
 		records, err = readNConsoleInputs(cc.conin, uint32(len(records))) //nolint:gosec
