@@ -2792,13 +2792,20 @@ func TestTerminalReaderLegacySetAfterNew(t *testing.T) {
 }
 
 func TestTerminalReaderUseTerminfoSetAfterNew(t *testing.T) {
-	r := NewTerminalReader(strings.NewReader(""), "xterm-256color")
+	const term = "xterm-256color"
+	r := NewTerminalReader(strings.NewReader(""), term)
+
+	// What terminfo adds differs between systems, so compare against the
+	// table built from this system's entry rather than naming a key.
+	want := buildKeysTable(r.Legacy, term, true)
+	if reflect.DeepEqual(want, buildKeysTable(r.Legacy, term, false)) {
+		t.Skipf("terminfo here adds no keys for %s", term)
+	}
+
 	r.UseTerminfo = true
 	r.sendEvents(make(chan Event, 1), nil, true)
-
-	// The terminfo entry for xterm-256color makes BS a backspace, not ctrl+h.
-	if got := r.eventScanner.table["\b"].Code; got != KeyBackspace {
-		t.Errorf("got code %v for BS, want %v", got, KeyBackspace)
+	if !reflect.DeepEqual(r.eventScanner.table, want) {
+		t.Error("UseTerminfo set after NewTerminalReader did not change the key table")
 	}
 }
 
