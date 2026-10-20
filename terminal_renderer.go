@@ -386,6 +386,41 @@ func (s *TerminalRenderer) PrependString(newbuf *RenderBuffer, str string) {
 	}
 }
 
+// ScrollUp moves the top n rows of an inline frame that spans the whole
+// terminal into the terminal's scrollback. Line feeds on the bottom row scroll
+// the screen, and the model shifts with it, so the next render paints only the
+// rows that scrolled in. Rows already on screen enter history as they are, with
+// nothing erased or repainted.
+//
+// It writes nothing and reports false when the frame does not span the
+// terminal, where a line feed would move the cursor instead of scrolling, or
+// when the frame's position is unknown: before the first render, or after a
+// resize the next render has yet to reconcile.
+func (s *TerminalRenderer) ScrollUp(n int) bool {
+	if n <= 0 || s.curbuf == nil || s.flags.Contains(tFullscreen) || s.termResized ||
+		s.cur.X == -1 || s.cur.Y == -1 || s.curbuf.Height() != s.termH {
+		return false
+	}
+
+	bot := s.curbuf.Height() - 1
+	n = min(n, bot+1)
+	s.move(s.curbuf, 0, bot)
+	// Rows that scroll in take the pen's background, so reset it to the
+	// default the model gives blank rows.
+	s.updatePen(&EmptyCell)
+	s.buf.WriteString(strings.Repeat("\n", n))
+
+	s.scrollBuffer(s.curbuf, n, 0, bot, &EmptyCell)
+	s.scrollOldhash(n, 0, bot)
+	if len(s.driftRows) > n {
+		copy(s.driftRows, s.driftRows[n:])
+		clear(s.driftRows[len(s.driftRows)-n:])
+	} else {
+		clear(s.driftRows)
+	}
+	return true
+}
+
 // moveCursor moves the cursor to the specified position.
 //
 // It is safe to call this function with a nil [Buffer], in that case, it won't
