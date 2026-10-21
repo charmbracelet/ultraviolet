@@ -1197,7 +1197,15 @@ func (s *TerminalRenderer) clearToBottom(blank *Cell) {
 	}
 
 	s.updatePen(blank)
-	_, _ = s.buf.WriteString(ansi.EraseScreenBelow)
+	if !s.flags.Contains(tFullscreen) && row == 0 && col == 0 && s.curbuf.Width() > 1 {
+		// tmux takes an erase from the top left corner for clearing the whole
+		// screen and scrolls it into history first, and an inline frame that
+		// spans the screen starts there. Erase the first column with the row
+		// and everything else from the column after it.
+		_, _ = s.buf.WriteString(ansi.EraseLineRight + ansi.CursorRight1 + ansi.EraseScreenBelow + "\r")
+	} else {
+		_, _ = s.buf.WriteString(ansi.EraseScreenBelow)
+	}
 	// Clear the rest of the current line
 	s.curbuf.ClearArea(Rect(col, row, s.curbuf.Width()-col, 1))
 	// Clear everything below the current line
