@@ -69,3 +69,39 @@ func TestRendererScrollUpRefusesFrameShorterThanTerminal(t *testing.T) {
 		t.Fatal("scroll must wait for the next render to reconcile a resize")
 	}
 }
+
+// Where a line feed would not scroll a known frame, nothing is written.
+func TestRendererScrollUpRefusesWithoutAKnownFullHeightFrame(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(r *TerminalRenderer)
+		n     int
+	}{
+		{"before the first render", func(r *TerminalRenderer) {}, 1},
+		{"fullscreen", func(r *TerminalRenderer) {
+			r.SetFullscreen(true)
+			r.Render(frameOf(10, "r0", "r1", "r2", "r3", "r4"))
+		}, 1},
+		{"no rows", func(r *TerminalRenderer) {
+			r.Render(frameOf(10, "r0", "r1", "r2", "r3", "r4"))
+		}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			r := NewTerminalRenderer(&out, []string{"TERM=xterm-256color"})
+			r.SetRelativeCursor(true)
+			r.Resize(10, 5)
+			tc.setup(r)
+			if err := r.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			out.Reset()
+			if r.ScrollUp(tc.n) {
+				t.Fatal("scrolled")
+			}
+			if err := r.Flush(); err != nil || out.Len() != 0 {
+				t.Fatalf("refused scroll wrote %q (err %v)", out.String(), err)
+			}
+		})
+	}
+}
