@@ -1664,8 +1664,9 @@ func TestRendererInlineShrinkErasesFromTheTop(t *testing.T) {
 		t.Fatalf("failed to flush renderer: %v", err)
 	}
 
-	// Up two rows from row 2, erase what the old frame left, draw row 0.
-	expected := "\r\x1b[2A\x1b[Jb\r"
+	// Up two rows from row 2, erase what the old frame left without starting
+	// in the top left corner, draw row 0.
+	expected := "\r\x1b[2A\x1b[K\x1b[C\x1b[J\rb\r"
 	if output := buf.String(); output != expected {
 		t.Errorf("expected output after shrink to be %q, got: %q", expected, output)
 	}
@@ -1880,6 +1881,37 @@ func TestRendererSkipsUnchangedDriftLine(t *testing.T) {
 	}
 	if got := frame("中文 🚀 now", "ab"); !strings.Contains(got, "now") {
 		t.Errorf("changed wide row was not painted: %q", got)
+	}
+}
+
+// An inline frame that spans the screen starts in its top left corner, where
+// tmux takes an erase for clearing the whole screen and scrolls the screen into
+// history first. A full redraw must not erase from there.
+func TestRendererInlineEraseSparesTopLeft(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	scr := NewScreenBuffer(10, 3)
+	NewStyledString("a\nb\nc").Draw(scr, scr.Bounds())
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	buf.Reset()
+
+	r.Erase()
+	r.Render(scr.RenderBuffer)
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	got := buf.String()
+	want := ansi.EraseLineRight + ansi.CursorRight1 + ansi.EraseScreenBelow
+	if !strings.Contains(got, want) || strings.Count(got, ansi.EraseScreenBelow) != 1 {
+		t.Fatalf("full redraw erased from the top left corner: %q", got)
+	}
+	for _, row := range []string{"a", "b", "c"} {
+		if !strings.Contains(got, row) {
+			t.Fatalf("row %s not repainted: %q", row, got)
+		}
 	}
 }
 
