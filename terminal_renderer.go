@@ -899,9 +899,14 @@ func lineHasDrift(m ansi.Method, line Line) bool {
 // paintLine brings row y of the screen in line with newbuf. A drift-prone row,
 // or any row when force is set, is repainted; every other row is diffed.
 func (s *TerminalRenderer) paintLine(newbuf *RenderBuffer, y int, force bool) {
-	drift := lineHasDrift(s.method, s.curbuf.Line(y)) || lineHasDrift(s.method, newbuf.Line(y))
+	oldLine, newLine := s.curbuf.Line(y), newbuf.Line(y)
+	drift := lineHasDrift(s.method, oldLine) || lineHasDrift(s.method, newLine)
 	s.markDrift(y, newbuf.Height(), drift)
 	switch {
+	case drift && !force && !s.damaged[y] && linesEqual(oldLine, newLine):
+		// The screen holds what the last paint of these cells left there, and
+		// painting them again leaves the same; the erase before it would only
+		// make the row flash.
 	case drift && !s.flags.Contains(tGraphemeWidth):
 		// Clip a cluster the terminal measures wider than the model instead of
 		// letting it spill onto the next row, then put the cursor back.
@@ -916,6 +921,18 @@ func (s *TerminalRenderer) paintLine(newbuf *RenderBuffer, y int, force bool) {
 	default:
 		s.transformLine(newbuf, y)
 	}
+}
+
+func linesEqual(a, b Line) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(&b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // repaintLine erases row y from column 0 and writes newbuf's cells, so the
