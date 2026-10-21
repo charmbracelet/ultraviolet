@@ -1856,6 +1856,33 @@ func TestRendererNoWrapOnDriftLine(t *testing.T) {
 	}
 }
 
+// A frame redraws every row, and a wide row it left as it was stays untouched:
+// repainting it erases first, which makes the row flash in a terminal without
+// synchronized output. A wide row that did change is still repainted.
+func TestRendererSkipsUnchangedDriftLine(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	scr := NewScreenBuffer(12, 2)
+	frame := func(wide, input string) string {
+		buf.Reset()
+		scr.Clear()
+		NewStyledString(wide+"\n"+input).Draw(scr, scr.Bounds())
+		r.Render(scr.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatalf("failed to flush renderer: %v", err)
+		}
+		return buf.String()
+	}
+	frame("中文 🚀 row", "a")
+
+	if got := frame("中文 🚀 row", "ab"); strings.Contains(got, "row") || strings.Contains(got, ansi.EraseLineRight) {
+		t.Errorf("unchanged wide row was repainted: %q", got)
+	}
+	if got := frame("中文 🚀 now", "ab"); !strings.Contains(got, "now") {
+		t.Errorf("changed wide row was not painted: %q", got)
+	}
+}
+
 // The repaint a height change forces belongs to fullscreen mode and to actual
 // changes. Inline frames are shorter than the terminal by design, and a render
 // that resizes nothing has nothing to distrust.
