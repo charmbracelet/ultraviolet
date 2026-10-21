@@ -2759,3 +2759,71 @@ func TestKeyStringMore(t *testing.T) {
 		})
 	}
 }
+
+func TestTerminalReaderLegacySetAfterNew(t *testing.T) {
+	// CSI 1 ~ is Home by default and Find with the Find legacy flag.
+	tests := []struct {
+		name   string
+		legacy LegacyKeyEncoding
+		want   rune
+	}{
+		{"default", 0, KeyHome},
+		{"find", LegacyKeyEncoding(0).Find(true), KeyFind},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewTerminalReader(strings.NewReader(""), "xterm-256color")
+			r.Legacy = tt.legacy
+
+			ch := make(chan Event, 1)
+			r.sendEvents(ch, []byte("\x1b[1~"), true)
+			close(ch)
+
+			k, ok := (<-ch).(KeyPressEvent)
+			if !ok {
+				t.Fatalf("expected a KeyPressEvent")
+			}
+			if k.Code != tt.want {
+				t.Errorf("got code %v, want %v", k.Code, tt.want)
+			}
+		})
+	}
+}
+
+func TestTerminalReaderUseTerminfoSetAfterNew(t *testing.T) {
+	const term = "xterm-256color"
+	r := NewTerminalReader(strings.NewReader(""), term)
+
+	// What terminfo adds differs between systems, so compare against the
+	// table built from this system's entry rather than naming a key.
+	want := buildKeysTable(r.Legacy, term, true)
+	if reflect.DeepEqual(want, buildKeysTable(r.Legacy, term, false)) {
+		t.Skipf("terminfo here adds no keys for %s", term)
+	}
+
+	r.UseTerminfo = true
+	r.sendEvents(make(chan Event, 1), nil, true)
+	if !reflect.DeepEqual(r.eventScanner.table, want) {
+		t.Error("UseTerminfo set after NewTerminalReader did not change the key table")
+	}
+}
+
+func TestScanEventsWin32KeepsPendingInput(t *testing.T) {
+	// A win32-input record for 'a' followed by an incomplete sequence. Only
+	// the record is consumed, the pending bytes stay in the buffer.
+	rec := "\x1b[0;0;97;1;0;1_"
+	pending := "\x1b[1"
+
+	s := newEventScanner()
+	n, events := s.scanEvents([]byte(rec+pending), false)
+	if n != len(rec) {
+		t.Errorf("consumed %d bytes, want %d", n, len(rec))
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1: %v", len(events), events)
+	}
+	if k, ok := events[0].(KeyPressEvent); !ok || k.Text != "a" {
+		t.Errorf("got event %v, want KeyPressEvent with text %q", events[0], "a")
+	}
+}

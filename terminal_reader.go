@@ -229,6 +229,14 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 }
 
 func (d *TerminalReader) sendEvents(eventc chan<- Event, buf []byte, expired bool) int {
+	// Legacy and UseTerminfo may be set after [NewTerminalReader], so pick up
+	// the current values and rebuild the key table when they change.
+	if evs := d.eventScanner; evs.Legacy != d.Legacy || evs.UseTerminfo != d.UseTerminfo {
+		evs.Legacy, evs.UseTerminfo = d.Legacy, d.UseTerminfo
+		d.table = buildKeysTable(d.Legacy, d.term, d.UseTerminfo)
+		evs.table = d.table
+	}
+
 	n, events := d.eventScanner.scanEvents(buf, expired)
 	for _, event := range events {
 		eventc <- event
@@ -451,11 +459,16 @@ func (d *eventScanner) storeGraphemeRune(kd int, r rune) {
 // deserializeWin32Input deserializes the Win32 input events converting
 // KeyEventRecrods to bytes. Before returning the bytes, it will also try to
 // decode any UTF-16 pairs that might be present in the input buffer.
+//
+// The returned count is the number of input bytes the records took up, less
+// the length of the bytes that replace them. The returned bytes are counted
+// by the caller as they are decoded, so adding that count to the number of
+// returned bytes decoded gives the number of input bytes consumed.
 func (d *eventScanner) deserializeWin32Input(buf []byte) (int, []byte) {
 	p := ansi.GetParser()
 	defer ansi.PutParser(p)
 
-	var processed int
+	var processed, passed int
 	var state byte
 	des := make([]byte, 0, len(buf))
 
@@ -480,6 +493,7 @@ func (d *eventScanner) deserializeWin32Input(buf []byte) (int, []byte) {
 		default:
 			des = append(des, d.encodeGraphemeBufs()...)
 			des = append(des, seq...)
+			passed += len(seq)
 		}
 
 		state = newState
@@ -488,7 +502,8 @@ func (d *eventScanner) deserializeWin32Input(buf []byte) (int, []byte) {
 
 	des = append(des, d.encodeGraphemeBufs()...)
 
-	return processed, des
+	// des holds the passed through bytes and the bytes we encoded.
+	return processed - (len(des) - passed), des
 }
 
 func (d *TerminalReader) logf(format string, v ...interface{}) {
