@@ -2251,6 +2251,30 @@ func TestKeyMatchString(t *testing.T) {
 			input: "capslock+h",
 			want:  true,
 		},
+		{
+			name:  "plus",
+			key:   Key{Code: '+', Text: "+"},
+			input: "+",
+			want:  true,
+		},
+		{
+			name:  "ctrl+plus",
+			key:   Key{Code: '+', Mod: ModCtrl},
+			input: "ctrl++",
+			want:  true,
+		},
+		{
+			name:  "ctrl+alt+plus",
+			key:   Key{Code: '+', Mod: ModCtrl | ModAlt},
+			input: "ctrl+alt++",
+			want:  true,
+		},
+		{
+			name:  "ctrl+plus doesn't match ctrl+a",
+			key:   Key{Code: 'a', Mod: ModCtrl},
+			input: "ctrl++",
+			want:  false,
+		},
 	}
 
 	for i, tc := range cases {
