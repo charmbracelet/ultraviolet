@@ -2324,3 +2324,40 @@ func TestRendererClearsRowsAFrameGotBack(t *testing.T) {
 		t.Errorf("row 0 was never erased, wrote %q", out)
 	}
 }
+
+// TestRelativeCursorMoveFullscreenMapNewlineEmitsCRLF is a regression test
+// for https://github.com/charmbracelet/ultraviolet/issues/188.
+//
+// In fullscreen mode with newline mapping enabled
+// ([TerminalRenderer.SetMapNewline]), [relativeCursorMove] can still pick
+// the bare line-feed fast path for downward cursor moves when it's cheaper
+// than an absolute positioning sequence (e.g. a narrow target column). When
+// it does, it resets its tracked column (fx) to 0, assuming the consumer
+// maps LF to CRLF for us. Without also emitting an explicit carriage
+// return, the real cursor column never resets, desyncing the renderer's
+// model from reality and corrupting subsequent positioning. This is the
+// fullscreen counterpart to the inline (tRelativeCursor) fix for #61 /
+// #133.
+func TestRelativeCursorMoveFullscreenMapNewlineEmitsCRLF(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+	s.SetFullscreen(true)
+	s.SetRelativeCursor(false)
+	s.SetMapNewline(true)
+
+	// A downward move of 3 rows to column 0: the bare-newline sequence
+	// ("\n\n\n", 3 bytes) is cheaper than the absolute VPA sequence
+	// ("\x1b[4d", 4 bytes) for this target row, so relativeCursorMove takes
+	// the newline fast path this test targets.
+	const fx, fy, tx, ty = 0, 0, 0, 3
+	seq := relativeCursorMove(s, nil, fx, fy, tx, ty, false, false, false)
+
+	if !strings.Contains(seq, "\n") {
+		t.Fatalf("expected the move to use a line feed, got %q", seq)
+	}
+	for i := 0; i < len(seq); i++ {
+		if seq[i] == '\n' && (i == 0 || seq[i-1] != '\r') {
+			t.Fatalf("bare LF without a preceding CR at byte %d: %q", i, seq)
+		}
+	}
+}
