@@ -328,6 +328,11 @@ func keyMatchString(k Key, s string) bool {
 		text string
 	)
 	parts := strings.Split(s, "+")
+	if s == "+" || strings.HasSuffix(s, "++") {
+		// The last key is the plus key itself, e.g. "+" or "ctrl++". Splitting
+		// on "+" leaves two empty parts in its place.
+		parts = append(parts[:len(parts)-2], "+")
+	}
 	for _, part := range parts {
 		switch part {
 		case "ctrl":
