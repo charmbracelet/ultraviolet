@@ -861,11 +861,31 @@ func lineHasDrift(m ansi.Method, line Line) bool {
 	return false
 }
 
+// lineUnchanged reports whether two lines hold the same cells.
+func lineUnchanged(a, b Line) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !cellEqual(a.At(i), b.At(i)) {
+			return false
+		}
+	}
+	return true
+}
+
 // paintLine brings row y of the screen in line with newbuf. A drift-prone row,
 // or any row when force is set, is repainted; every other row is diffed.
 func (s *TerminalRenderer) paintLine(newbuf *RenderBuffer, y int, force bool) {
 	drift := lineHasDrift(s.method, s.curbuf.Line(y)) || lineHasDrift(s.method, newbuf.Line(y))
 	s.markDrift(y, newbuf.Height(), drift)
+	// A drift-prone row is repainted rather than diffed, but one that matches
+	// the model and that this render did not disturb (see
+	// [TerminalRenderer.damage]) is already on screen as is. Without this,
+	// every touched row holding a wide cell is rewritten on every frame.
+	if drift && !force && !(y < len(s.damaged) && s.damaged[y]) && lineUnchanged(s.curbuf.Line(y), newbuf.Line(y)) {
+		return
+	}
 	switch {
 	case drift && !s.flags.Contains(tGraphemeWidth):
 		// Clip a cluster the terminal measures wider than the model instead of
