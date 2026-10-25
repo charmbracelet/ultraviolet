@@ -367,7 +367,7 @@ func (s *TerminalRenderer) PrependString(newbuf *RenderBuffer, str string) {
 		if w > 0 && lineWidth > w {
 			offset += (lineWidth / w)
 		}
-		if lineWidth == 0 || lineWidth%w != 0 {
+		if lineWidth == 0 || w == 0 || lineWidth%w != 0 {
 			offset++
 		}
 	}

@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"slices"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/internal/casso"
@@ -277,7 +278,8 @@ func (l Layout) splitCached(area uv.Rectangle) (segments, spacers []uv.Rectangle
 	key := l.cacheKey(area)
 
 	if v, ok := globalCache.Get(key); ok {
-		return v.Segments, v.Spacers, nil
+		// Callers own what they get, so they must not share the cached slices.
+		return slices.Clone(v.Segments), slices.Clone(v.Spacers), nil
 	}
 
 	segments, spacers, err = l.split(area)
@@ -287,7 +289,7 @@ func (l Layout) splitCached(area uv.Rectangle) (segments, spacers []uv.Rectangle
 
 	globalCache.Add(key, cacheValue{Segments: segments, Spacers: spacers})
 
-	return segments, spacers, nil
+	return slices.Clone(segments), slices.Clone(spacers), nil
 }
 
 func (l Layout) split(area uv.Rectangle) (segments, spacers []uv.Rectangle, err error) {

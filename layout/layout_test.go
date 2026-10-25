@@ -1158,3 +1158,30 @@ func newBufferString(s string) uv.ScreenBuffer {
 
 	return buf
 }
+
+func TestSplitReturnsCopy(t *testing.T) {
+	layout := Vertical(Len(3), Fill(1)).WithSpacing(1)
+	area := uv.Rect(0, 0, 10, 20)
+
+	want, wantSpacers := layout.SplitWithSpacers(area)
+	want, wantSpacers = append(Splitted(nil), want...), append(Splitted(nil), wantSpacers...)
+
+	// Edit the results of both a cache miss and a cache hit.
+	for range 2 {
+		got, spacers := layout.SplitWithSpacers(area)
+		for i := range got {
+			got[i] = uv.Rect(-1, -1, -1, -1)
+		}
+		for i := range spacers {
+			spacers[i] = uv.Rect(-1, -1, -1, -1)
+		}
+	}
+
+	got, spacers := layout.SplitWithSpacers(area)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("segments changed by a caller: got %v, want %v", got, want)
+	}
+	if !reflect.DeepEqual(spacers, wantSpacers) {
+		t.Errorf("spacers changed by a caller: got %v, want %v", spacers, wantSpacers)
+	}
+}

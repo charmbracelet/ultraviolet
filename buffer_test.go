@@ -761,3 +761,80 @@ func width(s string) int {
 func height(s string) int {
 	return strings.Count(s, "\n") + 1
 }
+
+func TestBufferAreaOutsideBuffer(t *testing.T) {
+	cell := &Cell{Content: "x", Width: 1}
+	fill := func() *Buffer {
+		b := NewBuffer(4, 4)
+		for y := 0; y < 4; y++ {
+			for x := 0; x < 4; x++ {
+				b.SetCell(x, y, &Cell{Content: string(rune('a' + y*4 + x)), Width: 1})
+			}
+		}
+		return b
+	}
+
+	// An area reaching outside the buffer acts like the part inside it.
+	tests := []struct {
+		name string
+		op   func(b *Buffer, area Rectangle)
+		in   Rectangle
+		want Rectangle
+	}{
+		{"InsertLineArea taller", func(b *Buffer, a Rectangle) { b.InsertLineArea(1, 1, cell, a) }, Rect(0, 0, 4, 10), Rect(0, 0, 4, 4)},
+		{"InsertLineArea wider", func(b *Buffer, a Rectangle) { b.InsertLineArea(1, 1, cell, a) }, Rect(0, 0, 10, 4), Rect(0, 0, 4, 4)},
+		{"InsertLineArea left", func(b *Buffer, a Rectangle) { b.InsertLineArea(1, 1, cell, a) }, Rect(-2, 0, 4, 4), Rect(0, 0, 2, 4)},
+		{"DeleteLineArea taller", func(b *Buffer, a Rectangle) { b.DeleteLineArea(1, 1, cell, a) }, Rect(0, 0, 4, 10), Rect(0, 0, 4, 4)},
+		{"DeleteLineArea wider", func(b *Buffer, a Rectangle) { b.DeleteLineArea(1, 1, cell, a) }, Rect(0, 0, 10, 4), Rect(0, 0, 4, 4)},
+		{"InsertCellArea wider", func(b *Buffer, a Rectangle) { b.InsertCellArea(1, 1, 1, cell, a) }, Rect(0, 0, 10, 4), Rect(0, 0, 4, 4)},
+		{"InsertCellArea taller", func(b *Buffer, a Rectangle) { b.InsertCellArea(1, 1, 1, cell, a) }, Rect(0, 0, 4, 10), Rect(0, 0, 4, 4)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, want := fill(), fill()
+			tt.op(got, tt.in)
+			tt.op(want, tt.want)
+			if got.String() != want.String() {
+				t.Errorf("got %q, want %q", got.String(), want.String())
+			}
+		})
+	}
+
+	t.Run("RenderBuffer", func(t *testing.T) {
+		b := NewRenderBuffer(4, 4)
+		b.InsertLineArea(0, 1, cell, Rect(0, 0, 4, 10))
+		b.DeleteLineArea(0, 1, cell, Rect(0, 0, 4, 10))
+		b.InsertCellArea(0, 0, 1, cell, Rect(0, 0, 10, 4))
+	})
+}
+
+func TestBufferResizeNegative(t *testing.T) {
+	tests := []struct {
+		name          string
+		width, height int
+	}{
+		{"width", -1, 4},
+		{"height", 4, -1},
+		{"both", -5, -5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wantW, wantH := max(tt.width, 0), max(tt.height, 0)
+			if wantH == 0 {
+				wantW = 0 // a buffer without lines has no width
+			}
+
+			b := NewBuffer(4, 4)
+			b.Resize(tt.width, tt.height)
+			if b.Width() != wantW || b.Height() != wantH {
+				t.Errorf("Buffer: got %dx%d, want %dx%d", b.Width(), b.Height(), wantW, wantH)
+			}
+
+			rb := NewRenderBuffer(4, 4)
+			rb.Resize(tt.width, tt.height)
+			if rb.Width() != wantW || rb.Height() != wantH {
+				t.Errorf("RenderBuffer: got %dx%d, want %dx%d", rb.Width(), rb.Height(), wantW, wantH)
+			}
+		})
+	}
+}

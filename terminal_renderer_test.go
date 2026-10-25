@@ -2324,3 +2324,17 @@ func TestRendererClearsRowsAFrameGotBack(t *testing.T) {
 		t.Errorf("row 0 was never erased, wrote %q", out)
 	}
 }
+
+func TestRendererPrependStringZeroWidth(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewTerminalRenderer(&buf, []string{"TERM=xterm-256color"})
+
+	// A zero-width buffer must not divide by zero.
+	r.PrependString(NewRenderBuffer(0, 5), "hello")
+	if err := r.Flush(); err != nil {
+		t.Fatalf("failed to flush renderer: %v", err)
+	}
+	if !strings.Contains(buf.String(), "hello") {
+		t.Errorf("expected output to contain 'hello', got: %q", buf.String())
+	}
+}
