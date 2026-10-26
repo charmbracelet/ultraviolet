@@ -420,9 +420,28 @@ func colorEqual(c, o color.Color) bool {
 	if c == nil || o == nil {
 		return false
 	}
+	// An indexed colour is painted from the terminal's palette, not from the
+	// xterm default RGB value it reports, so it only equals the same index.
+	ci, cIndexed := paletteIndex(c)
+	oi, oIndexed := paletteIndex(o)
+	if cIndexed || oIndexed {
+		return cIndexed && oIndexed && ci == oi
+	}
 	cr, cg, cb, ca := c.RGBA()
 	or, og, ob, oa := o.RGBA()
 	return cr == or && cg == og && cb == ob && ca == oa
+}
+
+// paletteIndex returns the palette entry an indexed colour refers to.
+// [ansi.BasicColor] n and [ansi.IndexedColor] n select the same entry.
+func paletteIndex(c color.Color) (int, bool) {
+	switch c := c.(type) {
+	case ansi.BasicColor:
+		return int(c), true
+	case ansi.IndexedColor:
+		return int(c), true
+	}
+	return 0, false
 }
 
 // IsZero returns true if the style is empty.
