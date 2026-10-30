@@ -2324,3 +2324,99 @@ func TestRendererClearsRowsAFrameGotBack(t *testing.T) {
 		t.Errorf("row 0 was never erased, wrote %q", out)
 	}
 }
+
+// A cell set inside a line's touched span needs no comparing, since touching
+// it could not grow the span. A cell reaching past either end of the span
+// still grows it, and an unchanged cell still leaves its line untouched.
+func TestRenderBufferSetCellInsideTouchedSpan(t *testing.T) {
+	buf := NewRenderBuffer(10, 2)
+
+	buf.SetCell(3, 0, &Cell{Content: "x", Width: 1})
+	buf.SetCell(2, 0, &Cell{Content: "x", Width: 1}) // left of the span
+	if got := *buf.Touched[0]; got != (LineData{FirstCell: 2, LastCell: 4}) {
+		t.Errorf("a cell left of the span: %+v, want {2 4}", got)
+	}
+	buf.SetCell(3, 0, &Cell{Content: "日", Width: 2}) // from inside the span past its end
+	if got := *buf.Touched[0]; got.LastCell != 5 {
+		t.Errorf("a wide cell over the span's end: %+v, want it to end at 5", got)
+	}
+	buf.SetCell(1, 1, &EmptyCell) // an unchanged cell on an untouched line
+	if ld := buf.Touched[1]; ld != nil {
+		t.Errorf("an unchanged cell touched line 1: %+v", *ld)
+	}
+}
+
+// redrawFrame is a frame of styled rows, row n counting k: what an
+// application draws whole over a Clear on every frame. Its rows hold kind:
+// plain cells, narrow non-ASCII ones (rules and bars), or wide CJK and emoji.
+func redrawFrame(h, n, k int, kind string) string {
+	var extra string
+	switch kind {
+	case "bars":
+		extra = " ━━━━━━▌░░░░ 42%"
+	case "wide":
+		extra = " 日本語 👍"
+	}
+	rows := make([]string, h)
+	for y := range rows {
+		rows[y] = fmt.Sprintf("\x1b[1m%02d\x1b[m │ \x1b[38;5;%dmrow\x1b[m%s", y, 16+y, extra)
+		if y == n {
+			rows[y] += fmt.Sprintf(" count%d", k)
+		}
+	}
+	return strings.Join(rows, "\n")
+}
+
+// A frame drawn whole over a Clear, as Bubble Tea draws each one, touches
+// every row, but only the cells that changed reach the terminal, and a frame
+// with nothing changed sends nothing.
+func TestRendererRedrawWholeWritesChangedCells(t *testing.T) {
+	const w, h = 40, 10
+	var out bytes.Buffer
+	r := NewTerminalRenderer(&out, []string{"TERM=xterm-256color"})
+	r.SetFullscreen(true)
+	buf := NewScreenBuffer(w, h)
+
+	draw := func(k int) string {
+		t.Helper()
+		out.Reset()
+		buf.Clear()
+		NewStyledString(redrawFrame(h, 3, k, "plain")).Draw(buf, buf.Bounds())
+		r.Render(buf.RenderBuffer)
+		if err := r.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+
+	draw(0)
+	if got, want := draw(1), "\x1b[4;15H1"; got != want { // to the count's digit, then the new one
+		t.Fatalf("one count changed:\n got %q\nwant %q", got, want)
+	}
+	if got := draw(1); got != "" {
+		t.Fatalf("nothing changed, cells written: %q", got)
+	}
+}
+
+// BenchmarkRenderRedrawWhole draws a 220x55 frame whole over a Clear and
+// renders it, one row changed each time, as Bubble Tea does on every frame,
+// for each kind of row redrawFrame makes.
+func BenchmarkRenderRedrawWhole(b *testing.B) {
+	const w, h = 220, 55
+	for _, kind := range []string{"plain", "bars", "wide"} {
+		b.Run(kind, func(b *testing.B) {
+			r := NewTerminalRenderer(io.Discard, []string{"TERM=xterm-256color"})
+			r.SetFullscreen(true)
+			buf := NewScreenBuffer(w, h)
+			frames := []string{redrawFrame(h, 20, 0, kind), redrawFrame(h, 20, 1, kind)}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				buf.Clear()
+				NewStyledString(frames[i%2]).Draw(buf, buf.Bounds())
+				r.Render(buf.RenderBuffer)
+				_ = r.Flush()
+			}
+		})
+	}
+}

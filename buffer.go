@@ -701,17 +701,31 @@ func (b *RenderBuffer) TouchedLines() int {
 // SetCell sets the cell at the given x, y position and marks the line as
 // touched.
 func (b *RenderBuffer) SetCell(x, y int, c *Cell) {
-	if p := b.CellAt(x, y); !cellEqual(p, c) {
-		width := 1
-		if c != nil && c.Width > 0 {
-			width = c.Width
-		}
-		if p != nil && p.Width > 0 {
-			width = max(width, p.Width)
-		}
+	p := b.CellAt(x, y)
+	width := 1
+	if c != nil && c.Width > 0 {
+		width = c.Width
+	}
+	if p != nil && p.Width > 0 {
+		width = max(width, p.Width)
+	}
+	// A cell inside the line's touched span would leave the span as it is,
+	// so it needs no comparing: after a Clear, which touches every line,
+	// that is every cell of the frame drawn over it.
+	if !b.covers(x, y, width) && !cellEqual(p, c) {
 		b.TouchLine(x, y, width)
 	}
 	b.Buffer.SetCell(x, y, c)
+}
+
+// covers returns whether line y's touched span already holds the n cells
+// from x.
+func (b *RenderBuffer) covers(x, y, n int) bool {
+	if y < 0 || y >= len(b.Touched) {
+		return false
+	}
+	t := b.Touched[y]
+	return t != nil && t.FirstCell <= x && x+n <= t.LastCell
 }
 
 // InsertLine inserts n lines at the given line position, with the given
