@@ -175,6 +175,13 @@ func buildKeysTable(flags LegacyKeyEncoding, term string, useTerminfo bool) map[
 		"\x1b[32~": {Code: KeyF18},
 		"\x1b[33~": {Code: KeyF19},
 		"\x1b[34~": {Code: KeyF20},
+
+		// Function keys, Linux console
+		"\x1b[[A": {Code: KeyF1},
+		"\x1b[[B": {Code: KeyF2},
+		"\x1b[[C": {Code: KeyF3},
+		"\x1b[[D": {Code: KeyF4},
+		"\x1b[[E": {Code: KeyF5},
 	}
 
 	// CSI ~ sequence keys
