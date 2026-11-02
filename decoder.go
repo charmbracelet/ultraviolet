@@ -316,6 +316,17 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		i++
 	}
 
+	// Linux console F1-F5 keys: CSI [ A to CSI [ E.
+	if i < len(b) && b[i] == '[' {
+		if i+1 >= len(b) {
+			// Incomplete, wait for more input.
+			return i + 1, UnknownEvent(b[:i+1])
+		}
+		if c := b[i+1]; c >= 'A' && c <= 'E' {
+			return i + 2, KeyPressEvent{Code: KeyF1 + rune(c-'A')}
+		}
+	}
+
 	// Initial CSI byte
 	if i < len(b) && b[i] >= '<' && b[i] <= '?' {
 		cmd |= ansi.Cmd(b[i]) << parser.PrefixShift
