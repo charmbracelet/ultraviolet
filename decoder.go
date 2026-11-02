@@ -359,6 +359,12 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 
 	// Scan final byte in the range 0x40-0x7E
 	if i >= len(b) || b[i] < 0x40 || b[i] > 0x7E {
+		// An SGR mouse report with a negative coordinate. '-' is not a
+		// parameter byte, so the scan above stopped at it.
+		if cmd.Prefix() == '<' && intermed == '-' && b[i-1] == '-' {
+			return parseSignedSGRMouse(b)
+		}
+
 		// Special case for URxvt keys
 		// CSI <number> $ is an invalid sequence, but URxvt uses it for
 		// shift modified keys.
@@ -1599,8 +1605,56 @@ func parseSGRMouseEvent(cmd ansi.Cmd, params ansi.Params) Event {
 	if !ok {
 		y = 1
 	}
-	release := cmd.Final() == 'm'
 	b, _, _ := params.Param(0, 0)
+	return sgrMouseEvent(b, x, y, cmd.Final() == 'm')
+}
+
+// parseSignedSGRMouse parses an SGR mouse report whose coordinates may be
+// negative. A terminal in SGR-pixel mode (DECSET 1016), such as Ghostty or
+// kitty, does not clamp the pointer to the grid: a pointer in the window
+// padding left of the first column, or outside the window during a drag, is
+// reported at a negative x, and one above the first row at a negative y.
+//
+//	CSI < Cb ; -Cx ; -Cy M
+//
+// b starts with ESC [ or CSI. An incomplete report returns an UnknownEvent
+// that covers all of b, so the reader waits for the rest of it.
+func parseSignedSGRMouse(b []byte) (int, Event) {
+	i := bytes.IndexByte(b, '<') + 1
+	var v [3]int
+	for k := range v {
+		neg := k > 0 && i < len(b) && b[i] == '-'
+		if neg {
+			i++
+		}
+		start := i
+		for ; i < len(b) && b[i] >= '0' && b[i] <= '9'; i++ {
+			if v[k] < math.MaxInt32/10 {
+				v[k] = v[k]*10 + int(b[i]-'0')
+			}
+		}
+		if i == start || i >= len(b) {
+			return i, UnknownEvent(b[:i])
+		}
+		if neg {
+			v[k] = -v[k]
+		}
+		if k < 2 {
+			if b[i] != ';' {
+				return i, UnknownEvent(b[:i])
+			}
+			i++
+		}
+	}
+	if b[i] != 'M' && b[i] != 'm' {
+		return i, UnknownEvent(b[:i])
+	}
+	return i + 1, sgrMouseEvent(v[0], v[1], v[2], b[i] == 'm')
+}
+
+// sgrMouseEvent builds the event of an SGR mouse report with the button
+// code b at the 1-based position (x, y).
+func sgrMouseEvent(b, x, y int, release bool) Event {
 	mod, btn, _, isMotion := parseMouseButton(b)
 
 	// (1,1) is the upper left. We subtract 1 to normalize it to (0,0).
