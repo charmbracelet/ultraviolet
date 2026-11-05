@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -472,18 +473,20 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 	}
 
 	// Move existing lines down within the bounds
-	for i := area.Max.Y - 1; i >= y+n; i-- {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving lines down.
-			b.Lines[i][x] = b.Lines[i-n][x]
+	if b.fullWidth(area) {
+		rotateLines(b.Lines[y:area.Max.Y], area.Max.Y-y-n)
+	} else {
+		for i := area.Max.Y - 1; i >= y+n; i-- {
+			for x := area.Min.X; x < area.Max.X; x++ {
+				// We don't need to clone c here because we're just moving lines down.
+				b.Lines[i][x] = b.Lines[i-n][x]
+			}
 		}
 	}
 
 	// Clear the newly inserted lines within bounds
 	for i := y; i < y+n; i++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			b.SetCell(x, i, c)
-		}
+		b.blankLine(i, c, area)
 	}
 }
 
@@ -503,20 +506,63 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 	}
 
 	// Shift cells up within the bounds
-	for dst := y; dst < area.Max.Y-n; dst++ {
-		src := dst + n
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving cells up.
-			b.Lines[dst][x] = b.Lines[src][x]
+	if b.fullWidth(area) {
+		rotateLines(b.Lines[y:area.Max.Y], n)
+	} else {
+		for dst := y; dst < area.Max.Y-n; dst++ {
+			src := dst + n
+			for x := area.Min.X; x < area.Max.X; x++ {
+				// We don't need to clone c here because we're just moving cells up.
+				b.Lines[dst][x] = b.Lines[src][x]
+			}
 		}
 	}
 
 	// Fill the bottom n lines with blank cells
 	for i := area.Max.Y - n; i < area.Max.Y; i++ {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			b.SetCell(x, i, c)
-		}
+		b.blankLine(i, c, area)
 	}
+}
+
+// fullWidth reports whether area spans every column of the buffer, so moving
+// its lines can move whole lines instead of their cells.
+func (b *Buffer) fullWidth(area Rectangle) bool {
+	return area.Min.X == 0 && area.Max.X == b.Width()
+}
+
+// blankLine sets the cells of line y within area to c. A narrow c over the
+// whole width is assigned as is: every cell is overwritten, so no wide cell
+// is left half drawn for SetCell to tidy up.
+func (b *Buffer) blankLine(y int, c *Cell, area Rectangle) {
+	if b.fullWidth(area) && (c == nil || c.Width <= 1) {
+		cell := EmptyCell
+		if c != nil {
+			cell = *c
+		}
+
+		line := b.Lines[y]
+		for x := range line {
+			line[x] = cell
+		}
+
+		return
+	}
+
+	for x := area.Min.X; x < area.Max.X; x++ {
+		b.SetCell(x, y, c)
+	}
+}
+
+// rotateLines moves the first k lines of lines to its end, in place. Only the
+// line headers move: a scroll costs the height of the area, not its cells.
+func rotateLines(lines []Line, k int) {
+	if k <= 0 || k >= len(lines) {
+		return
+	}
+
+	slices.Reverse(lines[:k])
+	slices.Reverse(lines[k:])
+	slices.Reverse(lines)
 }
 
 // DeleteLine deletes n lines at the given line position, with the given
@@ -729,9 +775,8 @@ func (b *RenderBuffer) InsertLine(y, n int, c *Cell) {
 // rectangle bounds and lost. This follows terminal [ansi.IL] behavior.
 func (b *RenderBuffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 	b.Buffer.InsertLineArea(y, n, c, area)
-	for i := area.Min.Y; i < area.Max.Y; i++ {
+	for i := area.Min.Y - n; i < area.Max.Y; i++ { // each row once: the area and the n above it
 		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
-		b.TouchLine(area.Min.X, i-n, area.Max.X-area.Min.X)
 	}
 }
 
@@ -749,9 +794,8 @@ func (b *RenderBuffer) DeleteLine(y, n int, c *Cell) {
 // behavior.
 func (b *RenderBuffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 	b.Buffer.DeleteLineArea(y, n, c, area)
-	for i := area.Min.Y; i < area.Max.Y; i++ {
+	for i := area.Min.Y; i < area.Max.Y+n; i++ { // each row once: the area and the n below it
 		b.TouchLine(area.Min.X, i, area.Max.X-area.Min.X)
-		b.TouchLine(area.Min.X, i+n, area.Max.X-area.Min.X)
 	}
 }
 
