@@ -133,20 +133,33 @@ func (l Line) String() string {
 // styles.
 func (l Line) Render() string {
 	var buf strings.Builder
+	buf.Grow(len(l))
 	renderLine(&buf, l)
 	return buf.String()
+}
+
+// spaces is a run of blanks for renderLine to write pending ones from.
+const spaces = "                                                                "
+
+// writeSpaces writes n spaces to buf.
+func writeSpaces(buf io.StringWriter, n int) {
+	for ; n > len(spaces); n -= len(spaces) {
+		_, _ = buf.WriteString(spaces)
+	}
+	_, _ = buf.WriteString(spaces[:n])
 }
 
 func renderLine(buf io.StringWriter, l Line) {
 	var pen Style
 	var link Link
-	var pending bytes.Buffer
+	pending := 0 // blanks seen and not written yet
 
-	for _, c := range l {
-		if c.IsZero() {
+	for i := range l {
+		c := &l[i] // not a copy: a cell is 112 bytes
+		if c.Content == "" && c.IsZero() {
 			continue
 		}
-		if c.Equal(&EmptyCell) {
+		if c.Content == " " && c.Width == 1 && c.Style.IsZero() && c.Link.IsZero() { // EmptyCell
 			if !pen.IsZero() {
 				_, _ = buf.WriteString(ansi.ResetStyle)
 				pen = Style{}
@@ -155,13 +168,13 @@ func renderLine(buf io.StringWriter, l Line) {
 				_, _ = buf.WriteString(ansi.ResetHyperlink())
 				link = Link{}
 			}
-			pending.WriteByte(' ')
+			pending++
 			continue
 		}
 
-		if pending.Len() > 0 {
-			_, _ = buf.WriteString(pending.String())
-			pending.Reset()
+		if pending > 0 {
+			writeSpaces(buf, pending)
+			pending = 0
 		}
 
 		if c.Style.IsZero() && !pen.IsZero() {
@@ -187,8 +200,8 @@ func renderLine(buf io.StringWriter, l Line) {
 		_, _ = buf.WriteString(c.String())
 	}
 
-	if pending.Len() > 0 {
-		_, _ = buf.WriteString(pending.String())
+	if pending > 0 {
+		writeSpaces(buf, pending)
 	}
 	if link.URL != "" {
 		_, _ = buf.WriteString(ansi.ResetHyperlink())
