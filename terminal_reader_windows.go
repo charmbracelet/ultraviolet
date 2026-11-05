@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 	"unicode/utf16"
 
 	"github.com/charmbracelet/x/ansi"
@@ -31,9 +30,10 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 	var buf bytes.Buffer
 	var records []xwindows.InputRecord
 	var err error
+	peekBuf := make([]xwindows.InputRecord, readBufSize) // pre-allocate, reused across iterations
 	for {
 		for {
-			records, err = peekNConsoleInputs(cc.conin, readBufSize)
+			records, err = peekNConsoleInputsInto(cc.conin, peekBuf)
 			if cc.isCanceled() {
 				return cancelreader.ErrCanceled
 			}
@@ -44,8 +44,10 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 				break
 			}
 
-			// Sleep for a bit to avoid busy waiting.
-			time.Sleep(10 * time.Millisecond)
+			// Block until input is available using a kernel wait instead of
+			// polling with PeekConsoleInput. This eliminates CPU usage when idle.
+			// A 1s timeout ensures cancellation is detected promptly.
+			windows.WaitForSingleObject(cc.conin, 1000)
 		}
 
 		records, err = readNConsoleInputs(cc.conin, uint32(len(records))) //nolint:gosec
@@ -289,6 +291,12 @@ func peekNConsoleInputs(console windows.Handle, maxEvents uint32) ([]xwindows.In
 	records := make([]xwindows.InputRecord, maxEvents)
 	n, err := peekConsoleInput(console, records)
 	return records[:n], err
+}
+
+// peekNConsoleInputsInto reuses a pre-allocated buffer to avoid GC pressure.
+func peekNConsoleInputsInto(console windows.Handle, buf []xwindows.InputRecord) ([]xwindows.InputRecord, error) {
+	n, err := peekConsoleInput(console, buf)
+	return buf[:n], err
 }
 
 //nolint:unused
