@@ -62,7 +62,7 @@ func (c *Cell) Equal(o *Cell) bool {
 
 // IsZero returns whether the cell is an empty cell.
 func (c *Cell) IsZero() bool {
-	return *c == Cell{}
+	return c.Content == "" && c.Width == 0 && c.Style.IsZero() && c.Link.IsZero()
 }
 
 // isWidePlaceholder reports whether the cell is the continuation column of a
@@ -420,14 +420,36 @@ func colorEqual(c, o color.Color) bool {
 	if c == nil || o == nil {
 		return false
 	}
+	if sameValue(c, o) {
+		return true
+	}
 	cr, cg, cb, ca := c.RGBA()
 	or, og, ob, oa := o.RGBA()
 	return cr == or && cg == og && cb == ob && ca == oa
 }
 
+// sameValue reports c and o as one value of a color type the SGR parser
+// makes, which needs neither RGBA call; any other pair is for RGBA to decide.
+func sameValue(c, o color.Color) bool {
+	switch c := c.(type) {
+	case ansi.BasicColor:
+		o, ok := o.(ansi.BasicColor)
+		return ok && c == o
+	case ansi.IndexedColor:
+		o, ok := o.(ansi.IndexedColor)
+		return ok && c == o
+	case color.RGBA:
+		o, ok := o.(color.RGBA)
+		return ok && c == o
+	}
+	return false
+}
+
 // IsZero returns true if the style is empty.
 func (s *Style) IsZero() bool {
-	return *s == Style{}
+	// Field by field: comparing to Style{} would call into the runtime for each
+	// color interface, on every cell a line is rendered or compared with.
+	return s.Fg == nil && s.Bg == nil && s.UnderlineColor == nil && s.Underline == UnderlineStyleNone && s.Attrs == 0
 }
 
 // ConvertStyle converts a style to respect the given color profile.
