@@ -101,9 +101,7 @@ func DoubleBorder() Border {
 }
 
 // HiddenBorder returns a border that renders as a series of single-cell
-// spaces. It's useful for cases when you want to remove a standard border but
-// maintain layout positioning. This said, you can still apply a background
-// color to a hidden border.
+// spaces. You can apply a background color to a hidden border.
 func HiddenBorder() Border {
 	return Border{
 		Top:         Side{Content: " "},
@@ -222,6 +220,15 @@ func (b *Border) Draw(scr Screen, area Rectangle) {
 }
 
 func borderCell(scr Screen, b *Side) *Cell {
+	// If the border content is empty, don't return a new Cell. Just return nil
+	// and allow the Draw() method to skip over this cell and do nothing. This
+	// allows layout to work properly for Borders with empty Side contents. The
+	// difference between a Border Side with empty content and a Border Side
+	// with space content (see Hidden above) is that the space content will be
+	// decorated with the Border's style while the empty content will not.
+	if b.Content == "" {
+		return nil
+	}
 	c := NewCell(scr.WidthMethod(), b.Content)
 	if c != nil {
 		c.Style = b.Style
