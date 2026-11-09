@@ -486,10 +486,17 @@ func (p *EventDecoder) parseCsi(b []byte) (int, Event) {
 		}
 		id, _, _ := pa.Param(0, 1)
 		mod, _, _ := pa.Param(1, 1)
-		if paramsLen > 2 && !pa[1].HasMore() || id != 1 {
+		if paramsLen > 2 && !pa[1].HasMore() || paramsLen > 1 && id != 1 {
 			break
 		}
-		if paramsLen > 1 && id == 1 && mod != -1 {
+		if paramsLen == 1 && id > 1 {
+			// CSI <modifiers> A is the legacy single-parameter encoding
+			// of modified cursor and editing keys, where the parameter
+			// is an XTerm modifier code (1 + Shift(1) + Alt(2) +
+			// Ctrl(4)). For example, tmux emits CSI 5 D for Ctrl+Left
+			// when xterm-keys is off.
+			k.Mod |= KeyMod(id - 1)
+		} else if paramsLen > 1 && id == 1 && mod != -1 {
 			// CSI 1 ; <modifiers> A
 			k.Mod |= KeyMod(mod - 1)
 		}
