@@ -471,11 +471,19 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
-	// Move existing lines down within the bounds
-	for i := area.Max.Y - 1; i >= y+n; i-- {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving lines down.
-			b.Lines[i][x] = b.Lines[i-n][x]
+	if area.Min.X <= 0 && area.Max.X >= b.Width() {
+		// The area spans the full buffer width, so whole rows move: rotate
+		// the row slice headers instead of copying every cell. The rows
+		// pushed out past the bottom of the region wrap around to the top,
+		// where they are recycled as the newly inserted blank lines below.
+		rotateLinesRight(b.Lines[y:area.Max.Y], n)
+	} else {
+		// Move existing lines down within the bounds
+		for i := area.Max.Y - 1; i >= y+n; i-- {
+			for x := area.Min.X; x < area.Max.X; x++ {
+				// We don't need to clone c here because we're just moving lines down.
+				b.Lines[i][x] = b.Lines[i-n][x]
+			}
 		}
 	}
 
@@ -502,12 +510,20 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
-	// Shift cells up within the bounds
-	for dst := y; dst < area.Max.Y-n; dst++ {
-		src := dst + n
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving cells up.
-			b.Lines[dst][x] = b.Lines[src][x]
+	if area.Min.X <= 0 && area.Max.X >= b.Width() {
+		// The area spans the full buffer width, so whole rows move: rotate
+		// the row slice headers instead of copying every cell. The deleted
+		// rows wrap around to the bottom of the region, where they are
+		// recycled as the new blank lines below.
+		rotateLinesLeft(b.Lines[y:area.Max.Y], n)
+	} else {
+		// Shift cells up within the bounds
+		for dst := y; dst < area.Max.Y-n; dst++ {
+			src := dst + n
+			for x := area.Min.X; x < area.Max.X; x++ {
+				// We don't need to clone c here because we're just moving cells up.
+				b.Lines[dst][x] = b.Lines[src][x]
+			}
 		}
 	}
 
@@ -524,6 +540,38 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 // specified, it deletes lines in the entire buffer.
 func (b *Buffer) DeleteLine(y, n int, c *Cell) {
 	b.DeleteLineArea(y, n, c, b.Bounds())
+}
+
+// rotateLinesLeft rotates the line slice headers n positions towards index 0,
+// wrapping the first n lines around to the end. It runs in O(len(lines))
+// header moves with no allocations, using the three-reversal method.
+func rotateLinesLeft(lines []Line, n int) {
+	if len(lines) == 0 {
+		return
+	}
+	n %= len(lines)
+	if n == 0 {
+		return
+	}
+	reverseLines(lines[:n])
+	reverseLines(lines[n:])
+	reverseLines(lines)
+}
+
+// rotateLinesRight rotates the line slice headers n positions towards the
+// end, wrapping the last n lines around to the front.
+func rotateLinesRight(lines []Line, n int) {
+	if len(lines) == 0 {
+		return
+	}
+	rotateLinesLeft(lines, len(lines)-n%len(lines))
+}
+
+// reverseLines reverses the order of the line slice headers in place.
+func reverseLines(lines []Line) {
+	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+		lines[i], lines[j] = lines[j], lines[i]
+	}
 }
 
 // InsertCell inserts new cells at the given position, with the given optional
