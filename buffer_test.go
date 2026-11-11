@@ -512,6 +512,84 @@ func TestBufferLineOperations(t *testing.T) {
 }
 
 // TestBufferCellOperations tests cell insertion and deletion
+func TestBufferInsertCellWideCell(t *testing.T) {
+	// An insert that lands inside a wide cell used to leave the placeholder
+	// of that cell behind, where it belonged to nothing and shifted the rest
+	// of the row one column to the left.
+	t.Run("InsertCell inside a wide cell", func(t *testing.T) {
+		b := NewBuffer(10, 2)
+		b.SetCell(0, 0, &Cell{Content: "\u6f22", Width: 2})
+		b.SetCell(4, 0, &Cell{Content: "B", Width: 1})
+
+		b.InsertCell(1, 0, 1, &Cell{Content: "x", Width: 1})
+
+		// The cell after the wide one keeps its place: the row is not
+		// shifted to the left.
+		if c := b.CellAt(5, 0); c == nil || c.Content != "B" {
+			t.Errorf("InsertCell moved the cell after the wide one: got %v", c)
+		}
+
+		// The inserted cell is where it was asked for.
+		if c := b.CellAt(1, 0); c == nil || c.Content != "x" {
+			t.Errorf("InsertCell did not insert the cell: got %v", c)
+		}
+
+		// No placeholder is left without the wide cell it belongs to.
+		line := b.Line(0)
+		for x, c := range line {
+			if c.Width != 0 {
+				continue
+			}
+			owner := false
+			for j := 1; x-j >= 0; j++ {
+				if w := line[x-j]; w.Width > j {
+					owner = true
+					break
+				}
+			}
+			if !owner {
+				t.Errorf("placeholder at %d belongs to no wide cell", x)
+			}
+		}
+
+		// The row still fills the buffer.
+		if w := ansi.StringWidth(line.Render()); w != b.Width() {
+			t.Errorf("row renders %d columns, buffer is %d wide", w, b.Width())
+		}
+	})
+
+	t.Run("InsertCell before a wide cell", func(t *testing.T) {
+		b := NewBuffer(10, 2)
+		b.SetCell(2, 0, &Cell{Content: "\u6f22", Width: 2})
+		b.SetCell(6, 0, &Cell{Content: "B", Width: 1})
+
+		b.InsertCell(2, 0, 1, &Cell{Content: "x", Width: 1})
+
+		// The wide cell moves right as a whole, so the cell after it moves
+		// right too.
+		if c := b.CellAt(7, 0); c == nil || c.Content != "B" {
+			t.Errorf("InsertCell moved the cell after the wide one: got %v", c)
+		}
+
+		line := b.Line(0)
+		for x, c := range line {
+			if c.Width != 0 {
+				continue
+			}
+			owner := false
+			for j := 1; x-j >= 0; j++ {
+				if w := line[x-j]; w.Width > j {
+					owner = true
+					break
+				}
+			}
+			if !owner {
+				t.Errorf("placeholder at %d belongs to no wide cell", x)
+			}
+		}
+	})
+}
+
 func TestBufferCellOperations(t *testing.T) {
 	t.Run("InsertCell", func(t *testing.T) {
 		b := NewBuffer(5, 2)
