@@ -106,6 +106,23 @@ func (l Line) At(x int) *Cell {
 	return &l[x]
 }
 
+// wideOwner returns the position of the wide cell that covers the given x,
+// if there is one. A wide cell covers the cells that follow it, up to its
+// width.
+func (l Line) wideOwner(x int) (int, bool) {
+	for j := 1; x-j >= 0; j++ {
+		c := l.At(x - j)
+		if c == nil || c.Width == 1 {
+			// A narrow cell: no wide cell reaches past it.
+			return 0, false
+		}
+		if c.Width > j {
+			return x - j, true
+		}
+	}
+	return 0, false
+}
+
 // String returns the string representation of the line. Any trailing spaces
 // are removed.
 func (l Line) String() string {
@@ -548,11 +565,26 @@ func (b *Buffer) InsertCellArea(x, y, n int, c *Cell, area Rectangle) {
 		n = area.Max.X - x
 	}
 
+	// An insert that lands inside a wide cell splits it: the cell keeps a
+	// tail that is no longer next to it, and the placeholder that moves
+	// right belongs to nothing. The wide cell is replaced by blank cells,
+	// the same way writing over one does.
+	if owner, ok := b.Lines[y].wideOwner(x); ok {
+		b.SetCell(owner, y, nil)
+	}
+
 	// Move existing cells within rectangle bounds to the right
 	for i := area.Max.X - 1; i >= x+n && i-n >= area.Min.X; i-- {
 		// We don't need to clone c here because we're just moving cells to the
 		// right.
 		b.Lines[y][i] = b.Lines[y][i-n]
+	}
+
+	// The cells the insert replaces still hold the content that has just
+	// moved right, and a wide cell among them would clear the cell that has
+	// moved next to it. They are written below, so they are emptied first.
+	for i := x; i < x+n && i < area.Max.X; i++ {
+		b.Lines[y][i] = EmptyCell
 	}
 
 	// Clear the newly inserted cells within rectangle bounds
