@@ -11,8 +11,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/clipperhouse/displaywidth"
 	"github.com/lucasb-eyer/go-colorful"
-	"github.com/rivo/uniseg"
 )
 
 const (
@@ -437,10 +437,10 @@ func max(a, b int) int {
 }
 
 func applyGradient(base lipgloss.Style, input string, from, to color.Color) string {
-	g := uniseg.NewGraphemes(input)
+	g := displaywidth.StringGraphemes(input)
 	var chars []string
 	for g.Next() {
-		chars = append(chars, g.Str())
+		chars = append(chars, g.Value())
 	}
 
 	a, _ := colorful.MakeColor(to)

@@ -15,8 +15,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/clipperhouse/uax29/v2/graphemes"
 	"github.com/muesli/cancelreader"
-	"github.com/rivo/uniseg"
 )
 
 // ErrReaderNotStarted is returned when the reader has not been started yet.
@@ -396,10 +396,10 @@ func (d *eventScanner) encodeGraphemeBufs() []byte {
 				b = append(b, string(d.graphemeBuf[kd])...)
 			case 0:
 				// Encode the release grapheme as Kitty Keyboard to get the release event.
-				grs := uniseg.NewGraphemes(string(d.graphemeBuf[kd]))
+				grs := graphemes.FromString(string(d.graphemeBuf[kd]))
 				for grs.Next() {
 					var codepoints string
-					gr := grs.Str()
+					gr := grs.Value()
 					for i, r := range gr {
 						if r == 0 {
 							continue

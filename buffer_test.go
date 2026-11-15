@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/rivo/uniseg"
+	"github.com/clipperhouse/displaywidth"
 )
 
 func TestBufferUniseg(t *testing.T) {
@@ -36,10 +36,10 @@ func TestBufferUniseg(t *testing.T) {
 			buf := NewBuffer(width(c.input), height(c.input))
 			for y, line := range strings.Split(c.input, "\n") {
 				var x int
-				seg := uniseg.NewGraphemes(line)
+				seg := displaywidth.StringGraphemes(line)
 				for seg.Next() {
 					cell := &Cell{
-						Content: seg.Str(),
+						Content: seg.Value(),
 						Width:   seg.Width(),
 					}
 					buf.SetCell(x, y, cell)
@@ -720,7 +720,7 @@ func TestRenderLineWideCellTail(t *testing.T) {
 	if want := "A   你"; visible != want {
 		t.Errorf("Render() = %q, want %q; output=%q", visible, want, output)
 	}
-	if w := uniseg.StringWidth(visible); w != 6 {
+	if w := displaywidth.String(visible); w != 6 {
 		t.Errorf("Render() visible width = %d, want 6; output=%q", w, output)
 	}
 }
