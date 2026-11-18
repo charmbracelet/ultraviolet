@@ -18,9 +18,18 @@ import (
 type conInputReader struct {
 	cancelMixin
 	conin        windows.Handle
-	cancelEvent  windows.Handle
 	originalMode uint32
 	newMode      uint32
+
+	// eventMu guards the cancel event's lifetime. Close must not free the
+	// handle while a reader still waits on it: Windows reuses handle numbers
+	// quickly, so the wait could land on an unrelated object. The last of
+	// Close and the waiting readers frees it.
+	eventMu     sync.Mutex
+	cancelEvent windows.Handle
+	waiters     int
+	closed      bool
+	eventFreed  bool
 }
 
 var _ cancelreader.CancelReader = &conInputReader{}
@@ -80,17 +89,36 @@ func NewCancelReader(r io.Reader) (cancelreader.CancelReader, error) {
 // Cancel implements cancelreader.CancelReader.
 func (r *conInputReader) Cancel() bool {
 	r.setCanceled()
-	_ = windows.SetEvent(r.cancelEvent)
+	r.eventMu.Lock()
+	if !r.eventFreed {
+		_ = windows.SetEvent(r.cancelEvent)
+	}
+	r.eventMu.Unlock()
 
 	return windows.CancelIoEx(r.conin, nil) == nil || windows.CancelIo(r.conin) == nil
 }
 
-// Close implements cancelreader.CancelReader.
+// Close implements cancelreader.CancelReader. It is safe to call more than
+// once, and with a reader still waiting for input.
 func (r *conInputReader) Close() error {
-	// Wake a reader that may still wait on the cancel event before the
-	// handle goes away. Close can be called without Cancel.
 	r.setCanceled()
+
+	r.eventMu.Lock()
+	if r.closed {
+		r.eventMu.Unlock()
+		return nil
+	}
+	r.closed = true
+	// Wake a reader that may still wait on the cancel event. Close can be
+	// called without Cancel.
 	_ = windows.SetEvent(r.cancelEvent)
+	// With a reader still waiting, that reader frees the event when it
+	// wakes. Otherwise nothing else holds it.
+	freeNow := r.waiters == 0
+	if freeNow {
+		r.eventFreed = true
+	}
+	r.eventMu.Unlock()
 
 	var errs []error
 	if r.originalMode != 0 {
@@ -99,11 +127,39 @@ func (r *conInputReader) Close() error {
 		}
 	}
 
-	if err := windows.CloseHandle(r.cancelEvent); err != nil {
-		errs = append(errs, fmt.Errorf("close cancel event: %w", err))
+	if freeNow {
+		if err := windows.CloseHandle(r.cancelEvent); err != nil {
+			errs = append(errs, fmt.Errorf("close cancel event: %w", err))
+		}
 	}
 
 	return errors.Join(errs...)
+}
+
+// waitForInput blocks until the console has input or the reader is canceled
+// or closed. While it waits, Close leaves the cancel event alone, and if Close
+// ran meanwhile, the wait frees the event on its way out.
+func (r *conInputReader) waitForInput() error {
+	r.eventMu.Lock()
+	if r.closed {
+		r.eventMu.Unlock()
+		return cancelreader.ErrCanceled
+	}
+	r.waiters++
+	event := r.cancelEvent
+	r.eventMu.Unlock()
+
+	_, err := windows.WaitForMultipleObjects([]windows.Handle{r.conin, event}, false, windows.INFINITE)
+
+	r.eventMu.Lock()
+	r.waiters--
+	if r.closed && r.waiters == 0 && !r.eventFreed {
+		r.eventFreed = true
+		_ = windows.CloseHandle(event)
+	}
+	r.eventMu.Unlock()
+
+	return err
 }
 
 // Read implements cancelreader.CancelReader.

@@ -66,7 +66,7 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 			}
 
 			// Block until the console has input or the reader is canceled.
-			_, err = windows.WaitForMultipleObjects([]windows.Handle{cc.conin, cc.cancelEvent}, false, windows.INFINITE)
+			err = cc.waitForInput()
 			if cc.isCanceled() {
 				return cancelreader.ErrCanceled
 			}
