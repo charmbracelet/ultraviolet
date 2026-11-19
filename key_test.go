@@ -2681,9 +2681,14 @@ func TestKeystroke(t *testing.T) {
 			want: "rightsuper",
 		},
 		{
-			name: "key with base code",
-			key:  Key{Code: 'A', BaseCode: 'a'},
-			want: "a",
+			name: "non-ascii layout key with base code",
+			key:  Key{Code: 'с', BaseCode: 'c', Mod: ModCtrl},
+			want: "ctrl+c",
+		},
+		{
+			name: "dvorak key ignores base code",
+			key:  Key{Code: 's', BaseCode: ';', Mod: ModCtrl},
+			want: "ctrl+s",
 		},
 		{
 			name: "unknown key with base code",
