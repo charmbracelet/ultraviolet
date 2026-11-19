@@ -141,6 +141,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 	errc := make(chan error, 1)
 	readc := make(chan []byte)
 	timeout := time.NewTimer(d.EscTimeout)
+	defer timeout.Stop()
 	ttimeout := time.Now().Add(d.EscTimeout)
 
 	var wg sync.WaitGroup
@@ -161,11 +162,11 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 	for {
 		select {
 		case <-ctx.Done():
-			d.sendEvents(eventc, buf.Bytes(), true)
+			d.sendEvents(ctx, eventc, buf.Bytes(), true)
 			wg.Wait()
 			return nil
 		case err := <-errc:
-			d.sendEvents(eventc, buf.Bytes(), true)
+			d.sendEvents(ctx, eventc, buf.Bytes(), true)
 			wg.Wait()
 			return err // return the first error encountered
 		case <-timeout.C:
@@ -176,7 +177,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			timedout := time.Now().After(ttimeout)
 			if buf.Len() > 0 && timedout {
 				d.logf("timeout expired, processing buffer")
-				n = d.sendEvents(eventc, buf.Bytes(), true)
+				n = d.sendEvents(ctx, eventc, buf.Bytes(), true)
 			}
 
 			if n > 0 {
@@ -200,7 +201,7 @@ func (d *TerminalReader) StreamEvents(ctx context.Context, eventc chan<- Event) 
 			d.logf("input: %q", read)
 			buf.Write(read)
 			ttimeout = time.Now().Add(d.EscTimeout)
-			n := d.sendEvents(eventc, buf.Bytes(), false)
+			n := d.sendEvents(ctx, eventc, buf.Bytes(), false)
 			if !timeout.Stop() {
 				// drain the channel if it was already running
 				select {
@@ -228,10 +229,14 @@ func (d *TerminalReader) SetLogger(logger Logger) {
 	d.logger = logger
 }
 
-func (d *TerminalReader) sendEvents(eventc chan<- Event, buf []byte, expired bool) int {
+func (d *TerminalReader) sendEvents(ctx context.Context, eventc chan<- Event, buf []byte, expired bool) int {
 	n, events := d.eventScanner.scanEvents(buf, expired)
 	for _, event := range events {
-		eventc <- event
+		select {
+		case eventc <- event:
+		case <-ctx.Done():
+			return n
+		}
 	}
 	return n
 }
