@@ -188,6 +188,21 @@ func TestParseSequence(t *testing.T) {
 			[]Event{UnknownCsiEvent("\x1b[27;3~")},
 		},
 
+		// Incomplete Linux console F-key.
+		seqTest{
+			[]byte("\x1b[["),
+			[]Event{UnknownEvent("\x1b[[")},
+		},
+
+		// CSI [ not followed by a Linux console F-key.
+		seqTest{
+			[]byte("\x1b[[Z"),
+			[]Event{
+				UnknownCsiEvent("\x1b[["),
+				KeyPressEvent{Code: 'z', ShiftedCode: 'Z', Text: "Z", Mod: ModShift},
+			},
+		},
+
 		// Empty @ ^ ~
 		seqTest{
 			[]byte("\x1b[@\x1b[^\x1b[~"),
@@ -907,6 +922,36 @@ func TestSplitReads(t *testing.T) {
 
 	if !reflect.DeepEqual(expect, events) {
 		t.Errorf("unexpected messages, expected:\n    %+v\ngot:\n    %+v", expect, events)
+	}
+}
+
+// Linux console F-keys split across reads.
+func TestLinuxConsoleFunctionKeySplitReads(t *testing.T) {
+	for _, n := range []int{2, 3} { // "\x1b[" + "[A" and "\x1b[[" + "A"
+		t.Run(fmt.Sprintf("chunk=%d", n), func(t *testing.T) {
+			// Decode each chunk separately, within the escape timeout.
+			r := &limitedSleepReader{r: strings.NewReader("\x1b[[A"), n: n, d: DefaultEscTimeout / 5}
+			drv := NewTerminalReader(r, "dumb")
+			drv.SetLogger(TLogger{t})
+
+			eventc := make(chan Event)
+			go func(t testing.TB) {
+				defer close(eventc)
+				if err := drv.StreamEvents(t.Context(), eventc); err != nil {
+					t.Errorf("error streaming events: %v", err)
+				}
+			}(t)
+
+			var events []Event
+			for ev := range eventc {
+				events = append(events, ev)
+			}
+
+			expect := []Event{KeyPressEvent{Code: KeyF1}}
+			if !reflect.DeepEqual(expect, events) {
+				t.Errorf("unexpected events, expected:\n    %#v\ngot:\n    %#v", expect, events)
+			}
+		})
 	}
 }
 
