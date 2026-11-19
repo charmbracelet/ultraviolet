@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/parser"
 	xwindows "github.com/charmbracelet/x/windows"
-	"github.com/rivo/uniseg"
+	"github.com/clipperhouse/uax29/v2/graphemes"
 )
 
 // Flags to control the behavior of the parser.
@@ -1114,7 +1114,7 @@ func (p *EventDecoder) parseUtf8(b []byte) (int, Event) {
 		return 1, UnknownEvent(b[0])
 	}
 
-	cluster, _, _, _ := uniseg.FirstGraphemeCluster(b, -1)
+	cluster := graphemes.FromBytes(b).First()
 	text := string(cluster)
 	for i := range text {
 		if i > 0 {
