@@ -471,11 +471,19 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
-	// Move existing lines down within the bounds
-	for i := area.Max.Y - 1; i >= y+n; i-- {
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving lines down.
-			b.Lines[i][x] = b.Lines[i-n][x]
+	// Move existing lines down within the bounds. When the area spans the
+	// full width of the buffer, move whole lines (their slice headers)
+	// instead of copying every cell: the n lines pushed out at the bottom
+	// are reused for the new ones and cleared below. Copying each cell made
+	// every line insert O(width × height).
+	if area.Min.X == 0 && area.Max.X == b.Width() {
+		rotateLines(b.Lines[y:area.Max.Y], n)
+	} else {
+		for i := area.Max.Y - 1; i >= y+n; i-- {
+			for x := area.Min.X; x < area.Max.X; x++ {
+				// We don't need to clone c here because we're just moving lines down.
+				b.Lines[i][x] = b.Lines[i-n][x]
+			}
 		}
 	}
 
@@ -484,6 +492,32 @@ func (b *Buffer) InsertLineArea(y, n int, c *Cell, area Rectangle) {
 		for x := area.Min.X; x < area.Max.X; x++ {
 			b.SetCell(x, i, c)
 		}
+	}
+}
+
+// rotateLines rotates ls k places down, wrapping the lines past its end back
+// to its start. Each line keeps its own cells; only the slice headers move,
+// so no two rows ever share a line.
+func rotateLines(ls []Line, k int) {
+	n := len(ls)
+	if n == 0 {
+		return
+	}
+	k %= n
+	if k < 0 {
+		k += n
+	}
+	if k == 0 {
+		return
+	}
+	reverseLines(ls)
+	reverseLines(ls[:k])
+	reverseLines(ls[k:])
+}
+
+func reverseLines(ls []Line) {
+	for i, j := 0, len(ls)-1; i < j; i, j = i+1, j-1 {
+		ls[i], ls[j] = ls[j], ls[i]
 	}
 }
 
@@ -502,12 +536,20 @@ func (b *Buffer) DeleteLineArea(y, n int, c *Cell, area Rectangle) {
 		n = area.Max.Y - y
 	}
 
-	// Shift cells up within the bounds
-	for dst := y; dst < area.Max.Y-n; dst++ {
-		src := dst + n
-		for x := area.Min.X; x < area.Max.X; x++ {
-			// We don't need to clone c here because we're just moving cells up.
-			b.Lines[dst][x] = b.Lines[src][x]
+	// Shift cells up within the bounds. When the area spans the full width
+	// of the buffer, move whole lines (their slice headers) instead of
+	// copying every cell: the n deleted lines are reused at the bottom and
+	// cleared below. Copying each cell made every scroll at the bottom of
+	// the screen O(width × height).
+	if area.Min.X == 0 && area.Max.X == b.Width() {
+		rotateLines(b.Lines[y:area.Max.Y], len(b.Lines[y:area.Max.Y])-n)
+	} else {
+		for dst := y; dst < area.Max.Y-n; dst++ {
+			src := dst + n
+			for x := area.Min.X; x < area.Max.X; x++ {
+				// We don't need to clone c here because we're just moving cells up.
+				b.Lines[dst][x] = b.Lines[src][x]
+			}
 		}
 	}
 
