@@ -650,3 +650,12 @@ func TestPassThroughDoesNotAffectWidth(t *testing.T) {
 		t.Error("a line holding a pass-through sequence was flagged drift-prone")
 	}
 }
+
+func TestReadStyleIgnoresTransparentColor(t *testing.T) {
+	var pen Style
+	ReadStyle(ansi.Params{31, 44, 58, 5, 1}, &pen)
+	ReadStyle(ansi.Params{38, 1, 48, 1, 58, 1}, &pen)
+	if pen.Fg != ansi.Red || pen.Bg != ansi.Blue || pen.UnderlineColor != ansi.IndexedColor(1) {
+		t.Errorf("pen after 38;1, 48;1 and 58;1: got = Fg %v Bg %v UnderlineColor %v, want them unchanged", pen.Fg, pen.Bg, pen.UnderlineColor)
+	}
+}
