@@ -317,7 +317,7 @@ func (d *eventScanner) scanEvents(buf []byte, expired bool) (total int, events [
 							d.paste = append(d.paste, seq...)
 						}
 					}
-				case UnknownEvent:
+				case UnknownEvent, incompleteEvent:
 					if !expired {
 						// If the event is unknown and we are not expired, we
 						// return need to try to decode the buffer again.
@@ -336,6 +336,13 @@ func (d *eventScanner) scanEvents(buf []byte, expired bool) (total int, events [
 		switch event.(type) {
 		case ignoredEvent:
 			// ignore this event
+			event = nil
+		case incompleteEvent:
+			// Wait for the rest of the sequence, unless the escape timeout
+			// has passed without it, when it counts as cancelled.
+			if !expired {
+				return total, events
+			}
 			event = nil
 		case UnknownEvent:
 			isUnknown = true
