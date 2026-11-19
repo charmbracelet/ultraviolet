@@ -3,6 +3,9 @@ package uv
 // DefaultTabInterval is the default tab interval.
 const DefaultTabInterval = 8
 
+// stopBits is the number of columns stored in each word of the tab stops.
+const stopBits = 8
+
 // TabStops represents horizontal line tab stops.
 type TabStops struct {
 	stops    []int
@@ -16,7 +19,7 @@ func NewTabStops(width, interval int) *TabStops {
 	ts := new(TabStops)
 	ts.interval = interval
 	ts.width = width
-	ts.stops = make([]int, (width+(interval-1))/interval)
+	ts.stops = make([]int, (width+(stopBits-1))/stopBits)
 	ts.init(0, width)
 	return ts
 }
@@ -33,15 +36,16 @@ func (ts *TabStops) Resize(width int) {
 	}
 
 	if width < ts.width {
-		size := (width + (ts.interval - 1)) / ts.interval
+		size := (width + (stopBits - 1)) / stopBits
 		ts.stops = ts.stops[:size]
 	} else {
-		size := (width - ts.width + (ts.interval - 1)) / ts.interval
+		size := (width - ts.width + (stopBits - 1)) / stopBits
 		ts.stops = append(ts.stops, make([]int, size)...)
 	}
 
-	ts.init(ts.width, width)
+	curWidth := ts.width
 	ts.width = width
+	ts.init(curWidth, width)
 }
 
 // Width returns the width of the screen that the tab stops are set for.
@@ -110,12 +114,18 @@ func (ts TabStops) Find(col, delta int) int {
 
 // Set adds a tab stop at the given column.
 func (ts *TabStops) Set(col int) {
+	if col < 0 || col >= ts.width {
+		return
+	}
 	mask := ts.mask(col)
 	ts.stops[col>>3] |= mask
 }
 
 // Reset removes the tab stop at the given column.
 func (ts *TabStops) Reset(col int) {
+	if col < 0 || col >= ts.width {
+		return
+	}
 	mask := ts.mask(col)
 	ts.stops[col>>3] &= ^mask
 }
@@ -127,7 +137,7 @@ func (ts *TabStops) Clear() {
 
 // mask returns the mask for the given column.
 func (ts *TabStops) mask(col int) int {
-	return 1 << (col & (ts.interval - 1))
+	return 1 << (col & (stopBits - 1))
 }
 
 // init initializes the tab stops starting from col until width.
