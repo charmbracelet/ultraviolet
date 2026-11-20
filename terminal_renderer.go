@@ -1643,9 +1643,18 @@ func relativeCursorMove(s *TerminalRenderer, newbuf *RenderBuffer, fx, fy, tx, t
 				yseq = cud
 			}
 			if !s.flags.Contains(tFullscreen) || n < len(yseq) { // n is the cost of using newline characters
-				yseq = strings.Repeat("\n", n)
 				if s.flags.Contains(tMapNewline) {
+					// The terminal (or whatever is consuming our output, e.g. a
+					// non-tty capture) does not translate LF to CRLF for us, so a
+					// bare line feed only moves the cursor down and leaves its
+					// column untouched. Emit an explicit carriage return with
+					// every line feed so the real cursor column actually resets
+					// to 0, matching what we assume below by resetting fx. This
+					// mirrors the inline (tRelativeCursor) fix for #61 / #133.
+					yseq = strings.Repeat("\r\n", n)
 					fx = 0
+				} else {
+					yseq = strings.Repeat("\n", n)
 				}
 			}
 		} else if ty < fy {
