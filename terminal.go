@@ -178,7 +178,7 @@ func (t *Terminal) Start() error {
 	evs := newEventScanner()
 	evs.lookup = t.opts.LookupKeys
 	if evs.lookup {
-		evs.table = buildKeysTable(t.opts.LegacyKeyEncoding, t.con.Getenv("TERM"), t.opts.UseTerminfoKeys)
+		evs.table = sharedKeysTable(t.opts.LegacyKeyEncoding, t.con.Getenv("TERM"), t.opts.UseTerminfoKeys)
 	}
 	if t.opts.Logger != nil {
 		evs.setLogger(t.opts.Logger)

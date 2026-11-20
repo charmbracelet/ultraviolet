@@ -3,6 +3,7 @@ package uv
 import (
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/xo/terminfo"
@@ -661,4 +662,22 @@ func defaultTerminfoKeys(flags LegacyKeyEncoding) map[string]Key {
 	}
 
 	return keys
+}
+
+// keysTables holds one table per legacy-flag set, shared by every reader with
+// those flags. Readers only read a table, and must never write to one.
+var keysTables sync.Map // LegacyKeyEncoding -> map[string]Key
+
+// sharedKeysTable is buildKeysTable, shared between readers when terminfo is off.
+// With terminfo on, the table depends on term, which a remote client chooses, so
+// it is not a cache key.
+func sharedKeysTable(flags LegacyKeyEncoding, term string, useTerminfo bool) map[string]Key {
+	if useTerminfo {
+		return buildKeysTable(flags, term, useTerminfo)
+	}
+	if t, ok := keysTables.Load(flags); ok {
+		return t.(map[string]Key)
+	}
+	t, _ := keysTables.LoadOrStore(flags, buildKeysTable(flags, term, false))
+	return t.(map[string]Key)
 }
