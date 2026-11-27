@@ -405,7 +405,9 @@ func ReadStyle(params ansi.Params, pen *Style) {
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				pen.Fg = c
+				if !isTransparent(c) {
+					pen.Fg = c
+				}
 				i += n - 1
 			}
 		case 39: // Default foreground
@@ -416,7 +418,9 @@ func ReadStyle(params ansi.Params, pen *Style) {
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				pen.Bg = c
+				if !isTransparent(c) {
+					pen.Bg = c
+				}
 				i += n - 1
 			}
 		case 49: // Default Background
@@ -425,7 +429,9 @@ func ReadStyle(params ansi.Params, pen *Style) {
 			var c color.Color
 			n := ansi.ReadStyleColor(params[i:], &c)
 			if n > 0 {
-				pen.UnderlineColor = c
+				if !isTransparent(c) {
+					pen.UnderlineColor = c
+				}
 				i += n - 1
 			}
 		case 59: // Default underline color
@@ -436,6 +442,17 @@ func ReadStyle(params ansi.Params, pen *Style) {
 			pen.Bg = ansi.BrightBlack + ansi.BasicColor(param-100) //nolint:gosec
 		}
 	}
+}
+
+// isTransparent reports whether c is the ITU T.416 transparent colour (SGR
+// 38;1, 48;1 or 58;1). xterm and tmux leave the colour as it was; storing it
+// would paint the cell as black once rendered.
+func isTransparent(c color.Color) bool {
+	if c == nil {
+		return false
+	}
+	_, _, _, a := c.RGBA()
+	return a == 0
 }
 
 // ReadLink reads a hyperlink escape sequence from a data buffer into link.
