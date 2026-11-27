@@ -145,6 +145,32 @@ func terminated[T []byte | string](seq T) bool {
 	return n >= 2 && seq[n-1] == '\\' && seq[n-2] == ansi.ESC
 }
 
+// oscPayload extracts data from a terminated OSC sequence. DecodeSequence
+// returns the complete sequence even when the pooled parser's 4 KiB data
+// buffer truncates Parser.Data, so using seq avoids resizing pooled buffers.
+func oscPayload[T []byte | string](seq T) (T, bool) {
+	var zero T
+	if !ansi.HasOscPrefix(seq) {
+		return zero, false
+	}
+
+	start := 2
+	if seq[0] == ansi.OSC {
+		start = 1
+	}
+
+	end := len(seq)
+	switch {
+	case seq[end-1] == ansi.BEL:
+		end--
+	case terminated(seq):
+		end -= 2
+	default:
+		return zero, false
+	}
+	return seq[start:end], true
+}
+
 func printString[T []byte | string](
 	s Screen,
 	m WidthMethod,
@@ -254,7 +280,9 @@ func printString[T []byte | string](
 				ReadStyle(p.Params(), &style)
 			case ansi.HasOscPrefix(seq) && p.Command() == 8:
 				// Hyperlinks
-				ReadLink(p.Data(), &link)
+				if data, ok := oscPayload(seq); ok {
+					ReadLink([]byte(data), &link)
+				}
 			case ansi.Equal(seq, T("\n")):
 				if s == nil {
 					// When building lines, we need to ensure empty lines are represented.
