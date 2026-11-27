@@ -228,7 +228,7 @@ func TestTabStopsResize(t *testing.T) {
 			}
 
 			// Verify stops slice has correct length
-			expectedStopsLen := (tt.newSize + (ts.interval - 1)) / ts.interval
+			expectedStopsLen := (tt.newSize + (stopBits - 1)) / stopBits
 			if len(ts.stops) != expectedStopsLen {
 				t.Errorf("stops slice length = %d, want %d",
 					len(ts.stops), expectedStopsLen)
@@ -293,4 +293,41 @@ func TestTabStopsResizeEdgeCases(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestTabStopsArbitraryInterval(t *testing.T) {
+	for _, interval := range []int{1, 2, 3, 4, 5, 7, 8, 9, 16, 20, 100} {
+		for _, width := range []int{0, 1, 17, 80, 130} {
+			ts := NewTabStops(width, interval)
+			check := func(stage string) {
+				for col := 0; col < ts.Width(); col++ {
+					if want := col%interval == 0; ts.IsStop(col) != want {
+						t.Errorf("interval %d, width %d, %s: IsStop(%d) = %v, want %v",
+							interval, width, stage, col, !want, want)
+					}
+				}
+			}
+			check("new")
+			ts.Resize(width + 40)
+			check("grown")
+			ts.Resize(width / 2)
+			check("shrunk")
+		}
+	}
+}
+
+func TestTabStopsSetResetOutOfRange(t *testing.T) {
+	ts := DefaultTabStops(20)
+	for _, col := range []int{-100, -1, 20, 21, 100} {
+		ts.Set(col)
+		ts.Reset(col)
+	}
+
+	// Nothing outside the width is kept, nor changed inside it.
+	ts.Resize(120)
+	for col := 0; col < 120; col++ {
+		if want := col%8 == 0; ts.IsStop(col) != want {
+			t.Errorf("IsStop(%d) = %v, want %v", col, !want, want)
+		}
+	}
 }
