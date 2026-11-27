@@ -269,6 +269,16 @@ func (d *eventScanner) scanEvents(buf []byte, expired bool) (total int, events [
 		return 0, nil
 	}
 
+	// If the buffer ends on a bare escape, the ST terminator of an OSC, DCS,
+	// or APC string may be split across reads. Decoding now would cancel the
+	// sequence and decode the '\' of a complete terminator as a key press,
+	// so hold the escape back until more input arrives or the input is
+	// flushed. Flushed input keeps the old behaviour of treating the escape
+	// as the end of a cancelled sequence.
+	if !expired && buf[len(buf)-1] == ansi.ESC {
+		buf = buf[:len(buf)-1]
+	}
+
 	var dn int
 	d.logf("processing buf %d %q", len(buf), buf)
 	dn, buf = d.deserializeWin32Input(buf)

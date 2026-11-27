@@ -51,12 +51,13 @@ func (ts *TabStops) Width() int {
 
 // IsStop returns true if the given column is a tab stop.
 func (ts TabStops) IsStop(col int) bool {
-	mask := ts.mask(col)
+	// Check the bounds before computing the mask: a negative column
+	// shifts by a negative amount in mask, which panics.
 	i := col >> 3
 	if i < 0 || i >= len(ts.stops) {
 		return false
 	}
-	return ts.stops[i]&mask != 0
+	return ts.stops[i]&ts.mask(col) != 0
 }
 
 // Next returns the next tab stop after the given column.
