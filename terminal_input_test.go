@@ -1,10 +1,26 @@
 package uv
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 	"time"
 )
+
+func TestSendInputBatchKeepsUnreadBytes(t *testing.T) {
+	readc := make(chan []byte, 1)
+	var buf bytes.Buffer
+	buf.WriteString("first")
+	if !sendInputBatch(t.Context(), readc, buf.Bytes()) {
+		t.Fatal("failed to send input batch")
+	}
+	data := <-readc
+	buf.Reset()
+	buf.WriteString("other")
+	if got := string(data); got != "first" {
+		t.Fatalf("received %q, want %q", got, "first")
+	}
+}
 
 // TestInputLoopDoesNotReuseTheReadBuffer is the regression test for #176. the
 // input loop handed the event loop a slice of its own read buffer, and its
