@@ -89,10 +89,8 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 		// Win32-Input-Mode processing.
 		d.serializeWin32InputRecords(records, &buf)
 
-		select {
-		case <-ctx.Done():
+		if !sendInputBatch(ctx, readc, buf.Bytes()) {
 			return nil
-		case readc <- buf.Bytes():
 		}
 
 		buf.Reset()

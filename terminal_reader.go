@@ -116,6 +116,15 @@ func NewTerminalReader(r io.Reader, termType string) *TerminalReader {
 // readBufSize is the size of the read buffer used to read input events at a time.
 const readBufSize = 4096
 
+func sendInputBatch(ctx context.Context, readc chan<- []byte, data []byte) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case readc <- bytes.Clone(data):
+		return true
+	}
+}
+
 // sendBytes reads data from the reader and sends it to the provided channel.
 // It stops when an error occurs or when the context is closed.
 func (d *TerminalReader) sendBytes(ctx context.Context, readc chan []byte) error {
